@@ -1,0 +1,190 @@
+@import "tailwindcss";
+
+/* Variante dark controlada por clase en <html> (ThemeProvider). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Tokens Liquid Glass — Crisp Light (intacta) */
+:root {
+  --background: 210 40% 98%; /* #F8FAFC */
+  --foreground: 222 47% 6%; /* #090D16 */
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 6%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 6%;
+  --primary: 217 100% 50%; /* #0066FF */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 210 40% 96%;
+  --accent-foreground: 222 47% 11%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 217 100% 50%;
+  --success: 160 84% 39%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 222 47% 11%;
+  --radius: 1rem;
+  /* Tipografía oficial Operam ERP */
+  --font-sans-family: "Ubuntu", "DM Sans", system-ui, sans-serif;
+  --font-heading-family: "Ubuntu", "DM Sans", system-ui, sans-serif;
+  --font-mono-family: "DM Mono", ui-monospace, monospace;
+}
+
+/* Tokens True Dark OLED — neutro (sin tinte azul) */
+.dark {
+  --background: 0 0% 0%; /* #000000 */
+  --foreground: 0 0% 100%;
+  --card: 240 4% 7%; /* ~#111113 */
+  --card-foreground: 0 0% 100%;
+  --popover: 240 4% 7%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 211 100% 52%; /* #0A84FF — solo acento */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 3% 10%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 3% 10%;
+  --muted-foreground: 240 5% 65%;
+  --accent: 240 3% 12%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 100% / 0.09;
+  --input: 240 3% 10%;
+  --ring: 211 100% 52%;
+  --success: 160 84% 39%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 100%;
+}
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-sans-family);
+  --font-heading: var(--font-heading-family);
+  --font-mono: var(--font-mono-family);
+  --breakpoint-sm: 360px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    overflow-x: hidden;
+  }
+
+  body {
+    @apply min-h-svh bg-background font-sans text-foreground antialiased;
+    margin: 0;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-heading-family);
+    letter-spacing: -0.4px;
+  }
+
+  #root {
+    @apply min-h-svh w-full max-w-full overflow-x-hidden;
+  }
+}
+
+/* Barra arcoíris Operam — identidad cromática oficial */
+@keyframes operam-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@layer utilities {
+  .font-heading {
+    font-family: var(--font-heading-family);
+    letter-spacing: -0.4px;
+  }
+
+  .amount-tabular {
+    @apply text-right font-mono tabular-nums;
+  }
+
+  /* Light intacta; dark = cristal neutro sobre OLED */
+  .glass-panel {
+    @apply rounded-2xl border border-slate-200/80 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl dark:border-white/[0.09] dark:bg-white/[0.03] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_12px_32px_rgba(0,0,0,0.6)];
+  }
+
+  .ios-pill-track {
+    @apply inline-flex rounded-2xl border border-slate-200 bg-slate-100 p-1 dark:border-white/[0.08] dark:bg-white/[0.05];
+  }
+
+  .ios-pill-active {
+    @apply rounded-xl bg-[#0066FF] font-medium text-white shadow-[0_0_15px_rgba(0,102,255,0.4)] dark:bg-[#0A84FF] dark:shadow-[0_0_20px_rgba(10,132,255,0.35)];
+  }
+
+  /* Idle sutil (marca siempre visible en el borde superior) */
+  .operam-rainbow-bar-idle {
+    background: linear-gradient(
+      90deg,
+      #2060d0 0%,
+      #7a3fc4 20%,
+      #e0307a 40%,
+      #f07010 60%,
+      #f0b000 80%,
+      #20a050 100%
+    );
+    opacity: 0.35;
+  }
+
+  /* Activa: shimmer infinito + resplandor */
+  .operam-rainbow-bar {
+    background: linear-gradient(
+      90deg,
+      #2060d0 0%,
+      #7a3fc4 20%,
+      #e0307a 40%,
+      #f07010 60%,
+      #f0b000 80%,
+      #20a050 100%,
+      #2060d0 100%
+    );
+    background-size: 200% 100%;
+    animation: operam-shimmer 1.8s linear infinite;
+    box-shadow: 0 2px 12px rgba(122, 63, 196, 0.45);
+  }
+}

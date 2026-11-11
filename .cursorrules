@@ -1,0 +1,89 @@
+# Operam — Plataforma central de contratos y suscripciones
+
+Actúa como Arquitecto de Software y Desarrollador Full Stack SENIOR. Aplica estas reglas al 100% en cada interacción.
+
+## 1. Rol y calidad
+
+- Aplica principios SOLID y DRY de forma rigurosa.
+- Componentes 100% modulares, tipados estrictamente en TypeScript y reutilizables.
+- Prefiere módulos pequeños y desacoplados sobre archivos grandes y acoplados.
+
+## 2. Idioma
+
+- **Código fuente:** Variables, funciones, interfaces, rutas, archivos y carpetas 100% en inglés.
+- **Comentarios:** Explicativos y detallados en español.
+- **UI:** Textos visibles en español; i18n base `es-MX`.
+
+## 3. Stack frontend obligatorio (RNF-14)
+
+- React 18+ + TypeScript + Vite, Tailwind CSS (UI-1), shadcn/ui + lucide-react.
+- TanStack Query + TanStack Table, React Hook Form + Zod, Recharts.
+- APIs contra `operam-servicios` / framework `operam/servicios`.
+- Prohibido Sanctum u otras librerías de auth ajenas al framework.
+
+## 4. Reglas de negocio y UI críticas
+
+- Sin `float` en dinero; montos `es-MX` + `tabular-nums`; fechas `15 sep 2026` / `America/Mexico_City`.
+- MRR inmutable desde `movimiento`; Puente de MRR con la ecuación de deltas.
+- Tablas → tarjetas en móvil (UI-4).
+
+## 5. Documentación viva (README)
+
+- `README.md` es el **manual técnico oficial de onboarding** para nuevos desarrolladores (arquitectura, requisitos, quickstart, credenciales, estándares, roadmap e índice de archivos).
+- Mantener actualizada la tabla de archivos activos actuales. Sin historial de borrados.
+- Ante cambios de stack, env, módulos o rutas, actualizar el README en el mismo cambio.
+
+## 6. Alertas de voz (TTS Windows)
+
+- Al terminar módulo / pedir revisión / error de consola, usar `System.Speech` en español.
+
+## 7. Base de datos (Phinx)
+
+- Prohibido `.sql` sueltos.
+- Migraciones Phinx `change(): void` en `database/migrations/`.
+- Seeders idempotentes en `database/seeds/`.
+- Montos `DECIMAL(14,2)`; timestamps UTC (RNF-11); cortes `America/Mexico_City`.
+
+## 8. Backend PHP 8.3, Illuminate y arquitectura `operam/servicios` + JWT
+
+- PHP **8.3** con `declare(strict_types=1);`, tipos de retorno y propiedades tipadas.
+- Illuminate / Eloquent **`^10.0` o `^11.0`** (prohibido illuminate 8).
+- Dinero: `ext-bcmath` y/o `brick/math`. Phinx, Guzzle, Symfony Mailer, PHPUnit/Pest.
+- No ignorar avisos de seguridad en Composer.
+
+### Framework `operam/servicios` (obligatorio)
+
+- Todo servicio extiende `CustomService` o `ModelService` y **siempre** devuelve un objeto `Result`.
+- Todo modelo Eloquent declara obligatoriamente `public $alias` y `$fillable`.
+- Validación con `DataValidator` (`setField()`, `startValidation()`).
+- Formateo con `DataFormat`: `formatInput` en `before_create` / `before_update` / `before_patch`; `formatOutput` en `after_all`.
+- Campos sensibles (`password_hash`, etc.) siempre con `hide_output = true`.
+- Autenticación interna con `LoginService` (`POST /api/login`) firmando JWT **HS256** (`firebase/php-jwt`) con `JWT_TOKEN_KEY`.
+- Sesiones revocables en BD (`sesion_activa` / claim `jti`).
+- Todas las rutas (incluido Dashboard) se protegen en el hook `before_get` de `AppService` (`Api/index.php`), excepto las listadas en `$freeuris` (solo `login` para acceso interno).
+- Magic Links para clientes: se implementan al final del proyecto; no abrir rutas libres prematuramente.
+
+## 9. Sistema de diseño "iOS Liquid Glass" y tema dual
+
+Obligatorio para este y todos los módulos futuros:
+
+- Prohibido colores opacos, grises terrosos o fondos crema (`#F7F5F0`, `#181816`).
+- **True Dark OLED (neutro):** fondo principal y header `dark:bg-[#000000]`. Sidebar `dark:bg-[#070708]` con `dark:border-white/[0.07]`.
+- **Prohibido en dark:** fondos azulados (`slate-900`, `#0B0D12`, `#0F1218`, `#12151E`, `#0D1017`, etc.).
+- **Liquid Glass neutro (dark):** tarjetas/tablas `dark:bg-white/[0.03]` o `dark:bg-[#111113]/75` + `backdrop-blur-2xl`; borde `dark:border-white/[0.09]`; reflejo `dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_12px_32px_rgba(0,0,0,0.6)]`.
+- **Cabeceras/píldoras (dark):** `dark:bg-white/[0.05] dark:border-white/[0.08]`.
+- **Puente MRR (dark):** Inicio `#3F3F46`, Fin `#FAFAFA`; azul iOS `#0A84FF` solo en acentos/barras positivas.
+- **Crisp Light (intacta):** fondo `#F8FAFC`; tarjetas `#FFFFFF` + `border-slate-200/80`; texto `#090D16`.
+- **Acentos iOS:** azul `#0A84FF` (dark) / `#0066FF` (light); verde `#10B981`; ámbar `#F59E0B`; rojo `#EF4444`.
+- **Layout shell:** Sidebar a altura completa (`h-screen`); header solo en la columna derecha sobre el `<main>`.
+- **Tema por defecto:** `prefers-color-scheme` del SO; switch iOS para override.
+- **Tipografía Oficial Operam (obligatoria en todos los módulos):**
+  - Encabezados / títulos / marca / KPI grandes (`h1`–`h3`, `.font-heading`): **Ubuntu** 500/700, `letter-spacing: -0.4px`.
+  - UI general (`font-sans`, body, menús, tablas, formularios): **Ubuntu**, **DM Sans**, `system-ui`, sans-serif (400/500/700).
+  - Folios, RFC, tokens y montos en código (`font-mono` + `tabular-nums`): **DM Mono** 400/500.
+  - Prohibido quemar Inter, Roboto, Arial u otras familias genéricas en componentes.
+- **Loading & Bloqueo de Transacciones (obligatorio en todos los módulos):**
+  - Toda operación asíncrona (Login, transacciones financieras, alta/edición de contratos, cobros, carga de datos) debe activar el indicador global Operam.
+  - **Único indicador visual:** barra superior fija `h-1` con `.operam-rainbow-bar` y degradado oficial `linear-gradient(90deg, #2060D0 0%, #7A3FC4 20%, #E0307A 40%, #F07010 60%, #F0B000 80%, #20A050 100%)`.
+  - **Candado de Pantalla:** velo limpio `bg-white/40 dark:bg-black/50 backdrop-blur-[2px] cursor-wait select-none pointer-events-auto` vía `useLoadingLock().withScreenLock`. **Prohibido** modal, cápsula, spinner o texto central.
+  - Detectar también ocupación de TanStack Query (`useIsFetching` / `useIsMutating`) para iluminar la barra arcoíris.

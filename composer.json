@@ -1,0 +1,49 @@
+{
+    "name": "operam/platform",
+    "description": "Plataforma central de contratos y suscripciones (frontend + capa PHP/servicios)",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.3",
+        "ext-bcmath": "*",
+        "brick/math": "^0.12",
+        "firebase/php-jwt": "^7.0",
+        "guzzlehttp/guzzle": "^7.8",
+        "illuminate/container": "^11.0",
+        "illuminate/database": "^11.0",
+        "illuminate/events": "^11.0",
+        "illuminate/pagination": "^11.0",
+        "illuminate/support": "^11.0",
+        "robmorgan/phinx": "^0.16",
+        "symfony/mailer": "^7.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Operam\\": "backend/src/",
+            "System\\": "System/"
+        },
+        "files": [
+            "backend/bootstrap/helpers.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Operam\\Tests\\": "backend/tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "migrate": "phinx migrate",
+        "seed": "phinx seed:run"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
