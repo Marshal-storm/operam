@@ -7,14 +7,9 @@ import { Button } from '@/components/ui/button'
 import { ThemeToggleSwitch } from '@/components/ui/ThemeToggleSwitch'
 import { useAuth } from '@/context/AuthContext'
 import { useLoadingLock } from '@/context/LoadingLockContext'
+import { useToast } from '@/context/ToastContext'
 import { AuthError, DEV_LOGIN_CREDENTIALS } from '@/services/authService'
 import { cn } from '@/lib/utils'
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms)
-  })
-}
 
 const loginSchema = z.object({
   email: z.string().email('Correo inválido'),
@@ -36,11 +31,12 @@ function OperamEmblem({ className }: { className?: string }) {
 }
 
 /**
- * Login Liquid Glass (dark OLED / crisp light) — sin Sidebar ni Dashboard.
+ * Login Liquid Glass — siempre contra API real (LoginService / MySQL / JWT HS256).
  */
 export function LoginPage() {
-  const { isAuthenticated, isLoading, login, mode, setMode } = useAuth()
+  const { isAuthenticated, isLoading, login } = useAuth()
   const { withScreenLock } = useLoadingLock()
+  const toast = useToast()
   const [formError, setFormError] = useState<string | null>(null)
   const [blocked, setBlocked] = useState(false)
 
@@ -58,20 +54,20 @@ export function LoginPage() {
     setBlocked(false)
     try {
       await withScreenLock(async () => {
-        // Pausa breve en Mockup para apreciar barra arcoíris + candado.
-        if (mode === 'mock') {
-          await sleep(600)
-        }
         await login(values)
       }, 'Autenticando sesión empresarial...')
+      toast.success('Sesión iniciada', 'Bienvenido al ERP Operam.')
     } catch (error) {
       const authError = error as AuthError
       if (authError.status === 429) {
         setBlocked(true)
         setFormError(authError.message)
+        toast.warning('Acceso bloqueado temporalmente', authError.message)
         return
       }
-      setFormError(authError.message || 'No se pudo iniciar sesión.')
+      const message = authError.message || 'No se pudo iniciar sesión.'
+      setFormError(message)
+      toast.error('Credenciales incorrectas', message)
     }
   }
 
@@ -178,27 +174,6 @@ export function LoginPage() {
           </form>
 
           <div className="mt-6 space-y-3 border-t border-slate-200/80 pt-4 dark:border-white/[0.07]">
-            <div className="ios-pill-track w-full" role="group" aria-label="Fuente de autenticación">
-              {([
-                { value: 'mock', label: 'Mockup' },
-                { value: 'api', label: 'API Real' },
-              ] as const).map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setMode(option.value)}
-                  className={cn(
-                    'flex-1 rounded-xl px-3 py-1.5 text-sm transition',
-                    mode === option.value
-                      ? 'ios-pill-active'
-                      : 'text-slate-600 hover:bg-white/70 dark:text-slate-300 dark:hover:bg-white/5',
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-
             <Button
               type="button"
               variant="ghost"

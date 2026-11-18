@@ -64,6 +64,12 @@ final class LoginService extends CustomService
                 'email' => $jti['email'] ?? null,
                 'nombre' => $jti['nombre'] ?? null,
                 'rol' => $jti['rol'] ?? null,
+                'rol_id' => $jti['rol_id'] ?? null,
+                'rol_nombre' => $jti['rol_nombre'] ?? null,
+                'rol_codigo' => $jti['rol_codigo'] ?? null,
+                'segmento_id' => $jti['segmento_id'] ?? null,
+                'segmento_nombre' => $jti['segmento_nombre'] ?? 'Todos',
+                'permisos' => $jti['permisos'] ?? [],
                 'scope' => $jti['scope'] ?? 'enterprise',
             ],
         ], 'Sesión iniciada');
@@ -140,7 +146,12 @@ final class LoginService extends CustomService
         ]);
 
         $sessionUid = self::uuidV4();
-        $expiresAt = gmdate('Y-m-d H:i:s', time() + self::TOKEN_TTL_SECONDS);
+        $ttlRaw = getenv('DEF_EXPIRATION_TIME');
+        $ttl = is_numeric($ttlRaw) ? (int) $ttlRaw : self::DEFAULT_TOKEN_TTL_SECONDS;
+        if ($ttl <= 0) {
+            $ttl = self::DEFAULT_TOKEN_TTL_SECONDS;
+        }
+        $expiresAt = gmdate('Y-m-d H:i:s', time() + $ttl);
 
         ActiveSessionsModel::query()->create([
             'session_uid' => $sessionUid,
@@ -155,6 +166,8 @@ final class LoginService extends CustomService
         $user->ultimo_acceso = $nowUtc;
         $user->save();
 
+        $rbac = RbacAuthHelper::buildProfileForUser($user);
+
         $context->setData('login', true);
         $context->setData('jti', [
             'session_uid' => $sessionUid,
@@ -162,6 +175,12 @@ final class LoginService extends CustomService
             'email' => (string) $user->email,
             'nombre' => (string) $user->nombre,
             'rol' => (string) $user->rol,
+            'rol_id' => $rbac['rol_id'],
+            'rol_nombre' => $rbac['rol_nombre'],
+            'rol_codigo' => $rbac['rol_codigo'],
+            'segmento_id' => $rbac['segmento_id'],
+            'segmento_nombre' => $rbac['segmento_nombre'],
+            'permisos' => $rbac['permisos'],
             'scope' => 'enterprise',
         ]);
     }

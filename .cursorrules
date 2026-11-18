@@ -27,6 +27,13 @@ Actúa como Arquitecto de Software y Desarrollador Full Stack SENIOR. Aplica est
 - MRR inmutable desde `movimiento`; Puente de MRR con la ecuación de deltas.
 - Tablas → tarjetas en móvil (UI-4).
 
+### RNF-3 — Inmutabilidad de `movimiento` (obligatorio Módulo 3+)
+
+- La bitácora `movimiento` **solo admite INSERT**. Prohibido `UPDATE` / `DELETE` / `TRUNCATE` desde aplicación, seeders o SQL ad-hoc.
+- Blindaje en tres capas: triggers MySQL (`trg_movimiento_prevent_update` / `trg_movimiento_prevent_delete`), eventos Eloquent `updating`/`deleting` en `MovementsModel`, y hooks `before_update`/`before_patch`/`before_delete` en `MovementsService` (HTTP 403).
+- Correcciones contables: **solo** via `MovementsService::createReversalMovement()` (INSERT inverso con `movimiento_revertido_id` y deltas con `bcmath`).
+- El futuro Motor de Contratos (Módulo 3) únicamente puede `INSERT` movimientos nuevos o invocar la reversión contable; nunca mutar filas existentes.
+
 ## 5. Documentación viva (README)
 
 - `README.md` es el **manual técnico oficial de onboarding** para nuevos desarrolladores (arquitectura, requisitos, quickstart, credenciales, estándares, roadmap e índice de archivos).
@@ -40,8 +47,8 @@ Actúa como Arquitecto de Software y Desarrollador Full Stack SENIOR. Aplica est
 ## 7. Base de datos (Phinx)
 
 - Prohibido `.sql` sueltos.
-- Migraciones Phinx `change(): void` en `database/migrations/`.
-- Seeders idempotentes en `database/seeds/`.
+- Migraciones Phinx `change(): void` en `database/migrations/` (excepción: `up()`/`down()` cuando se crean/eliminan **triggers** u objetos no reversibles con `change()`).
+- Seeders idempotentes en `database/seeds/` — **nunca** `DELETE`/`TRUNCATE` sobre `movimiento`.
 - Montos `DECIMAL(14,2)`; timestamps UTC (RNF-11); cortes `America/Mexico_City`.
 
 ## 8. Backend PHP 8.3, Illuminate y arquitectura `operam/servicios` + JWT
@@ -83,7 +90,35 @@ Obligatorio para este y todos los módulos futuros:
   - Folios, RFC, tokens y montos en código (`font-mono` + `tabular-nums`): **DM Mono** 400/500.
   - Prohibido quemar Inter, Roboto, Arial u otras familias genéricas en componentes.
 - **Loading & Bloqueo de Transacciones (obligatorio en todos los módulos):**
-  - Toda operación asíncrona (Login, transacciones financieras, alta/edición de contratos, cobros, carga de datos) debe activar el indicador global Operam.
-  - **Único indicador visual:** barra superior fija `h-1` con `.operam-rainbow-bar` y degradado oficial `linear-gradient(90deg, #2060D0 0%, #7A3FC4 20%, #E0307A 40%, #F07010 60%, #F0B000 80%, #20A050 100%)`.
-  - **Candado de Pantalla:** velo limpio `bg-white/40 dark:bg-black/50 backdrop-blur-[2px] cursor-wait select-none pointer-events-auto` vía `useLoadingLock().withScreenLock`. **Prohibido** modal, cápsula, spinner o texto central.
-  - Detectar también ocupación de TanStack Query (`useIsFetching` / `useIsMutating`) para iluminar la barra arcoíris.
+  - Toda operación asíncrona (Login, transacciones financieras, alta/edición de contratos, cobros, carga de datos, create/update/delete API) debe activar el indicador global Operam.
+  - **Barra superior:** fija `h-1` con `.operam-rainbow-bar` y degradado oficial `linear-gradient(90deg, #2060D0 0%, #7A3FC4 20%, #E0307A 40%, #F07010 60%, #F0B000 80%, #20A050 100%)`. Se ilumina con `useIsFetching` / `useIsMutating` / `isLocked`.
+  - **Candado de Pantalla:** velo limpio `bg-white/40 dark:bg-black/50 backdrop-blur-[2px] cursor-wait select-none pointer-events-auto` vía `useLoadingLock().withScreenLock` o cuando `useIsMutating() > 0`.
+  - **Spinner central limpio (obligatorio en mutaciones):** anillo doble giratorio `w-11 h-11` con acento azul iOS `#0A84FF` / colores Operam + `drop-shadow` sutil, **sin** tarjeta/modal/cápsula/texto de fondo. Se muestra junto al velo cuando `isMutating > 0` o `isLocked === true`.
+  - **Prohibido:** modal central con copy, cápsulas de “guardando…” u otros overlays aparte de barra + velo + spinner limpio.
+- **Toasts globales iOS Liquid Glass (obligatorio en todos los módulos):**
+  - Usar `useToast()` (`ToastProvider` en `App.tsx`): `toast.success` / `toast.error` / `toast.warning` / `toast.info` / `toast.apiError`.
+  - Posición `fixed top-16 right-5 z-[110]`, `rounded-2xl`, `backdrop-blur-2xl`, auto-cierre 4s + botón `X`.
+  - Éxito: borde/ícono `#10B981`; Error: `#EF4444`; Advertencia: `#F59E0B`; fondos `bg-white/95 dark:bg-[#111318]/95`.
+  - **Toda acción API** (crear, editar, eliminar, activar/pausar, login, copiar código, guardar preferencias) debe disparar toast de éxito; en `catch` usar `toast.apiError(error)` → título `"No se pudo completar la operación"` + `error.message`.
+  - Módulos futuros: spinner central + toasts éxito/error en cada mutación API — sin excepción.
+
+## 10. Política de Cero Mockups fuera del Dashboard (obligatoria)
+
+- **PROHIBIDO** crear o mantener datos simulados (`mockData`, arreglos quemados, usuarios en memoria), switches `Mockup / API Real` o lógica de persistencia en memoria para:
+  - Login / autenticación (`LoginPage`, `AuthContext`, `authService`).
+  - Módulo 2 — Catálogo y Precios (Productos/Servicios, Instancias, Listas de Precios, Promociones).
+  - Cualquier módulo futuro (Contratos, Clientes, Cobranza, Solicitudes, etc.).
+- Esos módulos deben **leer y guardar exclusivamente** contra la API PHP (`operam/servicios`) y MySQL 8, con `Authorization: Bearer <JWT>` en rutas protegidas.
+- **Única excepción:** `src/pages/DashboardPage.tsx` (y su servicio/mock de demostración) **sí** puede conservar el switch `Mockup / API Real` únicamente para visualizar la maqueta del Puente de MRR en presentaciones.
+- Al agregar pantallas nuevas: conectar endpoints reales desde el día 1; no introducir modo híbrido salvo el Dashboard.
+
+## 11. Seguridad RBAC multinivel y Alcance de Segmento (inquebrantable)
+
+CADA vez que se cree o modifique un módulo del sistema:
+
+1. **Registro obligatorio de `modulo_clave`** en el catálogo (`modulo_sistema` / matriz `rol_permiso`) con permisos CRUD (`puede_ver`, `puede_crear`, `puede_editar`, `puede_eliminar`). **Prohibido** un permiso monolítico `configuracion`. Claves vigentes multinivel:
+   - **Nivel 1 — Operativos (`grupo = 'principal'`):** `dashboard`, `contratos`, `clientes`, `solicitudes`, `cobranza`, `utilidad_segmento`, `promociones_ventas`.
+   - **Nivel 2 — Submódulos de Configuración (`grupo = 'configuracion'`):** `config_catalogo`, `config_precios`, `config_promociones`, `config_instancias`, `config_usuarios`, `config_roles`, `config_preferencias`.
+2. **Visibilidad Sidebar/Rutas:** Si no hay `puede_ver` en un módulo/submódulo, se oculta el ítem y la ruta bloquea. El padre `"Configuración"` se muestra **solo si** el usuario tiene `puede_ver` en **al menos un** `config_*`; cada sub-ítem se filtra individualmente. Botones Crear/Editar/Eliminar usan la llave específica del submódulo (`canCreate('config_promociones')`, etc.).
+3. **Alcance de Segmento Dinámico (`alcance_segmento`):** `Todos` (`segmento_id = NULL`), solo `Operam` o solo `Construsync`. JWT/`auth` exponen `segmento_id`, `segmento_nombre` (o `'Todos'`) y mapa `permisos`. Con segmento fijo, APIs y filtros de pantalla se bloquean a ese alcance.
+4. **Revocación inmediata de sesión:** Al cambiar `rol_id`, `segmento_id` o `activo = false` de un usuario, o al guardar la matriz `rol_permiso` de un rol, se revocan (`revocada = 1`) las filas de `sesion_activa` afectadas. El guardia JWT responde `401` y el frontend cierra sesión (toast + `/login`). Si el admin se afecta a sí mismo, logout automático tras guardar.

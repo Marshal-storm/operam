@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AgingPortfolioCard } from '@/components/dashboard/AgingPortfolioCard'
 import { MrrBridgeChart } from '@/components/dashboard/MrrBridgeChart'
 import { RecentMovementsTable } from '@/components/dashboard/RecentMovementsTable'
@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/context/AuthContext'
 import { useLoadingLock } from '@/context/LoadingLockContext'
 import { useDashboardData } from '@/hooks/useDashboardData'
+import { useSegmentLock } from '@/hooks/useSegmentLock'
 import { cn, formatCurrencyMx } from '@/lib/utils'
 
 function sleep(ms: number): Promise<void> {
@@ -110,10 +111,23 @@ function PillGroup<T extends string>({
 export function DashboardPage() {
   const { user } = useAuth()
   const { withScreenLock } = useLoadingLock()
-  const [segment, setSegment] = useState<ProductSegment>('Todos')
+  const {
+    segmento: lockedSegmentFilter,
+    segmentOptions,
+    isSegmentLocked,
+  } = useSegmentLock()
+  const [segment, setSegment] = useState<ProductSegment>(
+    isSegmentLocked ? (lockedSegmentFilter as ProductSegment) : 'Todos',
+  )
   const [month, setMonth] = useState('2026-09')
   const [mode, setMode] = useState<DataSourceMode>('mock')
   const [activeCategory, setActiveCategory] = useState<MrrCategory | null>(null)
+
+  useEffect(() => {
+    if (isSegmentLocked) {
+      setSegment(lockedSegmentFilter as ProductSegment)
+    }
+  }, [isSegmentLocked, lockedSegmentFilter])
 
   const {
     data: snapshot,
@@ -187,14 +201,14 @@ export function DashboardPage() {
             label="Filtro de segmento"
             value={segment}
             onChange={(next) => {
-              if (next === segment) return
+              if (isSegmentLocked || next === segment) return
               void runDashboardSync(() => {
                 setSegment(next)
                 setActiveCategory(null)
               }, 'Sincronizando métricas del ERP...')
             }}
-            options={SEGMENT_OPTIONS.map((option) => ({
-              value: option,
+            options={(isSegmentLocked ? segmentOptions : SEGMENT_OPTIONS).map((option) => ({
+              value: option as ProductSegment,
               label: option,
             }))}
           />

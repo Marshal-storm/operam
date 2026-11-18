@@ -134,6 +134,16 @@
   }
 }
 
+/* Spinner central Operam — anillo interior en sentido inverso */
+@keyframes operam-spin-reverse {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
 @layer utilities {
   .font-heading {
     font-family: var(--font-heading-family);
@@ -169,6 +179,10 @@
       #20a050 100%
     );
     opacity: 0.35;
+  }
+
+  .operam-spinner-inner {
+    animation: operam-spin-reverse 1.1s linear infinite;
   }
 
   /* Activa: shimmer infinito + resplandor */

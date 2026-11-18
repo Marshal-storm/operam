@@ -1,5 +1,6 @@
 import { buildMrrBridgeSteps, MRR_DELTA_CATEGORY_ORDER } from '@/lib/mrrCalculator'
 import { getDashboardSnapshot, getMovementsByCategory } from '@/services/mockDashboardData'
+import { notifyUnauthorized } from '@/services/sessionSecurity'
 import type {
   AgingBucket,
   DashboardKpis,
@@ -144,8 +145,8 @@ async function fetchDashboardFromApi(
   params: DashboardQueryParams,
 ): Promise<DashboardSnapshot> {
   const token = getAuthToken()
+  // Sin Bearer: error de datos, NO logout (evita falso cierre en race de hidratación).
   if (!token) {
-    onUnauthorized()
     throw new DashboardApiError('Sesión requerida para consultar el dashboard.', 401)
   }
 
@@ -168,6 +169,7 @@ async function fetchDashboardFromApi(
   }
 
   if (response.status === 401) {
+    notifyUnauthorized(true)
     onUnauthorized()
     throw new DashboardApiError('Sesión expirada o inválida.', 401)
   }

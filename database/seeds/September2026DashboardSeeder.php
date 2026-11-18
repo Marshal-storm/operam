@@ -448,6 +448,10 @@ final class September2026DashboardSeeder extends AbstractSeed
     /**
      * @param array<int, array<string,mixed>> $rows
      */
+    /**
+     * Idempotencia pura RNF-3: solo INSERT si no existe.
+     * Prohibido DELETE/TRUNCATE/UPDATE sobre `movimiento` (triggers + bitácora inmutable).
+     */
     private function upsertMovimientos(array $rows, string $nowUtc): void
     {
         $table = $this->table('movimiento');

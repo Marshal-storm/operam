@@ -1,5 +1,5 @@
 import {
-  BookOpen,
+  ChevronDown,
   ChevronLeft,
   ClipboardList,
   CreditCard,
@@ -13,37 +13,64 @@ import {
   PieChart,
   UserRound,
   X,
+  Tags,
+  BadgePercent,
+  Server,
+  Building2,
+  Package,
+  Gift,
+  SlidersHorizontal,
+  Shield,
 } from 'lucide-react'
-import { useState, type ComponentType } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState, type ComponentType } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ThemeToggleSwitch } from '@/components/ui/ThemeToggleSwitch'
 import { useAuth } from '@/context/AuthContext'
+import { usePermissions } from '@/hooks/usePermissions'
 import { cn } from '@/lib/utils'
+import type { ModuleKey } from '@/types/auth'
 
 type NavItem = {
   label: string
   to: string
   icon: ComponentType<{ className?: string }>
+  module: ModuleKey
   badge?: number
 }
 
+type ConfigSubItem = {
+  label: string
+  to: string
+  icon: ComponentType<{ className?: string }>
+  module: ModuleKey
+}
+
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
-  { label: 'Contratos', to: '/contratos', icon: FileText },
-  { label: 'Clientes', to: '/clientes', icon: Users },
-  { label: 'Solicitudes', to: '/solicitudes', icon: ClipboardList, badge: 3 },
-  { label: 'Cobranza', to: '/cobranza', icon: CreditCard },
-  { label: 'Catálogo y precios', to: '/catalogo', icon: BookOpen },
-  { label: 'Utilidad por segmento', to: '/utilidad', icon: PieChart },
-  { label: 'Configuración', to: '/configuracion', icon: Settings },
+  { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard, module: 'dashboard' },
+  { label: 'Contratos', to: '/contratos', icon: FileText, module: 'contratos' },
+  { label: 'Clientes', to: '/clientes', icon: Users, module: 'clientes' },
+  { label: 'Solicitudes', to: '/solicitudes', icon: ClipboardList, module: 'solicitudes', badge: 3 },
+  { label: 'Cobranza', to: '/cobranza', icon: CreditCard, module: 'cobranza' },
+  {
+    label: 'Promociones vigentes',
+    to: '/promociones-vigentes',
+    icon: Gift,
+    module: 'promociones_ventas',
+  },
+  { label: 'Utilidad por segmento', to: '/utilidad', icon: PieChart, module: 'utilidad_segmento' },
 ]
 
-function roleCaption(rol: string): string {
-  if (rol === 'admin') return 'ADMIN GENERAL'
-  if (rol === 'operador') return 'SUPERVISOR, OPERADOR'
-  return 'LECTURA'
-}
+const CONFIG_SUBITEMS: ConfigSubItem[] = [
+  { label: 'Catálogo de servicios', to: '/configuracion/catalogo', icon: Package, module: 'config_catalogo' },
+  { label: 'Listas de precios', to: '/configuracion/precios', icon: Tags, module: 'config_precios' },
+  { label: 'Promociones', to: '/configuracion/promociones', icon: BadgePercent, module: 'config_promociones' },
+  { label: 'Emisores', to: '/configuracion/emisores', icon: Building2, module: 'config_emisores' },
+  { label: 'Instancias', to: '/configuracion/instancias', icon: Server, module: 'config_instancias' },
+  { label: 'Usuarios', to: '/configuracion/usuarios', icon: Users, module: 'config_usuarios' },
+  { label: 'Roles y permisos', to: '/configuracion/roles', icon: Shield, module: 'config_roles' },
+  { label: 'Preferencias de pantalla', to: '/configuracion/preferencias', icon: SlidersHorizontal, module: 'config_preferencias' },
+]
 
 function UserAvatar({
   name,
@@ -73,6 +100,107 @@ function UserAvatar({
   )
 }
 
+function ConfigAccordion({
+  collapsed,
+  onNavigate,
+}: {
+  collapsed?: boolean
+  onNavigate?: () => void
+}) {
+  const location = useLocation()
+  const { canView, canViewAnyConfig } = usePermissions()
+  const inConfig = location.pathname.startsWith('/configuracion')
+  const [open, setOpen] = useState(inConfig)
+
+  const visibleSubitems = useMemo(
+    () => CONFIG_SUBITEMS.filter((item) => canView(item.module)),
+    [canView],
+  )
+
+  useEffect(() => {
+    if (inConfig) setOpen(true)
+  }, [inConfig])
+
+  if (!canViewAnyConfig || visibleSubitems.length === 0) {
+    return null
+  }
+
+  const firstConfigTo = visibleSubitems[0]?.to ?? '/dashboard'
+
+  if (collapsed) {
+    return (
+      <NavLink
+        to={firstConfigTo}
+        title="Configuración"
+        onClick={onNavigate}
+        className={cn(
+          'flex items-center justify-center rounded-xl px-2 py-2.5 text-sm transition-colors',
+          inConfig
+            ? 'border border-blue-500/20 bg-blue-50 text-blue-600 dark:bg-[#0A84FF]/15 dark:text-[#0A84FF]'
+            : 'text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-white/[0.05]',
+        )}
+      >
+        <Settings className="h-4 w-4" />
+      </NavLink>
+    )
+  }
+
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',
+          inConfig
+            ? 'text-blue-600 dark:text-[#0A84FF]'
+            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-zinc-400 dark:hover:bg-white/[0.05] dark:hover:text-white',
+        )}
+        aria-expanded={open}
+      >
+        <Settings className="h-4 w-4 shrink-0" />
+        <span className="flex-1 truncate text-left">Configuración</span>
+        <ChevronDown
+          className={cn('h-4 w-4 shrink-0 transition-transform duration-200', open && 'rotate-180')}
+        />
+      </button>
+
+      <div
+        className={cn(
+          'grid transition-[grid-template-rows] duration-200 ease-out',
+          open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+        )}
+      >
+        <div className="overflow-hidden">
+          <div className="relative ml-4 space-y-0.5 border-l border-slate-200 pl-3 dark:border-white/[0.09]">
+            {visibleSubitems.map((item) => {
+              const Icon = item.icon
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  onClick={onNavigate}
+                  className={({ isActive }) =>
+                    cn(
+                      'relative flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13px] transition-colors',
+                      isActive
+                        ? 'bg-blue-50 font-medium text-blue-600 before:absolute before:-left-[13px] before:top-1/2 before:h-5 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-[#0066FF] dark:bg-[#0A84FF]/15 dark:text-[#0A84FF] dark:before:bg-[#0A84FF]'
+                        : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-zinc-400 dark:hover:bg-white/[0.05] dark:hover:text-white',
+                    )
+                  }
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" />
+                  <span className="truncate">{item.label}</span>
+                </NavLink>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function NavItems({
   collapsed,
   onNavigate,
@@ -80,9 +208,15 @@ function NavItems({
   collapsed?: boolean
   onNavigate?: () => void
 }) {
+  const { canView } = usePermissions()
+  const visibleItems = useMemo(
+    () => NAV_ITEMS.filter((item) => canView(item.module)),
+    [canView],
+  )
+
   return (
     <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2">
-      {NAV_ITEMS.map((item) => {
+      {visibleItems.map((item) => {
         const Icon = item.icon
         return (
           <NavLink
@@ -112,6 +246,8 @@ function NavItems({
           </NavLink>
         )
       })}
+
+      <ConfigAccordion collapsed={collapsed} onNavigate={onNavigate} />
     </nav>
   )
 }
@@ -132,7 +268,6 @@ function SidebarChrome({
 
   return (
     <div className="flex h-full w-full flex-col">
-      {/* Encabezado limpio: MAIN + colapsar (sin perfil) */}
       <div
         className={cn(
           'flex shrink-0 items-center px-3 py-3 dark:border-white/[0.07]',
@@ -158,7 +293,6 @@ function SidebarChrome({
 
       <NavItems collapsed={collapsed} onNavigate={onNavigate} />
 
-      {/* Pie: Ayuda → Tema → divisor → Cerrar sesión */}
       <div
         className={cn(
           'mt-auto shrink-0 space-y-1 border-t border-slate-200/80 p-3 dark:border-white/[0.07]',
@@ -212,18 +346,30 @@ function SidebarChrome({
 
 function HeaderUserProfile() {
   const { user } = useAuth()
+  const { rolNombre, segmentBadgeLabel, isSegmentLocked } = usePermissions()
   if (!user) return null
 
   return (
     <div className="flex items-center gap-3">
       <div className="hidden min-w-0 text-right sm:block">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-          {roleCaption(user.rol)}
+          {rolNombre ?? user.rol}
         </p>
         <p className="truncate text-sm font-semibold text-[#090D16] dark:text-white">
           {user.nombre}
         </p>
       </div>
+      <span
+        className={cn(
+          'hidden max-w-[14rem] truncate rounded-full border px-2.5 py-1 text-[11px] font-medium md:inline-flex',
+          isSegmentLocked
+            ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+            : 'border-blue-500/20 bg-blue-50 text-blue-700 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-zinc-300',
+        )}
+        title={segmentBadgeLabel}
+      >
+        {segmentBadgeLabel}
+      </span>
       <UserAvatar name={user.nombre} size="sm" />
     </div>
   )
@@ -231,7 +377,7 @@ function HeaderUserProfile() {
 
 /**
  * Shell: Sidebar full-height + columna derecha (Header + Main).
- * Perfil en header; tema en pie del sidebar.
+ * Ítems filtrados por canView; Configuración visible si hay al menos un config_*.
  */
 export function InternalLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -239,7 +385,6 @@ export function InternalLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#F8FAFC] text-[#090D16] dark:bg-[#000000] dark:text-white">
-      {/* Sidebar: alto completo desde el borde superior */}
       <aside
         className={cn(
           'hidden h-screen shrink-0 border-r border-slate-200/80 bg-white transition-[width] dark:border-white/[0.07] dark:bg-[#070708] lg:flex',
@@ -249,7 +394,6 @@ export function InternalLayout() {
         <SidebarChrome collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />
       </aside>
 
-      {/* Columna derecha: header propio + contenido scrollable */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="relative flex h-14 shrink-0 items-center border-b border-slate-200/80 bg-white px-4 dark:border-white/[0.07] dark:bg-[#000000]">
           <Button

@@ -19,6 +19,7 @@ final class UsersModel extends Model
         'nombre',
         'password_hash',
         'rol',
+        'rol_id',
         'segmento_id',
         'activo',
         'ultimo_acceso',
@@ -26,6 +27,7 @@ final class UsersModel extends Model
 
     /** @var array<string, string> */
     protected $casts = [
+        'rol_id' => 'integer',
         'segmento_id' => 'integer',
         'activo' => 'boolean',
         'ultimo_acceso' => 'datetime',

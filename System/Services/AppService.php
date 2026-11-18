@@ -97,12 +97,46 @@ final class AppService extends CustomService
             return;
         }
 
+        /** @var array<string, array{ver: bool, crear: bool, editar: bool, eliminar: bool}> $permisos */
+        $permisos = [];
+        if (isset($jti->permisos) && is_object($jti->permisos)) {
+            foreach ((array) $jti->permisos as $clave => $flags) {
+                $flagsArr = is_object($flags) ? (array) $flags : (array) $flags;
+                $permisos[(string) $clave] = [
+                    'ver' => (bool) ($flagsArr['ver'] ?? false),
+                    'crear' => (bool) ($flagsArr['crear'] ?? false),
+                    'editar' => (bool) ($flagsArr['editar'] ?? false),
+                    'eliminar' => (bool) ($flagsArr['eliminar'] ?? false),
+                ];
+            }
+        } elseif (isset($jti->permisos) && is_array($jti->permisos)) {
+            foreach ($jti->permisos as $clave => $flags) {
+                $flagsArr = is_object($flags) ? (array) $flags : (array) $flags;
+                $permisos[(string) $clave] = [
+                    'ver' => (bool) ($flagsArr['ver'] ?? false),
+                    'crear' => (bool) ($flagsArr['crear'] ?? false),
+                    'editar' => (bool) ($flagsArr['editar'] ?? false),
+                    'eliminar' => (bool) ($flagsArr['eliminar'] ?? false),
+                ];
+            }
+        }
+
+        $segmentoId = isset($jti->segmento_id) && $jti->segmento_id !== null
+            ? (int) $jti->segmento_id
+            : null;
+
         $context->setData('auth', [
             'session_uid' => $sessionUid,
             'user_id' => (int) ($jti->user_id ?? 0),
             'email' => (string) ($jti->email ?? ''),
             'nombre' => (string) ($jti->nombre ?? ''),
             'rol' => (string) ($jti->rol ?? ''),
+            'rol_id' => isset($jti->rol_id) && $jti->rol_id !== null ? (int) $jti->rol_id : null,
+            'rol_nombre' => isset($jti->rol_nombre) ? (string) $jti->rol_nombre : null,
+            'rol_codigo' => isset($jti->rol_codigo) ? (string) $jti->rol_codigo : null,
+            'segmento_id' => $segmentoId,
+            'segmento_nombre' => (string) ($jti->segmento_nombre ?? 'Todos'),
+            'permisos' => $permisos,
             'scope' => 'enterprise',
         ]);
     }

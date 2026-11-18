@@ -18,6 +18,9 @@ final class Issuer extends BaseModel
         'nombre',
         'rfc',
         'api_url',
+        'secret_ref',
+        'integropay_merchant_token_ref',
+        'integropay_device_token_ref',
         'activo',
     ];
 

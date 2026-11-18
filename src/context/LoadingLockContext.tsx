@@ -13,7 +13,7 @@ const DEFAULT_LOCK_MESSAGE = 'Procesando transacción...'
 type LoadingLockContextValue = {
   /** Candado de pantalla activo (anti doble-envío). */
   isLocked: boolean
-  /** Mensaje mostrado en la cápsula central. */
+  /** Mensaje interno del candado (auditoría / futuro a11y). */
   lockMessage: string
   /** Activa el candado (soporta anidación por contador). */
   startLock: (message?: string) => void

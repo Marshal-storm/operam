@@ -6,6 +6,8 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Container\Container;
 
+require_once __DIR__ . '/env.php';
+
 /**
  * Arranque de Eloquent (Illuminate 11) con Capsule.
  * Compatible con PHP 8.3 — sin APIs deprecadas de Illuminate 8.
@@ -19,6 +21,8 @@ function operam_boot_eloquent(): Capsule
     if ($capsule instanceof Capsule) {
         return $capsule;
     }
+
+    operam_load_env();
 
     $capsule = new Capsule();
 

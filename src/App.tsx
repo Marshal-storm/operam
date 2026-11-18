@@ -1,13 +1,27 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
+import { SessionSecurityBridge } from '@/components/auth/SessionSecurityBridge'
 import { InternalLayout } from '@/components/layout/InternalLayout'
 import { GlobalLoadingOverlay } from '@/components/ui/GlobalLoadingOverlay'
 import { AuthProvider } from '@/context/AuthContext'
 import { LoadingLockProvider } from '@/context/LoadingLockContext'
+import { ScreenPreferencesProvider } from '@/context/ScreenPreferencesContext'
 import { ThemeProvider } from '@/context/ThemeContext'
+import { ToastProvider } from '@/context/ToastContext'
+import { usePermissions } from '@/hooks/usePermissions'
+import { CatalogServicesPage } from '@/pages/config/CatalogServicesPage'
+import { InstancesPage } from '@/pages/config/InstancesPage'
+import { IssuersPage } from '@/pages/config/IssuersPage'
+import { PriceListsPage } from '@/pages/config/PriceListsPage'
+import { PromotionsPage } from '@/pages/config/PromotionsPage'
+import { RolesPermissionsPage } from '@/pages/config/RolesPermissionsPage'
+import { ScreenPreferencesPage } from '@/pages/config/ScreenPreferencesPage'
+import { UsersManagementPage } from '@/pages/config/UsersManagementPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { LoginPage } from '@/pages/LoginPage'
+import { SalesPromotionsPage } from '@/pages/SalesPromotionsPage'
+import type { ModuleKey } from '@/types/auth'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -17,41 +31,192 @@ const queryClient = new QueryClient({
   },
 })
 
+const CONFIG_HOME_ROUTES: Array<{ module: ModuleKey; to: string }> = [
+  { module: 'config_catalogo', to: '/configuracion/catalogo' },
+  { module: 'config_precios', to: '/configuracion/precios' },
+  { module: 'config_promociones', to: '/configuracion/promociones' },
+  { module: 'config_emisores', to: '/configuracion/emisores' },
+  { module: 'config_instancias', to: '/configuracion/instancias' },
+  { module: 'config_usuarios', to: '/configuracion/usuarios' },
+  { module: 'config_roles', to: '/configuracion/roles' },
+  { module: 'config_preferencias', to: '/configuracion/preferencias' },
+]
+
+function ModulePage({
+  module,
+  children,
+}: {
+  module: ModuleKey
+  children: React.ReactNode
+}) {
+  return <ProtectedRoute requiredModule={module}>{children}</ProtectedRoute>
+}
+
+function ConfigHomeRedirect() {
+  const { canView } = usePermissions()
+  const first = CONFIG_HOME_ROUTES.find((route) => canView(route.module))
+  return <Navigate to={first?.to ?? '/dashboard'} replace />
+}
+
 /**
  * Enrutado: `/login` es la única ruta pública.
- * Overlay global de barra arcoíris + candado montado a nivel app.
+ * Configuración con permisos granulares config_*.
  */
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <LoadingLockProvider>
-          <AuthProvider>
-            <BrowserRouter>
-              <GlobalLoadingOverlay />
-              <Routes>
-                <Route path="/login" element={<LoginPage />} />
+        <ScreenPreferencesProvider>
+          <LoadingLockProvider>
+            <ToastProvider>
+              <AuthProvider>
+                <BrowserRouter>
+                  <GlobalLoadingOverlay />
+                  <SessionSecurityBridge />
+                  <Routes>
+                    <Route path="/login" element={<LoginPage />} />
 
-                <Route element={<ProtectedRoute />}>
-                  <Route element={<InternalLayout />}>
-                    <Route index element={<Navigate to="/dashboard" replace />} />
-                    <Route path="dashboard" element={<DashboardPage />} />
-                    <Route path="contratos" element={<Placeholder title="Contratos" />} />
-                    <Route path="clientes" element={<Placeholder title="Clientes" />} />
-                    <Route path="solicitudes" element={<Placeholder title="Solicitudes" />} />
-                    <Route path="cobranza" element={<Placeholder title="Cobranza" />} />
-                    <Route path="catalogo" element={<Placeholder title="Catálogo y precios" />} />
-                    <Route path="utilidad" element={<Placeholder title="Utilidad por segmento" />} />
-                    <Route path="configuracion" element={<Placeholder title="Configuración" />} />
-                    <Route path="bitacora" element={<Placeholder title="Bitácora completa" />} />
-                  </Route>
-                </Route>
+                    <Route element={<ProtectedRoute />}>
+                      <Route element={<InternalLayout />}>
+                        <Route index element={<Navigate to="/dashboard" replace />} />
+                        <Route
+                          path="dashboard"
+                          element={
+                            <ModulePage module="dashboard">
+                              <DashboardPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="contratos"
+                          element={
+                            <ModulePage module="contratos">
+                              <Placeholder title="Contratos" />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="clientes"
+                          element={
+                            <ModulePage module="clientes">
+                              <Placeholder title="Clientes" />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="solicitudes"
+                          element={
+                            <ModulePage module="solicitudes">
+                              <Placeholder title="Solicitudes" />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="cobranza"
+                          element={
+                            <ModulePage module="cobranza">
+                              <Placeholder title="Cobranza" />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="promociones-vigentes"
+                          element={
+                            <ModulePage module="promociones_ventas">
+                              <SalesPromotionsPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="utilidad"
+                          element={
+                            <ModulePage module="utilidad_segmento">
+                              <Placeholder title="Utilidad por segmento" />
+                            </ModulePage>
+                          }
+                        />
+                        <Route path="bitacora" element={<Placeholder title="Bitácora completa" />} />
 
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
-              </Routes>
-            </BrowserRouter>
-          </AuthProvider>
-        </LoadingLockProvider>
+                        <Route path="catalogo" element={<Navigate to="/configuracion" replace />} />
+                        <Route path="configuracion" element={<ConfigHomeRedirect />} />
+                        <Route
+                          path="configuracion/catalogo"
+                          element={
+                            <ModulePage module="config_catalogo">
+                              <CatalogServicesPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="configuracion/precios"
+                          element={
+                            <ModulePage module="config_precios">
+                              <PriceListsPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="configuracion/promociones"
+                          element={
+                            <ModulePage module="config_promociones">
+                              <PromotionsPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="configuracion/emisores"
+                          element={
+                            <ModulePage module="config_emisores">
+                              <IssuersPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="configuracion/instancias"
+                          element={
+                            <ModulePage module="config_instancias">
+                              <InstancesPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="configuracion/usuarios"
+                          element={
+                            <ModulePage module="config_usuarios">
+                              <UsersManagementPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="configuracion/roles"
+                          element={
+                            <ModulePage module="config_roles">
+                              <RolesPermissionsPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="configuracion/roles-permisos"
+                          element={<Navigate to="/configuracion/roles" replace />}
+                        />
+                        <Route
+                          path="configuracion/preferencias"
+                          element={
+                            <ModulePage module="config_preferencias">
+                              <ScreenPreferencesPage />
+                            </ModulePage>
+                          }
+                        />
+                      </Route>
+                    </Route>
+
+                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                  </Routes>
+                </BrowserRouter>
+              </AuthProvider>
+            </ToastProvider>
+          </LoadingLockProvider>
+        </ScreenPreferencesProvider>
       </ThemeProvider>
     </QueryClientProvider>
   )

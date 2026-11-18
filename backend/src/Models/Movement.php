@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Bitácora inmutable de MRR (RNF-3).
- * La aplicación solo debe INSERTAR; no actualizar ni borrar.
+ * Solo INSERT (o INSERT de reversión). UPDATE/DELETE bloqueados aquí y por triggers MySQL.
  * Tabla física: `movimiento`.
  */
 final class Movement extends BaseModel
@@ -35,6 +35,7 @@ final class Movement extends BaseModel
         'solicitud_id',
         'motivo',
         'con_excepcion',
+        'movimiento_revertido_id',
         'created_at',
     ];
 
@@ -53,8 +54,24 @@ final class Movement extends BaseModel
         'usuario_id' => 'integer',
         'solicitud_id' => 'integer',
         'con_excepcion' => 'boolean',
+        'movimiento_revertido_id' => 'integer',
         'created_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::updating(static function (): void {
+            throw new \RuntimeException(
+                'RNF-3: movimiento es inmutable. No se permite UPDATE. Emita una reversión.',
+            );
+        });
+
+        static::deleting(static function (): void {
+            throw new \RuntimeException(
+                'RNF-3: movimiento es inmutable. No se permite DELETE.',
+            );
+        });
+    }
 
     public function contract(): BelongsTo
     {
