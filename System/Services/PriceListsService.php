@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace System\Services;
 
 use Illuminate\Database\Capsule\Manager as Capsule;
+use RuntimeException;
 use System\Core\Context;
 use System\Core\DataTypes;
 use System\Core\Result;
 use System\Models\PriceListsModel;
+use Throwable;
 
 final class PriceListsService extends ModelService
 {
@@ -48,7 +50,7 @@ final class PriceListsService extends ModelService
                 $request['segmento_id'] = (int) $auth['segmento_id'];
             }
 
-            return $this->create($request, $context);
+            return $this->persistWithUniqueDefault($request, null, $context, 'create');
         }
         if ($id === null) {
             return Result::fail('Se requiere id de lista.', 400);
@@ -64,16 +66,63 @@ final class PriceListsService extends ModelService
                 $request['segmento_id'] = (int) $auth['segmento_id'];
             }
 
-            return $this->update($listId, $request, $context);
+            return $this->persistWithUniqueDefault($request, $listId, $context, 'update');
         }
         if ($method === 'PATCH') {
-            return $this->patch($listId, $request, $context);
+            return $this->persistWithUniqueDefault($request, $listId, $context, 'patch');
         }
         if ($method === 'DELETE') {
             return $this->patch($listId, ['activa' => false], $context);
         }
 
         return Result::fail('Método no soportado.', 405);
+    }
+
+    /**
+     * Guarda la lista y, si queda como default, desmarca las demás del mismo segmento+moneda.
+     *
+     * @param array<string, mixed> $request
+     */
+    private function persistWithUniqueDefault(
+        array $request,
+        ?int $listId,
+        Context $context,
+        string $mode,
+    ): Result {
+        try {
+            return Capsule::connection()->transaction(function () use ($request, $listId, $context, $mode): Result {
+                $result = match ($mode) {
+                    'create' => $this->create($request, $context),
+                    'update' => $this->update((int) $listId, $request, $context),
+                    default => $this->patch((int) $listId, $request, $context),
+                };
+
+                if (!$result->isSuccess()) {
+                    throw new RuntimeException($result->getMessage());
+                }
+
+                $savedId = $listId ?? (int) (($result->getData()['id'] ?? 0));
+                if ($savedId < 1) {
+                    return $result;
+                }
+
+                $row = Capsule::table('lista_precio')->where('id', $savedId)->first();
+                if ($row !== null && (bool) (int) $row->es_default) {
+                    Capsule::table('lista_precio')
+                        ->where('segmento_id', (int) $row->segmento_id)
+                        ->where('moneda', (string) $row->moneda)
+                        ->where('id', '!=', $savedId)
+                        ->update([
+                            'es_default' => false,
+                            'updated_at' => gmdate('Y-m-d H:i:s'),
+                        ]);
+                }
+
+                return $result;
+            });
+        } catch (Throwable $exception) {
+            return Result::fail($exception->getMessage(), 422);
+        }
     }
 
     /**

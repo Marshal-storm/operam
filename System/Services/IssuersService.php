@@ -13,10 +13,22 @@ use System\Models\IssuersModel;
 
 /**
  * CRUD de emisores (RF-1) — endpoint `/api/issuers` (alias `/api/emisores`, `/api/emitters`).
+ * Refs sensibles se enmascaran si el JWT no tiene `puede_editar` en `config_emisores`.
  */
 final class IssuersService extends ModelService
 {
     private const ALLOWED_PER_PAGE = [10, 25, 50, 100];
+
+    private const MASK = '••••••••';
+
+    private const SENSITIVE_FIELDS = [
+        'secret_ref',
+        'integropay_merchant_token_ref',
+        'integropay_device_token_ref',
+    ];
+
+    /** @var array<string, mixed> */
+    private array $authContext = [];
 
     protected function modelClass(): string
     {
@@ -25,18 +37,20 @@ final class IssuersService extends ModelService
 
     protected function configureFields(): void
     {
+        // hide_output = true: no se exponen en formatOutput genérico del framework.
         $this->validator
             ->setField('nombre', DataTypes::String, true)
             ->setField('rfc', DataTypes::String, true)
             ->setField('api_url', DataTypes::String, false)
-            ->setField('secret_ref', DataTypes::String, false)
-            ->setField('integropay_merchant_token_ref', DataTypes::String, false)
-            ->setField('integropay_device_token_ref', DataTypes::String, false)
+            ->setField('secret_ref', DataTypes::String, false, null, null, true)
+            ->setField('integropay_merchant_token_ref', DataTypes::String, false, null, null, true)
+            ->setField('integropay_device_token_ref', DataTypes::String, false, null, null, true)
             ->setField('activo', DataTypes::Boolean, false, true);
     }
 
     public function handle(Context $context): Result
     {
+        $this->authContext = $context->getData('auth', []);
         $method = $context->getMethod();
         $id = $context->getData('_resource_id');
         $request = $context->getRequest();
@@ -70,7 +84,17 @@ final class IssuersService extends ModelService
                 return Result::fail($dup, 422);
             }
 
-            return $this->create($normalized, $context);
+            $created = $this->create($normalized, $context);
+            if (!$created->isSuccess()) {
+                return $created;
+            }
+            $newId = (int) (($created->getData()['id'] ?? 0));
+
+            return Result::ok(
+                $this->findEnriched($newId) ?? $created->getData(),
+                'Emisor creado',
+                201,
+            );
         }
 
         if ($id === null) {
@@ -90,7 +114,12 @@ final class IssuersService extends ModelService
                 return Result::fail($dup, 422);
             }
 
-            return $this->update($issuerId, $normalized, $context);
+            $updated = $this->update($issuerId, $normalized, $context);
+            if (!$updated->isSuccess()) {
+                return $updated;
+            }
+
+            return Result::ok($this->findEnriched($issuerId) ?? $updated->getData(), 'Emisor actualizado');
         }
 
         if ($method === 'PATCH') {
@@ -106,11 +135,21 @@ final class IssuersService extends ModelService
                 }
             }
 
-            return $this->patch($issuerId, $normalized, $context);
+            $patched = $this->patch($issuerId, $normalized, $context);
+            if (!$patched->isSuccess()) {
+                return $patched;
+            }
+
+            return Result::ok($this->findEnriched($issuerId) ?? $patched->getData(), 'Emisor actualizado');
         }
 
         if ($method === 'DELETE') {
-            return $this->patch($issuerId, ['activo' => false], $context);
+            $patched = $this->patch($issuerId, ['activo' => false], $context);
+            if (!$patched->isSuccess()) {
+                return $patched;
+            }
+
+            return Result::ok($this->findEnriched($issuerId) ?? $patched->getData(), 'Emisor desactivado');
         }
 
         return Result::fail('Método no soportado.', 405);
@@ -118,7 +157,6 @@ final class IssuersService extends ModelService
 
     /**
      * Lista plana para selects (Instancias / Catálogo).
-     * No se llama `listAll()` para no chocar con la firma pública de ModelService.
      *
      * @return list<array<string, mixed>>
      */
@@ -137,7 +175,7 @@ final class IssuersService extends ModelService
                 'activo',
             ]);
 
-        return $rows->map(static fn (object $row): array => self::mapRow($row))->all();
+        return $rows->map(fn (object $row): array => $this->mapRow($row))->all();
     }
 
     /**
@@ -210,8 +248,8 @@ final class IssuersService extends ModelService
                 'ic.instancias_vinculadas',
             ]);
 
-        $items = $rows->map(static function (object $row): array {
-            $mapped = self::mapRow($row);
+        $items = $rows->map(function (object $row): array {
+            $mapped = $this->mapRow($row);
             $mapped['instancias_vinculadas'] = (int) ($row->instancias_vinculadas ?? 0);
 
             return $mapped;
@@ -246,7 +284,7 @@ final class IssuersService extends ModelService
             return null;
         }
 
-        $mapped = self::mapRow($row);
+        $mapped = $this->mapRow($row);
         $mapped['instancias_vinculadas'] = (int) Capsule::table('instancia')
             ->where('emisor_id', $id)
             ->count();
@@ -270,11 +308,16 @@ final class IssuersService extends ModelService
             $out['nombre'] = trim((string) $out['nombre']);
         }
 
-        foreach (['api_url', 'secret_ref', 'integropay_merchant_token_ref', 'integropay_device_token_ref'] as $field) {
+        foreach (['api_url', ...self::SENSITIVE_FIELDS] as $field) {
             if (!array_key_exists($field, $out)) {
                 continue;
             }
             $value = trim((string) ($out[$field] ?? ''));
+            // Si el cliente reenvía la máscara, no mutar el valor real en BD.
+            if ($value === self::MASK) {
+                unset($out[$field]);
+                continue;
+            }
             $out[$field] = $value === '' ? null : $value;
         }
 
@@ -316,28 +359,43 @@ final class IssuersService extends ModelService
     }
 
     /**
-     * Normaliza `activo` desde MySQL (0/1/true/false/"1") a boolean real.
+     * Serializa emisor con banderas has_* y enmascara refs si no puede editar.
      *
      * @return array<string, mixed>
      */
-    private static function mapRow(object $row): array
+    private function mapRow(object $row): array
     {
+        $secret = isset($row->secret_ref) && $row->secret_ref !== null && (string) $row->secret_ref !== ''
+            ? (string) $row->secret_ref
+            : null;
+        $merchant = isset($row->integropay_merchant_token_ref)
+            && $row->integropay_merchant_token_ref !== null
+            && (string) $row->integropay_merchant_token_ref !== ''
+            ? (string) $row->integropay_merchant_token_ref
+            : null;
+        $device = isset($row->integropay_device_token_ref)
+            && $row->integropay_device_token_ref !== null
+            && (string) $row->integropay_device_token_ref !== ''
+            ? (string) $row->integropay_device_token_ref
+            : null;
+
+        $canEdit = RbacAuthHelper::can($this->authContext, 'config_emisores', 'editar');
+
         return [
             'id' => (int) $row->id,
             'nombre' => (string) $row->nombre,
             'rfc' => (string) $row->rfc,
             'api_url' => $row->api_url !== null ? (string) $row->api_url : null,
-            'secret_ref' => isset($row->secret_ref) && $row->secret_ref !== null
-                ? (string) $row->secret_ref
-                : null,
-            'integropay_merchant_token_ref' => isset($row->integropay_merchant_token_ref)
-                && $row->integropay_merchant_token_ref !== null
-                ? (string) $row->integropay_merchant_token_ref
-                : null,
-            'integropay_device_token_ref' => isset($row->integropay_device_token_ref)
-                && $row->integropay_device_token_ref !== null
-                ? (string) $row->integropay_device_token_ref
-                : null,
+            'has_erp_secret' => $secret !== null,
+            'has_merchant_token' => $merchant !== null,
+            'has_device_token' => $device !== null,
+            'secret_ref' => $canEdit ? $secret : ($secret !== null ? self::MASK : null),
+            'integropay_merchant_token_ref' => $canEdit
+                ? $merchant
+                : ($merchant !== null ? self::MASK : null),
+            'integropay_device_token_ref' => $canEdit
+                ? $device
+                : ($device !== null ? self::MASK : null),
             'activo' => (bool) (int) $row->activo,
         ];
     }

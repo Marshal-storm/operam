@@ -6,10 +6,12 @@ import {
 } from '@tanstack/react-table'
 
 const catalogTableFeatures = tableFeatures({})
+import { useQuery } from '@tanstack/react-query'
 import { Pencil, Plus, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
+import { fetchServices } from '@/services/catalogService'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -59,7 +61,17 @@ const formSchema = z.object({
     'instancia',
   ]),
   permite_conversion_paquete: z.boolean(),
+  servicio_paquete_id: z.string().optional(),
+  factor_paquete: z.string().regex(/^[1-9]\d*$/, 'Factor entero entre 1 y 100'),
   activo: z.boolean(),
+}).superRefine((values, ctx) => {
+  if (values.permite_conversion_paquete && !values.servicio_paquete_id) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Selecciona el producto paquete destino (RF-2).',
+      path: ['servicio_paquete_id'],
+    })
+  }
 })
 
 type FormValues = z.infer<typeof formSchema>
@@ -139,9 +151,38 @@ export function CatalogServicesPage() {
       tipo: 'recurrente',
       unidad_medida: 'licencia',
       permite_conversion_paquete: false,
+      servicio_paquete_id: '',
+      factor_paquete: '5',
       activo: true,
     },
   })
+
+  const allowsPackage = useWatch({
+    control: form.control,
+    name: 'permite_conversion_paquete',
+  })
+  const watchedSegmentoId = useWatch({
+    control: form.control,
+    name: 'segmento_id',
+  })
+
+  const packageOptionsQuery = useQuery({
+    queryKey: ['config', 'services', 'packages', watchedSegmentoId],
+    queryFn: () => fetchServices({ page: 1, per_page: 100, estado: 'disponibles' }),
+    enabled: modalOpen && Boolean(allowsPackage),
+    staleTime: 30_000,
+  })
+
+  const packageOptions = useMemo(() => {
+    const rows = packageOptionsQuery.data?.items ?? []
+    const segmentoId = Number(watchedSegmentoId)
+    return rows.filter(
+      (s) =>
+        s.unidad_medida === 'paquete_5_usuarios' &&
+        (!Number.isFinite(segmentoId) || s.segmento_id === segmentoId) &&
+        (!editing || s.id !== editing.id),
+    )
+  }, [packageOptionsQuery.data?.items, watchedSegmentoId, editing])
 
   const columns = useMemo<Array<ColumnDef<typeof catalogTableFeatures, CatalogService>>>(
     () => [
@@ -259,6 +300,8 @@ export function CatalogServicesPage() {
       tipo: 'recurrente',
       unidad_medida: 'licencia',
       permite_conversion_paquete: false,
+      servicio_paquete_id: '',
+      factor_paquete: '5',
       activo: true,
     })
     setModalOpen(true)
@@ -275,6 +318,10 @@ export function CatalogServicesPage() {
       tipo: service.tipo,
       unidad_medida: service.unidad_medida,
       permite_conversion_paquete: service.permite_conversion_paquete,
+      servicio_paquete_id: service.servicio_paquete_id
+        ? String(service.servicio_paquete_id)
+        : '',
+      factor_paquete: String(service.factor_paquete ?? 5),
       activo: service.activo,
     })
     setModalOpen(true)
@@ -289,6 +336,12 @@ export function CatalogServicesPage() {
       tipo: values.tipo,
       unidad_medida: values.unidad_medida,
       permite_conversion_paquete: values.permite_conversion_paquete,
+      servicio_paquete_id: values.permite_conversion_paquete
+        ? Number(values.servicio_paquete_id)
+        : null,
+      factor_paquete: values.permite_conversion_paquete
+        ? Math.min(100, Math.max(1, Number(values.factor_paquete) || 5))
+        : 5,
       activo: values.activo,
     }
     try {
@@ -528,6 +581,36 @@ export function CatalogServicesPage() {
               <input type="checkbox" {...form.register('permite_conversion_paquete')} />
               Agrupar automáticamente cada 5 usuarios
             </label>
+            {allowsPackage && (
+              <div className="space-y-3 rounded-2xl border border-slate-200/80 p-3 dark:border-white/[0.08]">
+                <label className="block text-sm">
+                  Producto paquete destino (RF-2)
+                  <select className={inputClass} {...form.register('servicio_paquete_id')}>
+                    <option value="">Selecciona un paquete…</option>
+                    {packageOptions.map((pkg) => (
+                      <option key={pkg.id} value={pkg.id}>
+                        {pkg.codigo} — {pkg.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  {form.formState.errors.servicio_paquete_id && (
+                    <span className="mt-1 block text-xs text-red-500">
+                      {form.formState.errors.servicio_paquete_id.message}
+                    </span>
+                  )}
+                </label>
+                <label className="block text-sm">
+                  Factor de paquete
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    className={cn(inputClass, 'font-mono tabular-nums')}
+                    {...form.register('factor_paquete')}
+                  />
+                </label>
+              </div>
+            )}
             <label className="flex items-center gap-3 text-sm">
               <input type="checkbox" {...form.register('activo')} /> Disponible
             </label>

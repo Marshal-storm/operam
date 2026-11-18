@@ -118,6 +118,7 @@ Suite oficial en `tests/Unit/FinancialRulesTest.php` (configurada en `phpunit.xm
 2. RF-2 paquetes de 5 usuarios → `1860.00` / ahorro `300.00`.
 3. Reversión inmutable RNF-3 → deltas que se cancelan a `0.00`.
 4. `MovementsModel` bloquea UPDATE/DELETE con `RuntimeException`.
+5. Acumulación `mrr_mensual` con `bcadd` (RF-10) sin pérdida de centavos.
 
 ---
 
@@ -267,14 +268,17 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `backend/bootstrap/env.php` | Carga `.env` a `getenv` / `$_ENV`. |
 | `backend/bootstrap/eloquent.php` | Capsule Eloquent + MySQL UTC. |
 | `System/Core/*` | Result, Context, DataValidator, DataFormat. |
-| `System/Support/FinancialCalculator.php` | Calculadora BCMath pura: `optimizeUserPackages`, `calculateMrrBridge`, `buildReversalPayload`. |
-| `System/Services/*` | Login, App, RbacAuthHelper, Roles, Users, Issuers, Movements (RNF-3 + reversión) + catálogo. |
-| `System/Models/*` | Users/Sessions + Roles + IssuersModel + MovementsModel (inmutable) + catálogo. |
-| `database/migrations/*` | MRR + auth + catálogo + RBAC + emisores (000006) + split (000007) + triggers inmutabilidad movimiento RNF-3 (000008). |
+| `System/Support/FinancialCalculator.php` | Calculadora BCMath pura: `optimizeUserPackages`, `calculateMrrBridge`, `buildReversalPayload`, `accumulateMrrMensualAmount`. |
+| `System/Services/*` | Login, App, RbacAuthHelper, Roles, Users, Segments (RF-1), Issuers (refs enmascaradas), Movements (RNF-3 + sync RF-10) + catálogo. |
+| `System/Models/*` | Users/Sessions + Roles + SegmentsModel + IssuersModel + MovementsModel (inmutable) + catálogo. |
+| `database/migrations/*` | MRR + auth + catálogo + RBAC + emisores (000006) + split (000007) + triggers RNF-3 (000008) + paquete RF-2 / FX USD (000009). |
+| `database/migrations/20260925000009_add_package_link_and_fx_rate.php` | `servicio.servicio_paquete_id` + `factor_paquete`; `segmento.tipo_cambio_usd`; vínculo OP-USR→OP-PKG5. |
 | `database/seeds/*` | Sep 2026 + EnterpriseUsers + CatalogAndPricing + RbacRolesAndPermissions (15 módulos + Gestor de Promociones). |
 | `backend/src/Models/*` | Movement, Client, Contract, Segment, Issuer, MonthlyMrr, CollectionStatus. |
 | `backend/src/Services/MovementService.php` | Alta inmutable auxiliar (Operam\Services) + Money. |
-| `System/Services/MovementsService.php` | API `operam/servicios`: INSERT + `createReversalMovement` (bcmath); bloqueo UPDATE/DELETE. |
+| `System/Services/MovementsService.php` | API `operam/servicios`: INSERT + reversión + sync transaccional `mrr_mensual` (bcadd); bloqueo UPDATE/DELETE. |
+| `System/Services/SegmentsService.php` | GET/PATCH `dias_credito_default` por segmento (RF-1) con alcance RBAC. |
 | `System/Models/MovementsModel.php` | Eloquent `movimiento` con eventos `updating`/`deleting` (RNF-3). |
+| `System/Models/SegmentsModel.php` | Eloquent `segmento` (`dias_credito_default`). |
 | `database/migrations/20260925000008_enforce_movimiento_immutability_rnf3.php` | Triggers MySQL anti-UPDATE/DELETE + columna `movimiento_revertido_id`. |
 | `backend/tests/MoneyTest.php` | Tests auxiliares de Money (legado; la suite oficial vive en `tests/Unit`). |

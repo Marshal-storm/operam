@@ -7,7 +7,6 @@ declare(strict_types=1);
  * Solo `login` es público; el resto exige JWT enterprise (AppService::before_get).
  */
 
-use Illuminate\Database\Capsule\Manager as Capsule;
 use System\Core\Context;
 use System\Core\Result;
 use System\Models\UsersModel;
@@ -21,6 +20,7 @@ use System\Services\PriceListsService;
 use System\Services\PromotionsService;
 use System\Services\RbacAuthHelper;
 use System\Services\RolesService;
+use System\Services\SegmentsService;
 use System\Services\ServicesCatalogService;
 use System\Services\UsersManagementService;
 
@@ -152,19 +152,7 @@ if ($uri === 'login' && $method === 'POST') {
             'promotions' => (new PromotionsService())->handle($context),
             'issuers' => (new IssuersService())->handle($context),
             'movements' => (new MovementsService())->handle($context),
-            'segments' => $method === 'GET'
-                ? Result::ok(
-                    Capsule::table('segmento')
-                        ->orderBy('id')
-                        ->get(['id', 'nombre'])
-                        ->map(static fn (object $row): array => [
-                            'id' => (int) $row->id,
-                            'nombre' => (string) $row->nombre,
-                        ])
-                        ->all(),
-                    'Segmentos'
-                )
-                : Result::fail('Método no soportado.', 405),
+            'segments' => (new SegmentsService())->handle($context),
             default => Result::ok([
                 'uri' => $uri,
                 'auth' => $context->getData('auth'),

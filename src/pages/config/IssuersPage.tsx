@@ -162,15 +162,9 @@ export function IssuersPage() {
           const em = row.original
           return (
             <div className="flex flex-wrap gap-1">
-              <RefBadge label="Secret" configured={Boolean(em.secret_ref)} />
-              <RefBadge
-                label="Merchant"
-                configured={Boolean(em.integropay_merchant_token_ref)}
-              />
-              <RefBadge
-                label="Device"
-                configured={Boolean(em.integropay_device_token_ref)}
-              />
+              <RefBadge label="Secret" configured={em.has_erp_secret} />
+              <RefBadge label="Merchant" configured={em.has_merchant_token} />
+              <RefBadge label="Device" configured={em.has_device_token} />
             </div>
           )
         },
@@ -244,14 +238,16 @@ export function IssuersPage() {
 
   function openEdit(issuer: Issuer) {
     setEditing(issuer)
+    const unmask = (value: string | null): string =>
+      !value || value === '••••••••' ? '' : value
     form.reset({
       nombre: issuer.nombre,
       rfc: issuer.rfc,
       activo: issuer.activo,
       api_url: issuer.api_url ?? '',
-      secret_ref: issuer.secret_ref ?? '',
-      integropay_merchant_token_ref: issuer.integropay_merchant_token_ref ?? '',
-      integropay_device_token_ref: issuer.integropay_device_token_ref ?? '',
+      secret_ref: unmask(issuer.secret_ref),
+      integropay_merchant_token_ref: unmask(issuer.integropay_merchant_token_ref),
+      integropay_device_token_ref: unmask(issuer.integropay_device_token_ref),
     })
     setModalOpen(true)
   }
@@ -410,15 +406,9 @@ export function IssuersPage() {
                   {em.api_url || 'Sin URL ERP'}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1">
-                  <RefBadge label="Secret" configured={Boolean(em.secret_ref)} />
-                  <RefBadge
-                    label="Merchant"
-                    configured={Boolean(em.integropay_merchant_token_ref)}
-                  />
-                  <RefBadge
-                    label="Device"
-                    configured={Boolean(em.integropay_device_token_ref)}
-                  />
+                  <RefBadge label="Secret" configured={em.has_erp_secret} />
+                  <RefBadge label="Merchant" configured={em.has_merchant_token} />
+                  <RefBadge label="Device" configured={em.has_device_token} />
                 </div>
                 <p className="mt-2 text-xs text-slate-500">
                   {em.instancias_vinculadas ?? 0} instancias vinculadas

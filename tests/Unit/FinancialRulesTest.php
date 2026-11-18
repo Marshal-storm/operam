@@ -133,9 +133,44 @@ final class FinancialRulesTest extends TestCase
             self::assertStringContainsString('inmutable', $exception->getMessage());
         }
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches('/inmutable|DELETE/i');
-        $model->delete();
+    $this->expectException(RuntimeException::class);
+    $this->expectExceptionMessageMatches('/inmutable|DELETE/i');
+    $model->delete();
+  }
+
+    /**
+     * Test 5 — Acumulación exacta mrr_mensual con bcadd (RF-10 / RNF-1).
+     * Partiendo de 21600.00 + deltas sucesivos sin pérdida de centavos.
+     */
+    public function testMrrMensualAccumulationWithBcadd(): void
+    {
+        self::assertSame('2026-09', FinancialCalculator::monthKeyFromEffectiveDate('2026-09-15'));
+        self::assertSame('2026-09', FinancialCalculator::monthKeyFromEffectiveDate('2026-09-01'));
+
+        $monto = '0.00';
+        $deltas = [
+            '21600.00',
+            '18200.00',
+            '6100.00',
+            '1900.00',
+            '-7400.00',
+            '-14300.00',
+            '4100.00',
+        ];
+
+        foreach ($deltas as $delta) {
+            $monto = FinancialCalculator::accumulateMrrMensualAmount($monto, $delta);
+        }
+
+        self::assertSame('30200.00', $monto);
+
+        // Segunda aplicación del mismo delta (UPSERT acumulativo) no pierde centavos.
+        $afterSecondNuevo = FinancialCalculator::accumulateMrrMensualAmount('21600.00', '21600.00');
+        self::assertSame('43200.00', $afterSecondNuevo);
+
+        // Reversión exacta: monto + delta invertido = monto previo.
+        $reversed = FinancialCalculator::accumulateMrrMensualAmount('43200.00', '-21600.00');
+        self::assertSame('21600.00', $reversed);
     }
 
     /**

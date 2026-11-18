@@ -9,10 +9,13 @@ use System\Core\Context;
 use System\Core\DataTypes;
 use System\Core\Result;
 use System\Models\MovementsModel;
+use System\Support\FinancialCalculator;
+use Throwable;
 
 /**
- * Servicio de bitácora `movimiento` (RNF-3).
+ * Servicio de bitácora `movimiento` (RNF-3 + RF-10).
  * Solo INSERT y reversiones contables; UPDATE/PATCH/DELETE bloqueados.
+ * Cada INSERT sincroniza `mrr_mensual` en la misma transacción (bcadd).
  */
 final class MovementsService extends ModelService
 {
@@ -106,7 +109,7 @@ final class MovementsService extends ModelService
                 $input['created_at'] = gmdate('Y-m-d H:i:s');
             }
 
-            return $this->create($input, $context);
+            return $this->insertMovementAndSyncMrr($input, 'Movimiento registrado');
         }
 
         if (in_array($method, ['PUT', 'PATCH', 'DELETE'], true)) {
@@ -119,6 +122,7 @@ final class MovementsService extends ModelService
     /**
      * Inserta un movimiento inverso que referencia al original (RNF-3).
      * Invierte mrr_delta_mxn y cantidad/mrr antes↔después con bcmath.
+     * Sincroniza `mrr_mensual` en la misma transacción (RF-10).
      */
     public function createReversalMovement(int $originalMovementId, int $userId, string $reason): Result
     {
@@ -141,46 +145,157 @@ final class MovementsService extends ModelService
             return Result::fail('Este movimiento ya tiene una reversión registrada.', 422);
         }
 
-        $delta = (string) $original->mrr_delta_mxn;
-        $invertedDelta = bcmul($delta, '-1', 2);
-
-        $payload = [
-            'contrato_id' => (int) $original->contrato_id,
-            'contrato_linea_id' => $original->contrato_linea_id !== null
-                ? (int) $original->contrato_linea_id
-                : null,
-            'servicio_id' => $original->servicio_id !== null ? (int) $original->servicio_id : null,
-            'tipo' => 'reversión',
-            'categoria_mrr' => (string) $original->categoria_mrr,
-            'fecha_efectiva' => (string) $original->fecha_efectiva,
-            'cantidad_antes' => (string) $original->cantidad_despues,
-            'cantidad_despues' => (string) $original->cantidad_antes,
-            'mrr_antes' => (string) $original->mrr_despues,
-            'mrr_despues' => (string) $original->mrr_antes,
-            'mrr_delta_mxn' => $invertedDelta,
-            'tipo_cambio' => (string) ($original->tipo_cambio ?? '1.000000'),
-            'usuario_id' => $userId,
-            'solicitud_id' => null,
-            'motivo' => mb_substr(trim($reason) !== '' ? trim($reason) : 'Reversión contable', 0, 255),
-            'con_excepcion' => false,
-            'movimiento_revertido_id' => $originalMovementId,
-            'created_at' => gmdate('Y-m-d H:i:s'),
-        ];
-
-        // Verificación aritmética: mrr_despues - mrr_antes == delta invertido.
-        $check = bcsub($payload['mrr_despues'], $payload['mrr_antes'], 2);
-        if (bccomp($check, $invertedDelta, 2) !== 0) {
-            return Result::fail('Inconsistencia aritmética al construir la reversión.', 500);
+        try {
+            $payload = FinancialCalculator::buildReversalPayload(
+                [
+                    'id' => (int) $original->id,
+                    'categoria_mrr' => (string) $original->categoria_mrr,
+                    'mrr_antes' => (string) $original->mrr_antes,
+                    'mrr_despues' => (string) $original->mrr_despues,
+                    'mrr_delta_mxn' => (string) $original->mrr_delta_mxn,
+                    'cantidad_antes' => (string) $original->cantidad_antes,
+                    'cantidad_despues' => (string) $original->cantidad_despues,
+                ],
+                $userId,
+                $reason,
+            );
+        } catch (Throwable $exception) {
+            return Result::fail($exception->getMessage(), 500);
         }
 
-        $newId = Capsule::table('movimiento')->insertGetId($payload);
-        $row = Capsule::table('movimiento')->where('id', $newId)->first();
+        $payload['contrato_id'] = (int) $original->contrato_id;
+        $payload['contrato_linea_id'] = $original->contrato_linea_id !== null
+            ? (int) $original->contrato_linea_id
+            : null;
+        $payload['servicio_id'] = $original->servicio_id !== null ? (int) $original->servicio_id : null;
+        $payload['fecha_efectiva'] = (string) $original->fecha_efectiva;
+        $payload['tipo_cambio'] = (string) ($original->tipo_cambio ?? '1.000000');
+        $payload['solicitud_id'] = null;
+        $payload['con_excepcion'] = false;
+        $payload['created_at'] = gmdate('Y-m-d H:i:s');
 
-        return Result::ok(
-            $row !== null ? $this->mapRow($row) : ['id' => $newId],
-            'Reversión contable registrada',
-            201,
+        return $this->insertMovementAndSyncMrr($payload, 'Reversión contable registrada');
+    }
+
+    /**
+     * INSERT inmutable + UPSERT de `mrr_mensual` en una sola transacción (RF-10 / RNF-1 / RNF-3).
+     *
+     * @param array<string, mixed> $payload
+     */
+    private function insertMovementAndSyncMrr(array $payload, string $okMessage): Result
+    {
+        try {
+            $row = Capsule::connection()->transaction(function () use ($payload) {
+                $id = Capsule::table('movimiento')->insertGetId($payload);
+                $this->syncMrrMensualFromMovement($payload);
+                $inserted = Capsule::table('movimiento')->where('id', $id)->first();
+                if ($inserted === null) {
+                    throw new \RuntimeException('No se pudo leer el movimiento insertado.');
+                }
+
+                return $inserted;
+            });
+        } catch (Throwable $exception) {
+            return Result::fail(
+                'No se pudo registrar el movimiento / sincronizar mrr_mensual: ' . $exception->getMessage(),
+                500,
+            );
+        }
+
+        return Result::ok($this->mapRow($row), $okMessage, 201);
+    }
+
+    /**
+     * Actualiza o inserta el acumulado de `mrr_mensual` sumando con bcadd (escala 2).
+     * `mes` = YYYY-MM derivado de fecha_efectiva (corte conceptual YYYY-MM-01).
+     *
+     * @param array<string, mixed> $movement
+     */
+    private function syncMrrMensualFromMovement(array $movement): void
+    {
+        $categoria = (string) ($movement['categoria_mrr'] ?? '');
+        if ($categoria === 'transferencia' || $categoria === '') {
+            return;
+        }
+        if (!in_array($categoria, FinancialCalculator::MRR_BRIDGE_CATEGORIES, true)) {
+            return;
+        }
+
+        $mes = FinancialCalculator::monthKeyFromEffectiveDate((string) $movement['fecha_efectiva']);
+        $delta = FinancialCalculator::normalizeMoney((string) ($movement['mrr_delta_mxn'] ?? '0.00'));
+        $dims = $this->resolveMrrDimensions(
+            (int) $movement['contrato_id'],
+            isset($movement['servicio_id']) && $movement['servicio_id'] !== null && $movement['servicio_id'] !== ''
+                ? (int) $movement['servicio_id']
+                : null,
         );
+
+        $query = Capsule::table('mrr_mensual')
+            ->where('mes', $mes)
+            ->where('categoria', $categoria)
+            ->where('segmento_id', $dims['segmento_id']);
+
+        if ($dims['emisor_id'] === null) {
+            $query->whereNull('emisor_id');
+        } else {
+            $query->where('emisor_id', $dims['emisor_id']);
+        }
+
+        if ($dims['servicio_id'] === null) {
+            $query->whereNull('servicio_id');
+        } else {
+            $query->where('servicio_id', $dims['servicio_id']);
+        }
+
+        $existing = $query->lockForUpdate()->first();
+        $nowUtc = gmdate('Y-m-d H:i:s');
+
+        if ($existing !== null) {
+            $newMonto = FinancialCalculator::accumulateMrrMensualAmount(
+                (string) $existing->monto,
+                $delta,
+            );
+            Capsule::table('mrr_mensual')->where('id', (int) $existing->id)->update([
+                'monto' => $newMonto,
+                'updated_at' => $nowUtc,
+            ]);
+
+            return;
+        }
+
+        Capsule::table('mrr_mensual')->insert([
+            'mes' => $mes,
+            'segmento_id' => $dims['segmento_id'],
+            'emisor_id' => $dims['emisor_id'],
+            'servicio_id' => $dims['servicio_id'],
+            'categoria' => $categoria,
+            'monto' => $delta,
+            'created_at' => $nowUtc,
+            'updated_at' => $nowUtc,
+        ]);
+    }
+
+    /**
+     * Resuelve dimensiones del agregado desde contrato → cliente.
+     *
+     * @return array{segmento_id: int, emisor_id: int|null, servicio_id: int|null}
+     */
+    private function resolveMrrDimensions(int $contratoId, ?int $servicioId): array
+    {
+        $row = Capsule::table('contrato as c')
+            ->leftJoin('cliente as cl', 'cl.id', '=', 'c.cliente_id')
+            ->where('c.id', $contratoId)
+            ->first(['c.segmento_id', 'cl.emisor_id']);
+
+        if ($row === null) {
+            throw new \RuntimeException("Contrato {$contratoId} no encontrado para sincronizar mrr_mensual.");
+        }
+
+        return [
+            'segmento_id' => (int) $row->segmento_id,
+            'emisor_id' => $row->emisor_id !== null ? (int) $row->emisor_id : null,
+            'servicio_id' => $servicioId,
+        ];
     }
 
     /**

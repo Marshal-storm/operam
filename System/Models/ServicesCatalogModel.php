@@ -24,6 +24,8 @@ final class ServicesCatalogModel extends Model
         'tipo',
         'unidad_medida',
         'permite_conversion_paquete',
+        'servicio_paquete_id',
+        'factor_paquete',
         'activo',
     ];
 
@@ -32,6 +34,8 @@ final class ServicesCatalogModel extends Model
         'segmento_id' => 'integer',
         'emisor_default_id' => 'integer',
         'permite_conversion_paquete' => 'boolean',
+        'servicio_paquete_id' => 'integer',
+        'factor_paquete' => 'integer',
         'activo' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',

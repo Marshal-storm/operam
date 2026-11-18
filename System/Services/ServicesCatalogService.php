@@ -31,6 +31,8 @@ final class ServicesCatalogService extends ModelService
             ->setField('tipo', DataTypes::String, true)
             ->setField('unidad_medida', DataTypes::String, true)
             ->setField('permite_conversion_paquete', DataTypes::Boolean, false, false)
+            ->setField('servicio_paquete_id', DataTypes::Integer, false)
+            ->setField('factor_paquete', DataTypes::Integer, false, 5)
             ->setField('activo', DataTypes::Boolean, false, true);
     }
 
@@ -52,8 +54,13 @@ final class ServicesCatalogService extends ModelService
             if (($auth['segmento_id'] ?? null) !== null) {
                 $request['segmento_id'] = (int) $auth['segmento_id'];
             }
+            $normalized = $this->normalizePackageLink($request);
+            $linkError = $this->assertPackageLink($normalized);
+            if ($linkError !== null) {
+                return Result::fail($linkError, 422);
+            }
 
-            return $this->create($request, $context);
+            return $this->create($normalized, $context);
         }
         if ($id === null) {
             return Result::fail('Se requiere id de servicio.', 400);
@@ -68,11 +75,39 @@ final class ServicesCatalogService extends ModelService
             if (($auth['segmento_id'] ?? null) !== null) {
                 $request['segmento_id'] = (int) $auth['segmento_id'];
             }
+            $normalized = $this->normalizePackageLink($request);
+            $linkError = $this->assertPackageLink($normalized, $serviceId);
+            if ($linkError !== null) {
+                return Result::fail($linkError, 422);
+            }
 
-            return $this->update($serviceId, $request, $context);
+            return $this->update($serviceId, $normalized, $context);
         }
         if ($method === 'PATCH') {
-            return $this->patch($serviceId, $request, $context);
+            $normalized = $this->normalizePackageLink($request, true);
+            $merged = $normalized;
+            if (!array_key_exists('permite_conversion_paquete', $merged)
+                || !array_key_exists('servicio_paquete_id', $merged)
+            ) {
+                $existing = Capsule::table('servicio')->where('id', $serviceId)->first();
+                if ($existing !== null) {
+                    if (!array_key_exists('permite_conversion_paquete', $merged)) {
+                        $merged['permite_conversion_paquete'] = (bool) $existing->permite_conversion_paquete;
+                    }
+                    if (!array_key_exists('servicio_paquete_id', $merged)) {
+                        $merged['servicio_paquete_id'] = $existing->servicio_paquete_id;
+                    }
+                    if (!array_key_exists('factor_paquete', $merged)) {
+                        $merged['factor_paquete'] = (int) ($existing->factor_paquete ?? 5);
+                    }
+                }
+            }
+            $linkError = $this->assertPackageLink($merged, $serviceId);
+            if ($linkError !== null) {
+                return Result::fail($linkError, 422);
+            }
+
+            return $this->patch($serviceId, $normalized, $context);
         }
         if ($method === 'DELETE') {
             return $this->patch($serviceId, ['activo' => false], $context);
@@ -138,6 +173,10 @@ final class ServicesCatalogService extends ModelService
                 's.tipo',
                 's.unidad_medida',
                 's.permite_conversion_paquete',
+                's.servicio_paquete_id',
+                's.factor_paquete',
+                'pkg.codigo as servicio_paquete_codigo',
+                'pkg.nombre as servicio_paquete_nombre',
                 's.activo',
             ]);
 
@@ -154,6 +193,16 @@ final class ServicesCatalogService extends ModelService
                 'tipo' => (string) $row->tipo,
                 'unidad_medida' => (string) $row->unidad_medida,
                 'permite_conversion_paquete' => (bool) $row->permite_conversion_paquete,
+                'servicio_paquete_id' => $row->servicio_paquete_id !== null
+                    ? (int) $row->servicio_paquete_id
+                    : null,
+                'servicio_paquete_codigo' => $row->servicio_paquete_codigo !== null
+                    ? (string) $row->servicio_paquete_codigo
+                    : null,
+                'servicio_paquete_nombre' => $row->servicio_paquete_nombre !== null
+                    ? (string) $row->servicio_paquete_nombre
+                    : null,
+                'factor_paquete' => (int) ($row->factor_paquete ?? 5),
                 'activo' => (bool) $row->activo,
             ];
         })->all();
@@ -173,6 +222,74 @@ final class ServicesCatalogService extends ModelService
     {
         return Capsule::table('servicio as s')
             ->leftJoin('segmento as seg', 'seg.id', '=', 's.segmento_id')
-            ->leftJoin('emisor as e', 'e.id', '=', 's.emisor_default_id');
+            ->leftJoin('emisor as e', 'e.id', '=', 's.emisor_default_id')
+            ->leftJoin('servicio as pkg', 'pkg.id', '=', 's.servicio_paquete_id');
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    private function normalizePackageLink(array $input, bool $partial = false): array
+    {
+        if (array_key_exists('permite_conversion_paquete', $input)) {
+            $raw = $input['permite_conversion_paquete'];
+            $parsed = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            $input['permite_conversion_paquete'] = $parsed ?? (bool) (int) $raw;
+        }
+
+        if (array_key_exists('servicio_paquete_id', $input)) {
+            $pkgId = $input['servicio_paquete_id'];
+            if ($pkgId === null || $pkgId === '' || (int) $pkgId < 1) {
+                $input['servicio_paquete_id'] = null;
+            } else {
+                $input['servicio_paquete_id'] = (int) $pkgId;
+            }
+        }
+
+        if (array_key_exists('factor_paquete', $input)) {
+            $factor = filter_var($input['factor_paquete'], FILTER_VALIDATE_INT);
+            $input['factor_paquete'] = ($factor !== false && $factor > 0) ? $factor : 5;
+        } elseif (!$partial) {
+            $input['factor_paquete'] = 5;
+        }
+
+        if (
+            array_key_exists('permite_conversion_paquete', $input)
+            && $input['permite_conversion_paquete'] === false
+        ) {
+            $input['servicio_paquete_id'] = null;
+        }
+
+        return $input;
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     */
+    private function assertPackageLink(array $input, ?int $selfId = null): ?string
+    {
+        $allows = (bool) ($input['permite_conversion_paquete'] ?? false);
+        if (!$allows) {
+            return null;
+        }
+
+        $pkgId = isset($input['servicio_paquete_id']) ? (int) $input['servicio_paquete_id'] : 0;
+        if ($pkgId < 1) {
+            return 'Debes seleccionar el producto paquete destino (RF-2).';
+        }
+        if ($selfId !== null && $pkgId === $selfId) {
+            return 'Un producto no puede convertirse a sí mismo.';
+        }
+
+        $pkg = Capsule::table('servicio')->where('id', $pkgId)->first();
+        if ($pkg === null) {
+            return 'El producto paquete seleccionado no existe.';
+        }
+        if ((string) $pkg->unidad_medida !== 'paquete_5_usuarios') {
+            return 'El destino debe ser un producto con unidad paquete_5_usuarios.';
+        }
+
+        return null;
     }
 }

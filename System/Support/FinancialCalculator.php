@@ -182,6 +182,34 @@ final class FinancialCalculator
         return $payload;
     }
 
+    /**
+     * RF-10 / RNF-1: acumula un delta sobre el monto de `mrr_mensual` con bcadd (escala 2).
+     * Jamás usa float.
+     */
+    public static function accumulateMrrMensualAmount(string $currentMonto, string $delta): string
+    {
+        return bcadd(
+            self::normalizeMoney($currentMonto),
+            self::normalizeMoney($delta),
+            self::SCALE,
+        );
+    }
+
+    /**
+     * Deriva la llave de mes `YYYY-MM` a partir de `fecha_efectiva`
+     * (equivalente conceptual al corte `YYYY-MM-01` del documento de diseño).
+     * La columna `mrr_mensual.mes` es CHAR(7).
+     */
+    public static function monthKeyFromEffectiveDate(string $fechaEfectiva): string
+    {
+        $trimmed = trim($fechaEfectiva);
+        if (preg_match('/^(\d{4}-\d{2})(-\d{2})?/', $trimmed, $matches) !== 1) {
+            throw new InvalidArgumentException("fecha_efectiva inválida: {$fechaEfectiva}");
+        }
+
+        return $matches[1];
+    }
+
     /** Normaliza un monto string a exactamente 2 decimales vía BCMath. */
     public static function normalizeMoney(string $amount): string
     {

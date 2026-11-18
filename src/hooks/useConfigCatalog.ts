@@ -23,6 +23,7 @@ import {
   toggleServiceActive,
   updateInstance,
   updateIssuer,
+  updatePriceList,
   updatePromotion,
   updateService,
   type InstancesQueryParams,
@@ -116,6 +117,11 @@ export function usePriceListsConfig() {
   const segments = useQuery({ queryKey: KEYS.segments, queryFn: fetchSegments, staleTime: 60_000 })
 
   const createList = useLockedMutation(createPriceList, [KEYS.priceLists])
+  const updateList = useLockedMutation(
+    ({ id, data }: { id: number; data: Partial<PriceListWriteInput> }) =>
+      updatePriceList(id, data),
+    [KEYS.priceLists],
+  )
   const createItem = useLockedMutation(createPriceListItem, [KEYS.priceLists])
   const saveEdits = useLockedMutation(
     savePriceEdits,
@@ -143,6 +149,8 @@ export function usePriceListsConfig() {
     errorMessage: lists.error instanceof Error ? lists.error.message : 'Error al cargar precios',
     refetch: lists.refetch,
     createPriceList: (input: PriceListWriteInput) => createList.mutateAsync(input),
+    updatePriceList: (input: { id: number; data: Partial<PriceListWriteInput> }) =>
+      updateList.mutateAsync(input),
     createPriceListItem: (input: PriceListItemWriteInput) => createItem.mutateAsync(input),
     removeProductFromPriceList: (input: { lista_precio_id: number; servicio_id: number }) =>
       removeProduct.mutateAsync(input),

@@ -101,6 +101,16 @@ final class CatalogAndPricingSeeder extends AbstractSeed
             ],
         ], $nowUtc);
 
+        // RF-2: OP-USR apunta al paquete OP-PKG5 (factor 5).
+        if (isset($serviceIds['OP-USR'], $serviceIds['OP-PKG5'])) {
+            $this->execute(sprintf(
+                "UPDATE servicio SET servicio_paquete_id = %d, factor_paquete = 5, permite_conversion_paquete = 1, updated_at = '%s' WHERE id = %d",
+                (int) $serviceIds['OP-PKG5'],
+                $this->quote($nowUtc),
+                (int) $serviceIds['OP-USR'],
+            ));
+        }
+
         $this->upsertInstances([
             [
                 'codigo' => 'ins-operam-norte',

@@ -16,7 +16,7 @@ final class September2026DashboardSeeder extends AbstractSeed
         $nowUtc = gmdate('Y-m-d H:i:s');
 
         $segmentIds = $this->upsertSegmentos([
-            ['nombre' => 'Operam', 'dias_credito_default' => 30],
+            ['nombre' => 'Operam', 'dias_credito_default' => 15],
             ['nombre' => 'Construsync', 'dias_credito_default' => 30],
             ['nombre' => 'Piloto', 'dias_credito_default' => 15],
             ['nombre' => 'Cibus', 'dias_credito_default' => 30],
@@ -305,6 +305,13 @@ final class September2026DashboardSeeder extends AbstractSeed
 
             if ($existing) {
                 $ids[$row['nombre']] = (int) $existing['id'];
+                // Mantiene alineados los defaults RF-1 (p. ej. Operam 15 / Construsync 30).
+                $this->execute(sprintf(
+                    "UPDATE segmento SET dias_credito_default = %d, updated_at = '%s' WHERE id = %d",
+                    (int) $row['dias_credito_default'],
+                    $this->quote($nowUtc),
+                    (int) $existing['id'],
+                ));
                 continue;
             }
 

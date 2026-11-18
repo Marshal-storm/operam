@@ -36,7 +36,14 @@ export function configureCatalogAuth(tokenGetter: TokenGetter): void {
   getAuthToken = tokenGetter
 }
 
-export type SegmentOption = { id: number; nombre: string }
+export type SegmentOption = {
+  id: number
+  nombre: string
+  /** Días de crédito por defecto del segmento (RF-1). */
+  dias_credito_default: number
+  /** Tipo de cambio USD→MXN de referencia (4 decimales). */
+  tipo_cambio_usd: string
+}
 /** Alias histórico; preferir `Issuer` completo del catálogo. */
 export type EmitterOption = Issuer
 
@@ -197,8 +204,43 @@ export async function fetchInstances(
   return { ...base, by_emitter: byEmitter }
 }
 
+function mapSegmentOption(raw: unknown): SegmentOption {
+  const row = (raw ?? {}) as Record<string, unknown>
+  const fxRaw = String(row.tipo_cambio_usd ?? '19.5000')
+  const fxNum = Number(fxRaw)
+  const fx = Number.isFinite(fxNum) ? fxNum.toFixed(4) : '19.5000'
+  return {
+    id: Number(row.id),
+    nombre: String(row.nombre ?? ''),
+    dias_credito_default: Math.max(0, Number(row.dias_credito_default ?? 0)),
+    tipo_cambio_usd: fx,
+  }
+}
+
 export async function fetchSegments(): Promise<SegmentOption[]> {
-  return asArray(await apiRequest<SegmentOption[]>('segments'))
+  return asArray(await apiRequest<unknown>('segments')).map(mapSegmentOption)
+}
+
+/** Actualiza parámetros comerciales RF-1 de un segmento. */
+export async function updateSegmentCommercialParams(
+  id: number,
+  input: { dias_credito_default?: number; tipo_cambio_usd?: string },
+): Promise<SegmentOption> {
+  const raw = await apiRequest<unknown>(`segments/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+  return mapSegmentOption(raw)
+}
+
+/** @deprecated Preferir updateSegmentCommercialParams. */
+export async function updateSegmentCreditDays(
+  id: number,
+  diasCreditoDefault: number,
+): Promise<SegmentOption> {
+  return updateSegmentCommercialParams(id, {
+    dias_credito_default: diasCreditoDefault,
+  })
 }
 
 /** Lista plana para selects (Instancias, Catálogo). */
@@ -207,20 +249,37 @@ function coerceIssuer(raw: unknown): Issuer | null {
   const row = raw as Record<string, unknown>
   const id = Number(row.id)
   if (!Number.isFinite(id) || id <= 0) return null
+  const secretRef =
+    row.secret_ref != null && row.secret_ref !== '' ? String(row.secret_ref) : null
+  const merchantRef =
+    row.integropay_merchant_token_ref != null && row.integropay_merchant_token_ref !== ''
+      ? String(row.integropay_merchant_token_ref)
+      : null
+  const deviceRef =
+    row.integropay_device_token_ref != null && row.integropay_device_token_ref !== ''
+      ? String(row.integropay_device_token_ref)
+      : null
+
   return {
     id,
     nombre: String(row.nombre ?? ''),
     rfc: String(row.rfc ?? ''),
     api_url: row.api_url != null && row.api_url !== '' ? String(row.api_url) : null,
-    secret_ref: row.secret_ref != null && row.secret_ref !== '' ? String(row.secret_ref) : null,
-    integropay_merchant_token_ref:
-      row.integropay_merchant_token_ref != null && row.integropay_merchant_token_ref !== ''
-        ? String(row.integropay_merchant_token_ref)
-        : null,
-    integropay_device_token_ref:
-      row.integropay_device_token_ref != null && row.integropay_device_token_ref !== ''
-        ? String(row.integropay_device_token_ref)
-        : null,
+    has_erp_secret:
+      row.has_erp_secret != null
+        ? Boolean(row.has_erp_secret)
+        : Boolean(secretRef && secretRef !== '••••••••'),
+    has_merchant_token:
+      row.has_merchant_token != null
+        ? Boolean(row.has_merchant_token)
+        : Boolean(merchantRef && merchantRef !== '••••••••'),
+    has_device_token:
+      row.has_device_token != null
+        ? Boolean(row.has_device_token)
+        : Boolean(deviceRef && deviceRef !== '••••••••'),
+    secret_ref: secretRef,
+    integropay_merchant_token_ref: merchantRef,
+    integropay_device_token_ref: deviceRef,
     // MySQL tinyint 0/1 — nunca comparar === true estricto sin coerción.
     activo: Boolean(Number(row.activo)),
     instancias_vinculadas:
@@ -325,6 +384,8 @@ export type ServiceWriteInput = {
   tipo: ServiceType
   unidad_medida: ServiceUnit
   permite_conversion_paquete?: boolean
+  servicio_paquete_id?: number | null
+  factor_paquete?: number
   activo?: boolean
   emisor_default_id?: number | null
 }

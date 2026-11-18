@@ -192,6 +192,7 @@ const newListSchema = z.object({
   segmento_id: z.string().min(1),
   moneda: z.enum(['MXN', 'USD']),
   vigente_desde: z.string().min(8),
+  es_default: z.boolean(),
 })
 
 const addItemSchema = z.object({
@@ -222,6 +223,7 @@ export function PriceListsPage() {
     errorMessage,
     refetch,
     createPriceList,
+    updatePriceList,
     createPriceListItem,
     removeProductFromPriceList,
     saveVolumeMatrix,
@@ -304,8 +306,19 @@ export function PriceListsPage() {
       segmento_id: '1',
       moneda: 'MXN',
       vigente_desde: today,
+      es_default: false,
     },
   })
+
+  async function markAsDefault(list: (typeof lists)[number]) {
+    if (!canEdit('config_precios') || list.es_default) return
+    try {
+      await updatePriceList({ id: list.id, data: { es_default: true } })
+      toast.success('Lista predeterminada', `${list.nombre} es ahora ★ Default.`)
+    } catch (error) {
+      toast.apiError(error)
+    }
+  }
 
   const itemForm = useForm<AddItemForm>({
     resolver: zodResolver(addItemSchema),
@@ -1172,12 +1185,26 @@ export function PriceListsPage() {
                     label={list.activa ? 'Activa' : 'Inactiva'}
                     tone={list.activa ? 'positive' : 'neutral'}
                   />
-                  {list.es_default && <StatusPill label="Oficial" tone="warning" />}
+                  {list.es_default && (
+                    <StatusPill label="★ Default" tone="warning" />
+                  )}
                 </div>
               </div>
-              <Button className="rounded-xl" onClick={() => setEditingListId(list.id)}>
-                Ver / Editar precios
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {canEdit('config_precios') && !list.es_default && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() => void markAsDefault(list)}
+                  >
+                    Predeterminada (Default)
+                  </Button>
+                )}
+                <Button className="rounded-xl" onClick={() => setEditingListId(list.id)}>
+                  Ver / Editar precios
+                </Button>
+              </div>
             </article>
           )
         })}
@@ -1208,10 +1235,15 @@ export function PriceListsPage() {
                   segmento_id: Number(values.segmento_id),
                   moneda: values.moneda,
                   vigente_desde: values.vigente_desde,
-                  es_default: false,
+                  es_default: values.es_default,
                   activa: true,
                 })
-                toast.success('Lista creada', values.nombre)
+                toast.success(
+                  'Lista creada',
+                  values.es_default
+                    ? `${values.nombre} marcada como ★ Default.`
+                    : values.nombre,
+                )
                 setNewListOpen(false)
               } catch (error) {
                 toast.apiError(error)
@@ -1242,6 +1274,10 @@ export function PriceListsPage() {
             <label className="block text-sm">
               Vigente desde
               <input type="date" className={inputClass} {...listForm.register('vigente_desde')} />
+            </label>
+            <label className="flex items-center gap-3 text-sm">
+              <input type="checkbox" {...listForm.register('es_default')} />
+              Predeterminada (Default) para este segmento y moneda
             </label>
             <Button type="submit" className="w-full rounded-xl">
               Crear lista

@@ -20,6 +20,11 @@ export type Issuer = {
   nombre: string
   rfc: string
   api_url: string | null
+  /** Banderas seguras para badges (siempre visibles). */
+  has_erp_secret: boolean
+  has_merchant_token: boolean
+  has_device_token: boolean
+  /** Solo texto completo si JWT tiene puede_editar en config_emisores; si no, máscara o null. */
   secret_ref: string | null
   integropay_merchant_token_ref: string | null
   integropay_device_token_ref: string | null
@@ -44,6 +49,11 @@ export type CatalogService = {
   tipo: ServiceType
   unidad_medida: ServiceUnit
   permite_conversion_paquete: boolean
+  /** RF-2: producto paquete destino. */
+  servicio_paquete_id: number | null
+  servicio_paquete_codigo?: string | null
+  servicio_paquete_nombre?: string | null
+  factor_paquete: number
   activo: boolean
 }
 
