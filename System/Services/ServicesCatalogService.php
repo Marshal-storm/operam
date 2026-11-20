@@ -23,17 +23,17 @@ final class ServicesCatalogService extends ModelService
     protected function configureFields(): void
     {
         $this->validator
-            ->setField('segmento_id', DataTypes::Integer, true)
-            ->setField('emisor_default_id', DataTypes::Integer, false)
-            ->setField('codigo', DataTypes::String, true)
-            ->setField('nombre', DataTypes::String, true)
-            ->setField('descripcion', DataTypes::String, false)
-            ->setField('tipo', DataTypes::String, true)
-            ->setField('unidad_medida', DataTypes::String, true)
-            ->setField('permite_conversion_paquete', DataTypes::Boolean, false, false)
-            ->setField('servicio_paquete_id', DataTypes::Integer, false)
-            ->setField('factor_paquete', DataTypes::Integer, false, 5)
-            ->setField('activo', DataTypes::Boolean, false, true);
+            ->setField('segment_id', DataTypes::Integer, true)
+            ->setField('default_issuer_id', DataTypes::Integer, false)
+            ->setField('code', DataTypes::String, true)
+            ->setField('name', DataTypes::String, true)
+            ->setField('description', DataTypes::String, false)
+            ->setField('service_type', DataTypes::String, true)
+            ->setField('unit_of_measure', DataTypes::String, true)
+            ->setField('allow_package_conversion', DataTypes::Boolean, false, false)
+            ->setField('package_service_id', DataTypes::Integer, false)
+            ->setField('package_factor', DataTypes::Integer, false, 5)
+            ->setField('is_active', DataTypes::Boolean, false, true);
     }
 
     public function handle(Context $context): Result
@@ -51,8 +51,8 @@ final class ServicesCatalogService extends ModelService
             if ($denied !== null) {
                 return Result::fail($denied, 403);
             }
-            if (($auth['segmento_id'] ?? null) !== null) {
-                $request['segmento_id'] = (int) $auth['segmento_id'];
+            if (($auth['segment_id'] ?? null) !== null) {
+                $request['segment_id'] = (int) $auth['segment_id'];
             }
             $normalized = $this->normalizePackageLink($request);
             $linkError = $this->assertPackageLink($normalized);
@@ -72,8 +72,8 @@ final class ServicesCatalogService extends ModelService
             if ($denied !== null) {
                 return Result::fail($denied, 403);
             }
-            if (($auth['segmento_id'] ?? null) !== null) {
-                $request['segmento_id'] = (int) $auth['segmento_id'];
+            if (($auth['segment_id'] ?? null) !== null) {
+                $request['segment_id'] = (int) $auth['segment_id'];
             }
             $normalized = $this->normalizePackageLink($request);
             $linkError = $this->assertPackageLink($normalized, $serviceId);
@@ -86,19 +86,19 @@ final class ServicesCatalogService extends ModelService
         if ($method === 'PATCH') {
             $normalized = $this->normalizePackageLink($request, true);
             $merged = $normalized;
-            if (!array_key_exists('permite_conversion_paquete', $merged)
-                || !array_key_exists('servicio_paquete_id', $merged)
+            if (!array_key_exists('allow_package_conversion', $merged)
+                || !array_key_exists('package_service_id', $merged)
             ) {
-                $existing = Capsule::table('servicio')->where('id', $serviceId)->first();
+                $existing = Capsule::table('services')->where('id', $serviceId)->first();
                 if ($existing !== null) {
-                    if (!array_key_exists('permite_conversion_paquete', $merged)) {
-                        $merged['permite_conversion_paquete'] = (bool) $existing->permite_conversion_paquete;
+                    if (!array_key_exists('allow_package_conversion', $merged)) {
+                        $merged['allow_package_conversion'] = (bool) $existing->allow_package_conversion;
                     }
-                    if (!array_key_exists('servicio_paquete_id', $merged)) {
-                        $merged['servicio_paquete_id'] = $existing->servicio_paquete_id;
+                    if (!array_key_exists('package_service_id', $merged)) {
+                        $merged['package_service_id'] = $existing->package_service_id;
                     }
-                    if (!array_key_exists('factor_paquete', $merged)) {
-                        $merged['factor_paquete'] = (int) ($existing->factor_paquete ?? 5);
+                    if (!array_key_exists('package_factor', $merged)) {
+                        $merged['package_factor'] = (int) ($existing->package_factor ?? 5);
                     }
                 }
             }
@@ -110,7 +110,7 @@ final class ServicesCatalogService extends ModelService
             return $this->patch($serviceId, $normalized, $context);
         }
         if ($method === 'DELETE') {
-            return $this->patch($serviceId, ['activo' => false], $context);
+            return $this->patch($serviceId, ['is_active' => false], $context);
         }
 
         return Result::fail('Método no soportado.', 405);
@@ -134,27 +134,27 @@ final class ServicesCatalogService extends ModelService
         if ($search !== '') {
             $like = '%' . $search . '%';
             $builder->where(static function (Builder $q) use ($like): void {
-                $q->where('s.codigo', 'like', $like)
-                    ->orWhere('s.nombre', 'like', $like)
-                    ->orWhere('s.descripcion', 'like', $like);
+                $q->where('s.code', 'like', $like)
+                    ->orWhere('s.name', 'like', $like)
+                    ->orWhere('s.description', 'like', $like);
             });
         }
 
-        $segmento = trim((string) ($query['segmento'] ?? ''));
-        if ($segmento !== '' && strtolower($segmento) !== 'todos') {
-            $builder->where('seg.nombre', $segmento);
+        $segment = trim((string) ($query['segment'] ?? ''));
+        if ($segment !== '' && strtolower($segment) !== 'all' && strtolower($segment) !== 'todos') {
+            $builder->where('seg.name', $segment);
         }
 
-        $tipo = trim((string) ($query['tipo'] ?? ''));
-        if ($tipo !== '' && strtolower($tipo) !== 'todos') {
-            $builder->where('s.tipo', $tipo);
+        $serviceType = trim((string) ($query['service_type'] ?? ''));
+        if ($serviceType !== '' && strtolower($serviceType) !== 'all' && strtolower($serviceType) !== 'todos') {
+            $builder->where('s.service_type', $serviceType);
         }
 
-        $estado = strtolower(trim((string) ($query['estado'] ?? '')));
-        if ($estado === 'disponibles' || $estado === 'activos') {
-            $builder->where('s.activo', true);
-        } elseif ($estado === 'inactivos') {
-            $builder->where('s.activo', false);
+        $status = strtolower(trim((string) ($query['status'] ?? '')));
+        if ($status === 'active' || $status === 'available') {
+            $builder->where('s.is_active', true);
+        } elseif ($status === 'inactive') {
+            $builder->where('s.is_active', false);
         }
 
         $total = (clone $builder)->count();
@@ -163,47 +163,51 @@ final class ServicesCatalogService extends ModelService
             ->forPage($page, $perPage)
             ->get([
                 's.id',
-                's.codigo',
-                's.nombre',
-                's.descripcion',
-                's.segmento_id',
-                'seg.nombre as segmento',
-                's.emisor_default_id',
-                'e.nombre as emisor_default',
-                's.tipo',
-                's.unidad_medida',
-                's.permite_conversion_paquete',
-                's.servicio_paquete_id',
-                's.factor_paquete',
-                'pkg.codigo as servicio_paquete_codigo',
-                'pkg.nombre as servicio_paquete_nombre',
-                's.activo',
+                's.code',
+                's.name',
+                's.description',
+                's.segment_id',
+                'seg.name as segment_name',
+                's.default_issuer_id',
+                'e.name as default_issuer_name',
+                's.service_type',
+                's.unit_of_measure',
+                's.allow_package_conversion',
+                's.package_service_id',
+                's.package_factor',
+                'pkg.code as package_service_code',
+                'pkg.name as package_service_name',
+                's.is_active',
             ]);
 
         $items = $rows->map(static function (object $row): array {
             return [
                 'id' => (int) $row->id,
-                'codigo' => (string) $row->codigo,
-                'nombre' => (string) $row->nombre,
-                'descripcion' => $row->descripcion !== null ? (string) $row->descripcion : null,
-                'segmento' => (string) ($row->segmento ?? ''),
-                'segmento_id' => (int) $row->segmento_id,
-                'emisor_default' => $row->emisor_default !== null ? (string) $row->emisor_default : null,
-                'emisor_default_id' => $row->emisor_default_id !== null ? (int) $row->emisor_default_id : null,
-                'tipo' => (string) $row->tipo,
-                'unidad_medida' => (string) $row->unidad_medida,
-                'permite_conversion_paquete' => (bool) $row->permite_conversion_paquete,
-                'servicio_paquete_id' => $row->servicio_paquete_id !== null
-                    ? (int) $row->servicio_paquete_id
+                'code' => (string) $row->code,
+                'name' => (string) $row->name,
+                'description' => $row->description !== null ? (string) $row->description : null,
+                'segment_name' => (string) ($row->segment_name ?? ''),
+                'segment_id' => (int) $row->segment_id,
+                'default_issuer_name' => $row->default_issuer_name !== null
+                    ? (string) $row->default_issuer_name
                     : null,
-                'servicio_paquete_codigo' => $row->servicio_paquete_codigo !== null
-                    ? (string) $row->servicio_paquete_codigo
+                'default_issuer_id' => $row->default_issuer_id !== null
+                    ? (int) $row->default_issuer_id
                     : null,
-                'servicio_paquete_nombre' => $row->servicio_paquete_nombre !== null
-                    ? (string) $row->servicio_paquete_nombre
+                'service_type' => (string) $row->service_type,
+                'unit_of_measure' => (string) $row->unit_of_measure,
+                'allow_package_conversion' => (bool) $row->allow_package_conversion,
+                'package_service_id' => $row->package_service_id !== null
+                    ? (int) $row->package_service_id
                     : null,
-                'factor_paquete' => (int) ($row->factor_paquete ?? 5),
-                'activo' => (bool) $row->activo,
+                'package_service_code' => $row->package_service_code !== null
+                    ? (string) $row->package_service_code
+                    : null,
+                'package_service_name' => $row->package_service_name !== null
+                    ? (string) $row->package_service_name
+                    : null,
+                'package_factor' => (int) ($row->package_factor ?? 5),
+                'is_active' => (bool) $row->is_active,
             ];
         })->all();
 
@@ -220,10 +224,10 @@ final class ServicesCatalogService extends ModelService
 
     private function baseQuery(): Builder
     {
-        return Capsule::table('servicio as s')
-            ->leftJoin('segmento as seg', 'seg.id', '=', 's.segmento_id')
-            ->leftJoin('emisor as e', 'e.id', '=', 's.emisor_default_id')
-            ->leftJoin('servicio as pkg', 'pkg.id', '=', 's.servicio_paquete_id');
+        return Capsule::table('services as s')
+            ->leftJoin('segments as seg', 'seg.id', '=', 's.segment_id')
+            ->leftJoin('issuers as e', 'e.id', '=', 's.default_issuer_id')
+            ->leftJoin('services as pkg', 'pkg.id', '=', 's.package_service_id');
     }
 
     /**
@@ -232,33 +236,33 @@ final class ServicesCatalogService extends ModelService
      */
     private function normalizePackageLink(array $input, bool $partial = false): array
     {
-        if (array_key_exists('permite_conversion_paquete', $input)) {
-            $raw = $input['permite_conversion_paquete'];
+        if (array_key_exists('allow_package_conversion', $input)) {
+            $raw = $input['allow_package_conversion'];
             $parsed = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-            $input['permite_conversion_paquete'] = $parsed ?? (bool) (int) $raw;
+            $input['allow_package_conversion'] = $parsed ?? (bool) (int) $raw;
         }
 
-        if (array_key_exists('servicio_paquete_id', $input)) {
-            $pkgId = $input['servicio_paquete_id'];
+        if (array_key_exists('package_service_id', $input)) {
+            $pkgId = $input['package_service_id'];
             if ($pkgId === null || $pkgId === '' || (int) $pkgId < 1) {
-                $input['servicio_paquete_id'] = null;
+                $input['package_service_id'] = null;
             } else {
-                $input['servicio_paquete_id'] = (int) $pkgId;
+                $input['package_service_id'] = (int) $pkgId;
             }
         }
 
-        if (array_key_exists('factor_paquete', $input)) {
-            $factor = filter_var($input['factor_paquete'], FILTER_VALIDATE_INT);
-            $input['factor_paquete'] = ($factor !== false && $factor > 0) ? $factor : 5;
+        if (array_key_exists('package_factor', $input)) {
+            $factor = filter_var($input['package_factor'], FILTER_VALIDATE_INT);
+            $input['package_factor'] = ($factor !== false && $factor > 0) ? $factor : 5;
         } elseif (!$partial) {
-            $input['factor_paquete'] = 5;
+            $input['package_factor'] = 5;
         }
 
         if (
-            array_key_exists('permite_conversion_paquete', $input)
-            && $input['permite_conversion_paquete'] === false
+            array_key_exists('allow_package_conversion', $input)
+            && $input['allow_package_conversion'] === false
         ) {
-            $input['servicio_paquete_id'] = null;
+            $input['package_service_id'] = null;
         }
 
         return $input;
@@ -269,12 +273,12 @@ final class ServicesCatalogService extends ModelService
      */
     private function assertPackageLink(array $input, ?int $selfId = null): ?string
     {
-        $allows = (bool) ($input['permite_conversion_paquete'] ?? false);
+        $allows = (bool) ($input['allow_package_conversion'] ?? false);
         if (!$allows) {
             return null;
         }
 
-        $pkgId = isset($input['servicio_paquete_id']) ? (int) $input['servicio_paquete_id'] : 0;
+        $pkgId = isset($input['package_service_id']) ? (int) $input['package_service_id'] : 0;
         if ($pkgId < 1) {
             return 'Debes seleccionar el producto paquete destino (RF-2).';
         }
@@ -282,12 +286,12 @@ final class ServicesCatalogService extends ModelService
             return 'Un producto no puede convertirse a sí mismo.';
         }
 
-        $pkg = Capsule::table('servicio')->where('id', $pkgId)->first();
+        $pkg = Capsule::table('services')->where('id', $pkgId)->first();
         if ($pkg === null) {
             return 'El producto paquete seleccionado no existe.';
         }
-        if ((string) $pkg->unidad_medida !== 'paquete_5_usuarios') {
-            return 'El destino debe ser un producto con unidad paquete_5_usuarios.';
+        if ((string) $pkg->unit_of_measure !== 'pack_5_users') {
+            return 'El destino debe ser un producto con unidad pack_5_users.';
         }
 
         return null;

@@ -9,55 +9,58 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
- * Contrato / suscripción. Tabla física: `contrato`.
+ * Contrato / suscripción. Tabla física: `contracts`.
  */
 final class Contract extends BaseModel
 {
-    protected $table = 'contrato';
+    protected $table = 'contracts';
 
     /** @var list<string> */
     protected $fillable = [
         'folio',
-        'cliente_id',
-        'segmento_id',
-        'frecuencia',
-        'fecha_aniversario',
-        'moneda',
-        'dias_credito',
-        'timbrar_al_emitir',
-        'estado',
-        'proximo_corte',
+        'client_id',
+        'segment_id',
+        'frequency',
+        'anniversary_date',
+        'currency',
+        'credit_days',
+        'stamp_on_issue',
+        'status',
+        'next_cutoff_date',
+        'origin_contract_id',
+        'termination_reason',
     ];
 
     /** @var array<string, string> */
     protected $casts = [
-        'cliente_id' => 'integer',
-        'segmento_id' => 'integer',
-        'fecha_aniversario' => 'date',
-        'proximo_corte' => 'date',
-        'dias_credito' => 'integer',
-        'timbrar_al_emitir' => 'boolean',
+        'client_id' => 'integer',
+        'segment_id' => 'integer',
+        'anniversary_date' => 'date',
+        'next_cutoff_date' => 'date',
+        'credit_days' => 'integer',
+        'stamp_on_issue' => 'boolean',
+        'origin_contract_id' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
 
     public function client(): BelongsTo
     {
-        return $this->belongsTo(Client::class, 'cliente_id');
+        return $this->belongsTo(Client::class, 'client_id');
     }
 
     public function segment(): BelongsTo
     {
-        return $this->belongsTo(Segment::class, 'segmento_id');
+        return $this->belongsTo(Segment::class, 'segment_id');
     }
 
     public function movements(): HasMany
     {
-        return $this->hasMany(Movement::class, 'contrato_id');
+        return $this->hasMany(Movement::class, 'contract_id');
     }
 
     public function collectionStatus(): HasOne
     {
-        return $this->hasOne(CollectionStatus::class, 'contrato_id');
+        return $this->hasOne(CollectionStatus::class, 'contract_id');
     }
 }

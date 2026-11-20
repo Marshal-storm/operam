@@ -1,114 +1,118 @@
 /** Tipos del Módulo 2 — Catálogos, Instancias, Precios y Promociones. */
 
-export type CatalogSegmentFilter = 'Todos' | 'Operam' | 'Construsync'
+/** Filtro de segmento: "Todos" o el `name` real desde MySQL `segments`. */
+export type CatalogSegmentFilter = string
 
-export type ServiceType = 'recurrente' | 'consumo' | 'unico'
+export type ServiceType = 'recurring' | 'consumption' | 'single'
 
 export type ServiceUnit =
-  | 'usuario'
-  | 'paquete_5_usuarios'
-  | 'timbre'
-  | 'hora'
-  | 'licencia'
-  | 'instancia'
+  | 'user'
+  | 'pack_5_users'
+  | 'stamp'
+  | 'hour'
+  | 'license'
+  | 'instance'
 
-export type InstanceStatus = 'operativa' | 'mantenimiento' | 'suspendida' | 'baja'
+export type InstanceStatus = 'operational' | 'maintenance' | 'suspended' | 'decommissioned'
 
 /** Emisor fiscal / legal (RF-1). Refs = nombres del cofre, nunca secretos en claro. */
 export type Issuer = {
   id: number
-  nombre: string
+  name: string
   rfc: string
   api_url: string | null
   /** Banderas seguras para badges (siempre visibles). */
   has_erp_secret: boolean
   has_merchant_token: boolean
   has_device_token: boolean
-  /** Solo texto completo si JWT tiene puede_editar en config_emisores; si no, máscara o null. */
+  /** Solo texto completo si JWT tiene edit en config_issuers; si no, máscara o null. */
   secret_ref: string | null
   integropay_merchant_token_ref: string | null
   integropay_device_token_ref: string | null
-  activo: boolean
+  is_active: boolean
   /** Conteo informativo de instancias vinculadas (listado paginado). */
-  instancias_vinculadas?: number
+  linked_instances_count?: number
 }
 
-export type BillingFrequency = 'mensual' | 'anual' | 'unico'
+export type BillingFrequency = 'monthly' | 'annual' | 'single'
 
-export type DiscountType = 'porcentaje' | 'monto_fijo' | 'meses_gratis'
+export type DiscountType = 'percentage' | 'fixed_amount' | 'free_months'
+
+export type PromotionAppliesTo = 'recurring' | 'single' | 'both'
 
 export type CatalogService = {
   id: number
-  codigo: string
-  nombre: string
-  descripcion: string | null
-  segmento: 'Operam' | 'Construsync'
-  segmento_id: number
-  emisor_default: string | null
-  emisor_default_id: number | null
-  tipo: ServiceType
-  unidad_medida: ServiceUnit
-  permite_conversion_paquete: boolean
+  code: string
+  name: string
+  description: string | null
+  /** Nombre real desde JOIN `segments` (API: segment_name). */
+  segment_name: string
+  segment_id: number
+  default_issuer: string | null
+  default_issuer_id: number | null
+  service_type: ServiceType
+  unit_of_measure: ServiceUnit
+  allow_package_conversion: boolean
   /** RF-2: producto paquete destino. */
-  servicio_paquete_id: number | null
-  servicio_paquete_codigo?: string | null
-  servicio_paquete_nombre?: string | null
-  factor_paquete: number
-  activo: boolean
+  package_service_id: number | null
+  package_service_code?: string | null
+  package_service_name?: string | null
+  package_factor: number
+  is_active: boolean
 }
 
 export type CatalogInstance = {
   id: number
-  codigo: string
-  nombre: string
-  emisor: string
-  emisor_id: number
-  segmento: 'Operam' | 'Construsync'
-  segmento_id: number
-  url_acceso: string | null
-  ip_servidor: string | null
-  estado: InstanceStatus
+  code: string
+  name: string
+  issuer: string
+  issuer_id: number
+  segment_name: string
+  segment_id: number
+  access_url: string | null
+  server_ip: string | null
+  status: InstanceStatus
 }
 
 export type PriceListItem = {
   id: number
-  servicio_id: number
-  servicio_codigo: string
-  servicio_nombre: string
-  frecuencia: BillingFrequency
-  cantidad_min: number
-  cantidad_max: number | null
+  service_id: number
+  service_code: string
+  service_name: string
+  frequency: BillingFrequency
+  min_quantity: number
+  max_quantity: number | null
   /** DECIMAL como string (RNF-1). */
-  precio_unitario: string
+  unit_price: string
 }
 
 export type PriceList = {
   id: number
-  nombre: string
-  segmento: 'Operam' | 'Construsync'
-  segmento_id: number
-  moneda: 'MXN' | 'USD'
-  es_default: boolean
-  vigente_desde: string
-  vigente_hasta: string | null
-  activa: boolean
+  name: string
+  segment_name: string
+  segment_id: number
+  currency: 'MXN' | 'USD'
+  is_default: boolean
+  valid_from: string
+  valid_until: string | null
+  is_active: boolean
   items: PriceListItem[]
 }
 
 export type Promotion = {
   id: number
-  codigo: string
-  nombre: string
-  segmento: 'Operam' | 'Construsync' | null
-  segmento_id: number | null
-  tipo_descuento: DiscountType
-  valor_descuento: string
-  aplica_a: 'recurrente' | 'unico' | 'ambos'
-  vigente_desde: string
-  vigente_hasta: string | null
-  usos_maximos: number | null
-  usos_actuales: number
-  activa: boolean
+  code: string
+  name: string
+  segment_name: string | null
+  segment_id: number | null
+  discount_type: DiscountType
+  discount_value: string
+  applies_to: PromotionAppliesTo
+  valid_from: string
+  valid_until: string | null
+  max_uses: number | null
+  current_uses: number
+  is_active: boolean
 }
 
 export type CatalogSnapshot = {

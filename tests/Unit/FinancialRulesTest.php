@@ -27,28 +27,28 @@ final class FinancialRulesTest extends TestCase
     public function testOfficialMrrBridgeSeptember2026(): void
     {
         $movements = [
-            ['categoria_mrr' => 'nuevo', 'mrr_delta_mxn' => '21600.00'],
-            ['categoria_mrr' => 'expansion', 'mrr_delta_mxn' => '18200.00'],
-            ['categoria_mrr' => 'ajuste_precio', 'mrr_delta_mxn' => '6100.00'],
-            ['categoria_mrr' => 'cambio_frecuencia', 'mrr_delta_mxn' => '1900.00'],
-            ['categoria_mrr' => 'contraccion', 'mrr_delta_mxn' => '-7400.00'],
-            ['categoria_mrr' => 'churn', 'mrr_delta_mxn' => '-14300.00'],
-            ['categoria_mrr' => 'reactivacion', 'mrr_delta_mxn' => '4100.00'],
-            // transferencia se ignora (delta contable 0.00)
-            ['categoria_mrr' => 'transferencia', 'mrr_delta_mxn' => '0.00'],
+            ['mrr_category' => 'new', 'mrr_delta_mxn' => '21600.00'],
+            ['mrr_category' => 'expansion', 'mrr_delta_mxn' => '18200.00'],
+            ['mrr_category' => 'price_adjustment', 'mrr_delta_mxn' => '6100.00'],
+            ['mrr_category' => 'frequency_change', 'mrr_delta_mxn' => '1900.00'],
+            ['mrr_category' => 'contraction', 'mrr_delta_mxn' => '-7400.00'],
+            ['mrr_category' => 'churn', 'mrr_delta_mxn' => '-14300.00'],
+            ['mrr_category' => 'reactivation', 'mrr_delta_mxn' => '4100.00'],
+            // transfer se ignora (delta contable 0.00)
+            ['mrr_category' => 'transfer', 'mrr_delta_mxn' => '0.00'],
         ];
 
         $result = FinancialCalculator::calculateMrrBridge('1254300.00', $movements);
 
         self::assertSame('1284500.00', $result['mrrEnd']);
         self::assertSame('+30200.00', $result['netChange']);
-        self::assertSame('21600.00', $result['breakdown']['nuevo']);
+        self::assertSame('21600.00', $result['breakdown']['new']);
         self::assertSame('18200.00', $result['breakdown']['expansion']);
-        self::assertSame('6100.00', $result['breakdown']['ajuste_precio']);
-        self::assertSame('1900.00', $result['breakdown']['cambio_frecuencia']);
-        self::assertSame('-7400.00', $result['breakdown']['contraccion']);
+        self::assertSame('6100.00', $result['breakdown']['price_adjustment']);
+        self::assertSame('1900.00', $result['breakdown']['frequency_change']);
+        self::assertSame('-7400.00', $result['breakdown']['contraction']);
         self::assertSame('-14300.00', $result['breakdown']['churn']);
-        self::assertSame('4100.00', $result['breakdown']['reactivacion']);
+        self::assertSame('4100.00', $result['breakdown']['reactivation']);
     }
 
     /**
@@ -68,18 +68,18 @@ final class FinancialRulesTest extends TestCase
 
     /**
      * Test 3 — Reversión inmutable (RNF-3).
-     * Delta +18200.00 → inverso -18200.00; mrr_antes/después intercambiados; suma 0.00.
+     * Delta +18200.00 → inverso -18200.00; mrr_before/after intercambiados; suma 0.00.
      */
     public function testImmutableReversalRnf3(): void
     {
         $original = [
             'id' => 42,
-            'categoria_mrr' => 'expansion',
-            'mrr_antes' => '10000.00',
-            'mrr_despues' => '28200.00',
+            'mrr_category' => 'expansion',
+            'mrr_before' => '10000.00',
+            'mrr_after' => '28200.00',
             'mrr_delta_mxn' => '+18200.00',
-            'cantidad_antes' => '1.00',
-            'cantidad_despues' => '2.00',
+            'quantity_before' => '1.00',
+            'quantity_after' => '2.00',
         ];
 
         $reversal = FinancialCalculator::buildReversalPayload(
@@ -88,11 +88,12 @@ final class FinancialRulesTest extends TestCase
             'Corrección contable de prueba',
         );
 
-        self::assertSame('28200.00', $reversal['mrr_antes']);
-        self::assertSame('10000.00', $reversal['mrr_despues']);
+        self::assertSame('28200.00', $reversal['mrr_before']);
+        self::assertSame('10000.00', $reversal['mrr_after']);
         self::assertSame('-18200.00', $reversal['mrr_delta_mxn']);
-        self::assertSame(42, $reversal['movimiento_revertido_id']);
-        self::assertSame('reversión', $reversal['tipo']);
+        self::assertSame(42, $reversal['reversed_movement_id']);
+        self::assertSame('reversal', $reversal['movement_type']);
+        self::assertSame(1, $reversal['user_id']);
 
         $sum = bcadd(
             FinancialCalculator::normalizeMoney((string) $original['mrr_delta_mxn']),
@@ -121,33 +122,33 @@ final class FinancialRulesTest extends TestCase
         $model->exists = true;
         $model->id = 1;
         $model->forceFill([
-            'motivo' => 'original',
+            'reason' => 'original',
             'mrr_delta_mxn' => '100.00',
         ]);
         $model->syncOriginal();
 
         try {
-            $model->update(['motivo' => 'mutación ilegal']);
+            $model->update(['reason' => 'mutación ilegal']);
             self::fail('Se esperaba RuntimeException al intentar UPDATE.');
         } catch (RuntimeException $exception) {
             self::assertStringContainsString('inmutable', $exception->getMessage());
         }
 
-    $this->expectException(RuntimeException::class);
-    $this->expectExceptionMessageMatches('/inmutable|DELETE/i');
-    $model->delete();
-  }
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/inmutable|DELETE/i');
+        $model->delete();
+    }
 
     /**
-     * Test 5 — Acumulación exacta mrr_mensual con bcadd (RF-10 / RNF-1).
+     * Test 5 — Acumulación exacta monthly_mrr con bcadd (RF-10 / RNF-1).
      * Partiendo de 21600.00 + deltas sucesivos sin pérdida de centavos.
      */
-    public function testMrrMensualAccumulationWithBcadd(): void
+    public function testMonthlyMrrAccumulationWithBcadd(): void
     {
         self::assertSame('2026-09', FinancialCalculator::monthKeyFromEffectiveDate('2026-09-15'));
         self::assertSame('2026-09', FinancialCalculator::monthKeyFromEffectiveDate('2026-09-01'));
 
-        $monto = '0.00';
+        $amount = '0.00';
         $deltas = [
             '21600.00',
             '18200.00',
@@ -159,17 +160,17 @@ final class FinancialRulesTest extends TestCase
         ];
 
         foreach ($deltas as $delta) {
-            $monto = FinancialCalculator::accumulateMrrMensualAmount($monto, $delta);
+            $amount = FinancialCalculator::accumulateMonthlyMrrAmount($amount, $delta);
         }
 
-        self::assertSame('30200.00', $monto);
+        self::assertSame('30200.00', $amount);
 
         // Segunda aplicación del mismo delta (UPSERT acumulativo) no pierde centavos.
-        $afterSecondNuevo = FinancialCalculator::accumulateMrrMensualAmount('21600.00', '21600.00');
-        self::assertSame('43200.00', $afterSecondNuevo);
+        $afterSecondNew = FinancialCalculator::accumulateMonthlyMrrAmount('21600.00', '21600.00');
+        self::assertSame('43200.00', $afterSecondNew);
 
         // Reversión exacta: monto + delta invertido = monto previo.
-        $reversed = FinancialCalculator::accumulateMrrMensualAmount('43200.00', '-21600.00');
+        $reversed = FinancialCalculator::accumulateMonthlyMrrAmount('43200.00', '-21600.00');
         self::assertSame('21600.00', $reversed);
     }
 

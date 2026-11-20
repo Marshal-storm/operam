@@ -2,6 +2,8 @@
 /**
  * Seeder idempotente — cierre septiembre 2026 (Dashboard / Puente de MRR).
  * Segmentos: Operam, Construsync, Piloto, Cibus.
+ * Esquema 100% inglés. Textos visibles (nombres, motivos) permanecen en español.
+ * movements es inmutable (RNF-3): solo INSERT si no existe. Prohibido DELETE/TRUNCATE/UPDATE.
  */
 
 declare(strict_types=1);
@@ -15,257 +17,261 @@ final class September2026DashboardSeeder extends AbstractSeed
     {
         $nowUtc = gmdate('Y-m-d H:i:s');
 
-        $segmentIds = $this->upsertSegmentos([
-            ['nombre' => 'Operam', 'dias_credito_default' => 15],
-            ['nombre' => 'Construsync', 'dias_credito_default' => 30],
-            ['nombre' => 'Piloto', 'dias_credito_default' => 15],
-            ['nombre' => 'Cibus', 'dias_credito_default' => 30],
+        $segmentIds = $this->upsertSegments([
+            ['name' => 'Operam', 'default_credit_days' => 15],
+            ['name' => 'Construsync', 'default_credit_days' => 30],
+            ['name' => 'Piloto', 'default_credit_days' => 15],
+            ['name' => 'Cibus', 'default_credit_days' => 30],
         ], $nowUtc);
 
-        $emisorId = $this->upsertEmisor([
-            'nombre' => 'Operam SA de CV',
+        $issuerId = $this->upsertIssuer([
+            'name' => 'Operam SA de CV',
             'rfc' => 'OPE010101AAA',
             'api_url' => null,
-            'activo' => 1,
+            'is_active' => 1,
         ], $nowUtc);
 
-        $clienteIds = $this->upsertClientes([
+        $clientIds = $this->upsertClients([
             [
                 'key' => 'A',
-                'emisor_id' => $emisorId,
-                'erp_cliente_id' => 'ERP-A',
-                'nombre' => '[Cliente A]',
+                'issuer_id' => $issuerId,
+                'erp_client_id' => 'ERP-A',
+                'name' => '[Cliente A]',
                 'rfc' => 'XAXX010101000',
-                'razon_social' => '[Cliente A] SA de CV',
+                'legal_name' => '[Cliente A] SA de CV',
             ],
             [
                 'key' => 'B',
-                'emisor_id' => $emisorId,
-                'erp_cliente_id' => 'ERP-B',
-                'nombre' => '[Cliente B]',
+                'issuer_id' => $issuerId,
+                'erp_client_id' => 'ERP-B',
+                'name' => '[Cliente B]',
                 'rfc' => 'XAXX010101001',
-                'razon_social' => '[Cliente B] SA de CV',
+                'legal_name' => '[Cliente B] SA de CV',
             ],
             [
                 'key' => 'C',
-                'emisor_id' => $emisorId,
-                'erp_cliente_id' => 'ERP-C',
-                'nombre' => '[Cliente C]',
+                'issuer_id' => $issuerId,
+                'erp_client_id' => 'ERP-C',
+                'name' => '[Cliente C]',
                 'rfc' => 'XAXX010101002',
-                'razon_social' => '[Cliente C] SA de CV',
+                'legal_name' => '[Cliente C] SA de CV',
             ],
             [
                 'key' => 'P',
-                'emisor_id' => $emisorId,
-                'erp_cliente_id' => 'ERP-P',
-                'nombre' => '[Cliente Piloto]',
+                'issuer_id' => $issuerId,
+                'erp_client_id' => 'ERP-P',
+                'name' => '[Cliente Piloto]',
                 'rfc' => 'XAXX010101003',
-                'razon_social' => '[Cliente Piloto] SA de CV',
+                'legal_name' => '[Cliente Piloto] SA de CV',
             ],
             [
                 'key' => 'Z',
-                'emisor_id' => $emisorId,
-                'erp_cliente_id' => 'ERP-Z',
-                'nombre' => '[Cliente Cibus]',
+                'issuer_id' => $issuerId,
+                'erp_client_id' => 'ERP-Z',
+                'name' => '[Cliente Cibus]',
                 'rfc' => 'XAXX010101004',
-                'razon_social' => '[Cliente Cibus] SA de CV',
+                'legal_name' => '[Cliente Cibus] SA de CV',
             ],
         ], $nowUtc);
 
-        $contratoIds = $this->upsertContratos([
+        $contractIds = $this->upsertContracts([
             [
                 'folio' => 'CT-0412',
-                'cliente_id' => $clienteIds['A'],
-                'segmento_id' => $segmentIds['Operam'],
-                'fecha_aniversario' => '2026-03-24',
-                'proximo_corte' => '2026-10-24',
-                'estado' => 'activo',
+                'client_id' => $clientIds['A'],
+                'segment_id' => $segmentIds['Operam'],
+                'anniversary_date' => '2026-03-24',
+                'next_cutoff_date' => '2026-10-24',
+                'status' => 'active',
             ],
             [
                 'folio' => 'CT-0598',
-                'cliente_id' => $clienteIds['B'],
-                'segmento_id' => $segmentIds['Construsync'],
-                'fecha_aniversario' => '2026-09-23',
-                'proximo_corte' => '2026-10-23',
-                'estado' => 'activo',
+                'client_id' => $clientIds['B'],
+                'segment_id' => $segmentIds['Construsync'],
+                'anniversary_date' => '2026-09-23',
+                'next_cutoff_date' => '2026-10-23',
+                'status' => 'active',
             ],
             [
                 'folio' => 'CT-0217',
-                'cliente_id' => $clienteIds['C'],
-                'segmento_id' => $segmentIds['Operam'],
-                'fecha_aniversario' => '2025-09-22',
-                'proximo_corte' => null,
-                'estado' => 'suspendido',
+                'client_id' => $clientIds['C'],
+                'segment_id' => $segmentIds['Operam'],
+                'anniversary_date' => '2025-09-22',
+                'next_cutoff_date' => null,
+                'status' => 'suspended',
             ],
             [
                 'folio' => 'CT-0701',
-                'cliente_id' => $clienteIds['P'],
-                'segmento_id' => $segmentIds['Piloto'],
-                'fecha_aniversario' => '2026-01-10',
-                'proximo_corte' => '2026-10-10',
-                'estado' => 'activo',
+                'client_id' => $clientIds['P'],
+                'segment_id' => $segmentIds['Piloto'],
+                'anniversary_date' => '2026-01-10',
+                'next_cutoff_date' => '2026-10-10',
+                'status' => 'active',
             ],
             [
                 'folio' => 'CT-0802',
-                'cliente_id' => $clienteIds['Z'],
-                'segmento_id' => $segmentIds['Cibus'],
-                'fecha_aniversario' => '2026-05-05',
-                'proximo_corte' => '2026-10-05',
-                'estado' => 'activo',
+                'client_id' => $clientIds['Z'],
+                'segment_id' => $segmentIds['Cibus'],
+                'anniversary_date' => '2026-05-05',
+                'next_cutoff_date' => '2026-10-05',
+                'status' => 'active',
             ],
         ], $nowUtc);
 
-        $this->upsertMovimientos([
+        // movement_type es string (no ENUM). Códigos en inglés; el motivo visible sigue en español.
+        // quantity_change = cambio de cantidad; activation = alta; suspension = suspensión.
+        $this->insertMovementsIfMissing([
             [
-                'contrato_id' => $contratoIds['CT-0412'],
-                'tipo' => 'cambio_cantidad',
-                'categoria_mrr' => 'expansion',
-                'fecha_efectiva' => '2026-09-24',
-                'cantidad_antes' => '8.00',
-                'cantidad_despues' => '10.00',
-                'mrr_antes' => '1512.50',
-                'mrr_despues' => '1815.00',
+                'contract_id' => $contractIds['CT-0412'],
+                'movement_type' => 'quantity_change',
+                'mrr_category' => 'expansion',
+                'effective_date' => '2026-09-24',
+                'quantity_before' => '8.00',
+                'quantity_after' => '10.00',
+                'mrr_before' => '1512.50',
+                'mrr_after' => '1815.00',
                 'mrr_delta_mxn' => '302.50',
-                'motivo' => 'Alta de puestos adicionales',
+                'reason' => 'Alta de puestos adicionales',
             ],
             [
-                'contrato_id' => $contratoIds['CT-0598'],
-                'tipo' => 'alta',
-                'categoria_mrr' => 'nuevo',
-                'fecha_efectiva' => '2026-09-23',
-                'cantidad_antes' => '0.00',
-                'cantidad_despues' => '1.00',
-                'mrr_antes' => '0.00',
-                'mrr_despues' => '8900.00',
+                'contract_id' => $contractIds['CT-0598'],
+                'movement_type' => 'activation',
+                'mrr_category' => 'new',
+                'effective_date' => '2026-09-23',
+                'quantity_before' => '0.00',
+                'quantity_after' => '1.00',
+                'mrr_before' => '0.00',
+                'mrr_after' => '8900.00',
                 'mrr_delta_mxn' => '8900.00',
-                'motivo' => 'Alta comercial',
+                'reason' => 'Alta comercial',
             ],
             [
-                'contrato_id' => $contratoIds['CT-0217'],
-                'tipo' => 'suspension',
-                'categoria_mrr' => 'churn',
-                'fecha_efectiva' => '2026-09-22',
-                'cantidad_antes' => '1.00',
-                'cantidad_despues' => '0.00',
-                'mrr_antes' => '2450.00',
-                'mrr_despues' => '0.00',
+                'contract_id' => $contractIds['CT-0217'],
+                'movement_type' => 'suspension',
+                'mrr_category' => 'churn',
+                'effective_date' => '2026-09-22',
+                'quantity_before' => '1.00',
+                'quantity_after' => '0.00',
+                'mrr_before' => '2450.00',
+                'mrr_after' => '0.00',
                 'mrr_delta_mxn' => '-2450.00',
-                'motivo' => 'Suspensión automática por mora',
+                'reason' => 'Suspensión automática por mora',
             ],
             [
-                'contrato_id' => $contratoIds['CT-0701'],
-                'tipo' => 'alta',
-                'categoria_mrr' => 'nuevo',
-                'fecha_efectiva' => '2026-09-15',
-                'cantidad_antes' => '0.00',
-                'cantidad_despues' => '1.00',
-                'mrr_antes' => '0.00',
-                'mrr_despues' => '3200.00',
+                'contract_id' => $contractIds['CT-0701'],
+                'movement_type' => 'activation',
+                'mrr_category' => 'new',
+                'effective_date' => '2026-09-15',
+                'quantity_before' => '0.00',
+                'quantity_after' => '1.00',
+                'mrr_before' => '0.00',
+                'mrr_after' => '3200.00',
                 'mrr_delta_mxn' => '3200.00',
-                'motivo' => 'Alta Piloto septiembre',
+                'reason' => 'Alta Piloto septiembre',
             ],
             [
-                'contrato_id' => $contratoIds['CT-0802'],
-                'tipo' => 'cambio_cantidad',
-                'categoria_mrr' => 'expansion',
-                'fecha_efectiva' => '2026-09-12',
-                'cantidad_antes' => '2.00',
-                'cantidad_despues' => '3.00',
-                'mrr_antes' => '4500.00',
-                'mrr_despues' => '6750.00',
+                'contract_id' => $contractIds['CT-0802'],
+                'movement_type' => 'quantity_change',
+                'mrr_category' => 'expansion',
+                'effective_date' => '2026-09-12',
+                'quantity_before' => '2.00',
+                'quantity_after' => '3.00',
+                'mrr_before' => '4500.00',
+                'mrr_after' => '6750.00',
                 'mrr_delta_mxn' => '2250.00',
-                'motivo' => 'Expansión Cibus',
+                'reason' => 'Expansión Cibus',
             ],
         ], $nowUtc);
 
-        $this->upsertCobranza([
+        $this->upsertCollectionStatuses([
             [
-                'contrato_id' => $contratoIds['CT-0412'],
-                'saldo_vencido' => '0.00',
-                'dias_vencido' => 0,
-                'nivel_aviso' => 0,
-                'suspendido' => 0,
+                'contract_id' => $contractIds['CT-0412'],
+                'overdue_balance' => '0.00',
+                'overdue_days' => 0,
+                'notice_level' => 0,
+                'is_suspended' => 0,
             ],
             [
-                'contrato_id' => $contratoIds['CT-0598'],
-                'saldo_vencido' => '0.00',
-                'dias_vencido' => 0,
-                'nivel_aviso' => 0,
-                'suspendido' => 0,
+                'contract_id' => $contractIds['CT-0598'],
+                'overdue_balance' => '0.00',
+                'overdue_days' => 0,
+                'notice_level' => 0,
+                'is_suspended' => 0,
             ],
             [
-                'contrato_id' => $contratoIds['CT-0217'],
-                'saldo_vencido' => '2450.00',
-                'dias_vencido' => 95,
-                'nivel_aviso' => 4,
-                'suspendido' => 1,
+                'contract_id' => $contractIds['CT-0217'],
+                'overdue_balance' => '2450.00',
+                'overdue_days' => 95,
+                'notice_level' => 4,
+                'is_suspended' => 1,
             ],
             [
-                'contrato_id' => $contratoIds['CT-0701'],
-                'saldo_vencido' => '0.00',
-                'dias_vencido' => 0,
-                'nivel_aviso' => 0,
-                'suspendido' => 0,
+                'contract_id' => $contractIds['CT-0701'],
+                'overdue_balance' => '0.00',
+                'overdue_days' => 0,
+                'notice_level' => 0,
+                'is_suspended' => 0,
             ],
             [
-                'contrato_id' => $contratoIds['CT-0802'],
-                'saldo_vencido' => '1200.00',
-                'dias_vencido' => 18,
-                'nivel_aviso' => 1,
-                'suspendido' => 0,
+                'contract_id' => $contractIds['CT-0802'],
+                'overdue_balance' => '1200.00',
+                'overdue_days' => 18,
+                'notice_level' => 1,
+                'is_suspended' => 0,
             ],
         ], $nowUtc);
 
         // Puente de MRR sep-2026 por segmento (DECIMAL exacto).
+        // Categorías ENUM en inglés: start, new, expansion, price_adjustment,
+        // frequency_change, contraction, churn, reactivation, end.
         $bridgeBySegment = [
             'Operam' => [
-                'inicio' => '780000.00',
-                'nuevo' => '14000.00',
+                'start' => '780000.00',
+                'new' => '14000.00',
                 'expansion' => '11000.00',
-                'ajuste_precio' => '4000.00',
-                'cambio_frecuencia' => '1200.00',
-                'contraccion' => '-4500.00',
+                'price_adjustment' => '4000.00',
+                'frequency_change' => '1200.00',
+                'contraction' => '-4500.00',
                 'churn' => '-9000.00',
-                'reactivacion' => '2500.00',
-                'fin' => '799200.00',
+                'reactivation' => '2500.00',
+                'end' => '799200.00',
             ],
             'Construsync' => [
-                'inicio' => '474300.00',
-                'nuevo' => '7600.00',
+                'start' => '474300.00',
+                'new' => '7600.00',
                 'expansion' => '7200.00',
-                'ajuste_precio' => '2100.00',
-                'cambio_frecuencia' => '700.00',
-                'contraccion' => '-2900.00',
+                'price_adjustment' => '2100.00',
+                'frequency_change' => '700.00',
+                'contraction' => '-2900.00',
                 'churn' => '-5300.00',
-                'reactivacion' => '1600.00',
-                'fin' => '485300.00',
+                'reactivation' => '1600.00',
+                'end' => '485300.00',
             ],
             'Piloto' => [
-                'inicio' => '85000.00',
-                'nuevo' => '3200.00',
+                'start' => '85000.00',
+                'new' => '3200.00',
                 'expansion' => '1500.00',
-                'ajuste_precio' => '0.00',
-                'cambio_frecuencia' => '0.00',
-                'contraccion' => '-800.00',
+                'price_adjustment' => '0.00',
+                'frequency_change' => '0.00',
+                'contraction' => '-800.00',
                 'churn' => '-1200.00',
-                'reactivacion' => '400.00',
-                'fin' => '88100.00',
+                'reactivation' => '400.00',
+                'end' => '88100.00',
             ],
             'Cibus' => [
-                'inicio' => '120000.00',
-                'nuevo' => '4500.00',
+                'start' => '120000.00',
+                'new' => '4500.00',
                 'expansion' => '2250.00',
-                'ajuste_precio' => '500.00',
-                'cambio_frecuencia' => '0.00',
-                'contraccion' => '-900.00',
+                'price_adjustment' => '500.00',
+                'frequency_change' => '0.00',
+                'contraction' => '-900.00',
                 'churn' => '-2100.00',
-                'reactivacion' => '700.00',
-                'fin' => '124950.00',
+                'reactivation' => '700.00',
+                'end' => '124950.00',
             ],
         ];
 
         $this->assertBridgeBalances($bridgeBySegment);
-        $this->replaceMrrMensual('2026-09', $bridgeBySegment, $segmentIds, $emisorId, $nowUtc);
+        $this->replaceMonthlyMrr('2026-09', $bridgeBySegment, $segmentIds, $issuerId, $nowUtc);
     }
 
     /**
@@ -275,40 +281,51 @@ final class September2026DashboardSeeder extends AbstractSeed
      */
     private function assertBridgeBalances(array $bridgeBySegment): void
     {
+        $deltaKeys = [
+            'new',
+            'expansion',
+            'price_adjustment',
+            'frequency_change',
+            'contraction',
+            'churn',
+            'reactivation',
+        ];
+
         foreach ($bridgeBySegment as $segmentName => $categories) {
-            $total = Money::of($categories['inicio']);
-            foreach (['nuevo', 'expansion', 'ajuste_precio', 'cambio_frecuencia', 'contraccion', 'churn', 'reactivacion'] as $key) {
+            $total = Money::of($categories['start']);
+            foreach ($deltaKeys as $key) {
                 $total = $total->plus(Money::of($categories[$key]));
             }
 
-            if ($total->toDecimalString() !== Money::of($categories['fin'])->toDecimalString()) {
+            if ($total->toDecimalString() !== Money::of($categories['end'])->toDecimalString()) {
                 throw new RuntimeException(
-                    "Puente MRR inválido para {$segmentName}: acumulado {$total->toDecimalString()} != fin {$categories['fin']}"
+                    "Puente MRR inválido para {$segmentName}: acumulado {$total->toDecimalString()} != fin {$categories['end']}"
                 );
             }
         }
     }
 
     /**
-     * @param array<int, array{nombre:string,dias_credito_default:int}> $rows
-     * @return array<string,int>
+     * @param array<int, array{name:string,default_credit_days:int}> $rows
+     * @return array<string, int>
      */
-    private function upsertSegmentos(array $rows, string $nowUtc): array
+    private function upsertSegments(array $rows, string $nowUtc): array
     {
         $ids = [];
-        $table = $this->table('segmento');
+        $table = $this->table('segments');
 
         foreach ($rows as $row) {
             $existing = $this->fetchRow(
-                sprintf("SELECT id FROM segmento WHERE nombre = '%s'", $this->quote($row['nombre']))
+                sprintf("SELECT id FROM segments WHERE name = '%s'", $this->quote($row['name']))
             );
 
             if ($existing) {
-                $ids[$row['nombre']] = (int) $existing['id'];
+                $ids[$row['name']] = (int) $existing['id'];
                 // Mantiene alineados los defaults RF-1 (p. ej. Operam 15 / Construsync 30).
+                // usd_exchange_rate no se pisa: conserva el tipo de cambio ya capturado.
                 $this->execute(sprintf(
-                    "UPDATE segmento SET dias_credito_default = %d, updated_at = '%s' WHERE id = %d",
-                    (int) $row['dias_credito_default'],
+                    "UPDATE segments SET default_credit_days = %d, updated_at = '%s' WHERE id = %d",
+                    (int) $row['default_credit_days'],
                     $this->quote($nowUtc),
                     (int) $existing['id'],
                 ));
@@ -316,65 +333,65 @@ final class September2026DashboardSeeder extends AbstractSeed
             }
 
             $table->insert([
-                'nombre' => $row['nombre'],
-                'dias_credito_default' => $row['dias_credito_default'],
+                'name' => $row['name'],
+                'default_credit_days' => $row['default_credit_days'],
                 'created_at' => $nowUtc,
                 'updated_at' => $nowUtc,
             ])->saveData();
 
             $created = $this->fetchRow(
-                sprintf("SELECT id FROM segmento WHERE nombre = '%s'", $this->quote($row['nombre']))
+                sprintf("SELECT id FROM segments WHERE name = '%s'", $this->quote($row['name']))
             );
-            $ids[$row['nombre']] = (int) $created['id'];
+            $ids[$row['name']] = (int) $created['id'];
         }
 
         return $ids;
     }
 
     /**
-     * @param array{nombre:string,rfc:string,api_url:?string,activo:int} $row
+     * @param array{name:string,rfc:string,api_url:?string,is_active:int} $row
      */
-    private function upsertEmisor(array $row, string $nowUtc): int
+    private function upsertIssuer(array $row, string $nowUtc): int
     {
         $existing = $this->fetchRow(
-            sprintf("SELECT id FROM emisor WHERE rfc = '%s'", $this->quote($row['rfc']))
+            sprintf("SELECT id FROM issuers WHERE rfc = '%s'", $this->quote($row['rfc']))
         );
 
         if ($existing) {
             return (int) $existing['id'];
         }
 
-        $this->table('emisor')->insert([
-            'nombre' => $row['nombre'],
+        $this->table('issuers')->insert([
+            'name' => $row['name'],
             'rfc' => $row['rfc'],
             'api_url' => $row['api_url'],
-            'activo' => $row['activo'],
+            'is_active' => $row['is_active'],
             'created_at' => $nowUtc,
             'updated_at' => $nowUtc,
         ])->saveData();
 
         $created = $this->fetchRow(
-            sprintf("SELECT id FROM emisor WHERE rfc = '%s'", $this->quote($row['rfc']))
+            sprintf("SELECT id FROM issuers WHERE rfc = '%s'", $this->quote($row['rfc']))
         );
 
         return (int) $created['id'];
     }
 
     /**
-     * @param array<int, array<string,mixed>> $rows
-     * @return array<string,int>
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<string, int>
      */
-    private function upsertClientes(array $rows, string $nowUtc): array
+    private function upsertClients(array $rows, string $nowUtc): array
     {
         $ids = [];
-        $table = $this->table('cliente');
+        $table = $this->table('clients');
 
         foreach ($rows as $row) {
             $key = (string) $row['key'];
             $existing = $this->fetchRow(
                 sprintf(
-                    "SELECT id FROM cliente WHERE erp_cliente_id = '%s'",
-                    $this->quote((string) $row['erp_cliente_id'])
+                    "SELECT id FROM clients WHERE erp_client_id = '%s'",
+                    $this->quote((string) $row['erp_client_id'])
                 )
             );
 
@@ -384,22 +401,22 @@ final class September2026DashboardSeeder extends AbstractSeed
             }
 
             $table->insert([
-                'emisor_id' => $row['emisor_id'],
-                'erp_cliente_id' => $row['erp_cliente_id'],
-                'nombre' => $row['nombre'],
+                'issuer_id' => $row['issuer_id'],
+                'erp_client_id' => $row['erp_client_id'],
+                'name' => $row['name'],
                 'rfc' => $row['rfc'],
-                'razon_social' => $row['razon_social'],
-                'dias_credito' => 30,
-                'timbrar_al_emitir' => 1,
-                'excluir_suspension' => 0,
+                'legal_name' => $row['legal_name'],
+                'credit_days' => 30,
+                'stamp_on_issue' => 1,
+                'exclude_suspension' => 0,
                 'created_at' => $nowUtc,
                 'updated_at' => $nowUtc,
             ])->saveData();
 
             $created = $this->fetchRow(
                 sprintf(
-                    "SELECT id FROM cliente WHERE erp_cliente_id = '%s'",
-                    $this->quote((string) $row['erp_cliente_id'])
+                    "SELECT id FROM clients WHERE erp_client_id = '%s'",
+                    $this->quote((string) $row['erp_client_id'])
                 )
             );
             $ids[$key] = (int) $created['id'];
@@ -409,18 +426,18 @@ final class September2026DashboardSeeder extends AbstractSeed
     }
 
     /**
-     * @param array<int, array<string,mixed>> $rows
-     * @return array<string,int>
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<string, int>
      */
-    private function upsertContratos(array $rows, string $nowUtc): array
+    private function upsertContracts(array $rows, string $nowUtc): array
     {
         $ids = [];
-        $table = $this->table('contrato');
+        $table = $this->table('contracts');
 
         foreach ($rows as $row) {
             $folio = (string) $row['folio'];
             $existing = $this->fetchRow(
-                sprintf("SELECT id FROM contrato WHERE folio = '%s'", $this->quote($folio))
+                sprintf("SELECT id FROM contracts WHERE folio = '%s'", $this->quote($folio))
             );
 
             if ($existing) {
@@ -430,21 +447,21 @@ final class September2026DashboardSeeder extends AbstractSeed
 
             $table->insert([
                 'folio' => $folio,
-                'cliente_id' => $row['cliente_id'],
-                'segmento_id' => $row['segmento_id'],
-                'frecuencia' => 'mensual',
-                'fecha_aniversario' => $row['fecha_aniversario'],
-                'moneda' => 'MXN',
-                'dias_credito' => 30,
-                'timbrar_al_emitir' => 1,
-                'estado' => $row['estado'],
-                'proximo_corte' => $row['proximo_corte'],
+                'client_id' => $row['client_id'],
+                'segment_id' => $row['segment_id'],
+                'frequency' => 'monthly',
+                'anniversary_date' => $row['anniversary_date'],
+                'currency' => 'MXN',
+                'credit_days' => 30,
+                'stamp_on_issue' => 1,
+                'status' => $row['status'],
+                'next_cutoff_date' => $row['next_cutoff_date'],
                 'created_at' => $nowUtc,
                 'updated_at' => $nowUtc,
             ])->saveData();
 
             $created = $this->fetchRow(
-                sprintf("SELECT id FROM contrato WHERE folio = '%s'", $this->quote($folio))
+                sprintf("SELECT id FROM contracts WHERE folio = '%s'", $this->quote($folio))
             );
             $ids[$folio] = (int) $created['id'];
         }
@@ -453,22 +470,21 @@ final class September2026DashboardSeeder extends AbstractSeed
     }
 
     /**
-     * @param array<int, array<string,mixed>> $rows
+     * Idempotencia pura RNF-3: solo INSERT si no existe la misma huella.
+     * Prohibido DELETE, TRUNCATE o UPDATE sobre `movements` (triggers + bitácora inmutable).
+     *
+     * @param array<int, array<string, mixed>> $rows
      */
-    /**
-     * Idempotencia pura RNF-3: solo INSERT si no existe.
-     * Prohibido DELETE/TRUNCATE/UPDATE sobre `movimiento` (triggers + bitácora inmutable).
-     */
-    private function upsertMovimientos(array $rows, string $nowUtc): void
+    private function insertMovementsIfMissing(array $rows, string $nowUtc): void
     {
-        $table = $this->table('movimiento');
+        $table = $this->table('movements');
 
         foreach ($rows as $row) {
             $existing = $this->fetchRow(sprintf(
-                "SELECT id FROM movimiento WHERE contrato_id = %d AND categoria_mrr = '%s' AND fecha_efectiva = '%s' AND mrr_delta_mxn = '%s' LIMIT 1",
-                (int) $row['contrato_id'],
-                $this->quote((string) $row['categoria_mrr']),
-                $this->quote((string) $row['fecha_efectiva']),
+                "SELECT id FROM movements WHERE contract_id = %d AND mrr_category = '%s' AND effective_date = '%s' AND mrr_delta_mxn = '%s' LIMIT 1",
+                (int) $row['contract_id'],
+                $this->quote((string) $row['mrr_category']),
+                $this->quote((string) $row['effective_date']),
                 $this->quote((string) $row['mrr_delta_mxn'])
             ));
 
@@ -477,38 +493,38 @@ final class September2026DashboardSeeder extends AbstractSeed
             }
 
             $table->insert([
-                'contrato_id' => $row['contrato_id'],
-                'contrato_linea_id' => null,
-                'servicio_id' => null,
-                'tipo' => $row['tipo'],
-                'categoria_mrr' => $row['categoria_mrr'],
-                'fecha_efectiva' => $row['fecha_efectiva'],
-                'cantidad_antes' => $row['cantidad_antes'],
-                'cantidad_despues' => $row['cantidad_despues'],
-                'mrr_antes' => $row['mrr_antes'],
-                'mrr_despues' => $row['mrr_despues'],
+                'contract_id' => $row['contract_id'],
+                'contract_line_id' => null,
+                'service_id' => null,
+                'movement_type' => $row['movement_type'],
+                'mrr_category' => $row['mrr_category'],
+                'effective_date' => $row['effective_date'],
+                'quantity_before' => $row['quantity_before'],
+                'quantity_after' => $row['quantity_after'],
+                'mrr_before' => $row['mrr_before'],
+                'mrr_after' => $row['mrr_after'],
                 'mrr_delta_mxn' => $row['mrr_delta_mxn'],
-                'tipo_cambio' => '1.000000',
-                'usuario_id' => null,
-                'solicitud_id' => null,
-                'motivo' => $row['motivo'],
-                'con_excepcion' => 0,
+                'exchange_rate' => '1.000000',
+                'user_id' => null,
+                'request_id' => null,
+                'reason' => $row['reason'],
+                'has_exception' => 0,
                 'created_at' => $nowUtc,
             ])->saveData();
         }
     }
 
     /**
-     * @param array<int, array<string,mixed>> $rows
+     * @param array<int, array<string, mixed>> $rows
      */
-    private function upsertCobranza(array $rows, string $nowUtc): void
+    private function upsertCollectionStatuses(array $rows, string $nowUtc): void
     {
-        $table = $this->table('cobranza_estado');
+        $table = $this->table('collection_statuses');
 
         foreach ($rows as $row) {
             $existing = $this->fetchRow(sprintf(
-                'SELECT contrato_id FROM cobranza_estado WHERE contrato_id = %d',
-                (int) $row['contrato_id']
+                'SELECT contract_id FROM collection_statuses WHERE contract_id = %d',
+                (int) $row['contract_id']
             ));
 
             if ($existing) {
@@ -516,45 +532,46 @@ final class September2026DashboardSeeder extends AbstractSeed
             }
 
             $table->insert([
-                'contrato_id' => $row['contrato_id'],
-                'saldo_vencido' => $row['saldo_vencido'],
-                'dias_vencido' => $row['dias_vencido'],
-                'nivel_aviso' => $row['nivel_aviso'],
-                'suspendido' => $row['suspendido'],
-                'actualizado' => $nowUtc,
+                'contract_id' => $row['contract_id'],
+                'overdue_balance' => $row['overdue_balance'],
+                'overdue_days' => $row['overdue_days'],
+                'notice_level' => $row['notice_level'],
+                'is_suspended' => $row['is_suspended'],
+                'updated_at' => $nowUtc,
             ])->saveData();
         }
     }
 
     /**
      * Reemplaza de forma idempotente el agregado MRR del mes indicado.
+     * `month` es palabra reservada de MySQL: se cita en SQL crudo.
      *
      * @param array<string, array<string, string>> $bridgeBySegment
      * @param array<string, int> $segmentIds
      */
-    private function replaceMrrMensual(
-        string $mes,
+    private function replaceMonthlyMrr(
+        string $month,
         array $bridgeBySegment,
         array $segmentIds,
-        int $emisorId,
+        int $issuerId,
         string $nowUtc
     ): void {
         $this->execute(sprintf(
-            "DELETE FROM mrr_mensual WHERE mes = '%s'",
-            $this->quote($mes)
+            "DELETE FROM monthly_mrr WHERE `month` = '%s'",
+            $this->quote($month)
         ));
 
         $rows = [];
         foreach ($bridgeBySegment as $segmentName => $categories) {
             $segmentId = $segmentIds[$segmentName];
-            foreach ($categories as $categoria => $monto) {
+            foreach ($categories as $category => $amount) {
                 $rows[] = [
-                    'mes' => $mes,
-                    'segmento_id' => $segmentId,
-                    'emisor_id' => $emisorId,
-                    'servicio_id' => null,
-                    'categoria' => $categoria,
-                    'monto' => $monto,
+                    'month' => $month,
+                    'segment_id' => $segmentId,
+                    'issuer_id' => $issuerId,
+                    'service_id' => null,
+                    'category' => $category,
+                    'amount' => $amount,
                     'created_at' => $nowUtc,
                     'updated_at' => $nowUtc,
                 ];
@@ -562,7 +579,7 @@ final class September2026DashboardSeeder extends AbstractSeed
         }
 
         if ($rows !== []) {
-            $this->table('mrr_mensual')->insert($rows)->saveData();
+            $this->table('monthly_mrr')->insert($rows)->saveData();
         }
     }
 

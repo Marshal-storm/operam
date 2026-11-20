@@ -13,9 +13,9 @@ use System\Support\FinancialCalculator;
 use Throwable;
 
 /**
- * Servicio de bitácora `movimiento` (RNF-3 + RF-10).
+ * Servicio de bitácora `movements` (RNF-3 + RF-10).
  * Solo INSERT y reversiones contables; UPDATE/PATCH/DELETE bloqueados.
- * Cada INSERT sincroniza `mrr_mensual` en la misma transacción (bcadd).
+ * Cada INSERT sincroniza `monthly_mrr` en la misma transacción (bcadd).
  */
 final class MovementsService extends ModelService
 {
@@ -53,23 +53,24 @@ final class MovementsService extends ModelService
     protected function configureFields(): void
     {
         $this->validator
-            ->setField('contrato_id', DataTypes::Integer, true)
-            ->setField('contrato_linea_id', DataTypes::Integer, false)
-            ->setField('servicio_id', DataTypes::Integer, false)
-            ->setField('tipo', DataTypes::String, true)
-            ->setField('categoria_mrr', DataTypes::String, true)
-            ->setField('fecha_efectiva', DataTypes::Date, true)
-            ->setField('cantidad_antes', DataTypes::String, false, '0.00')
-            ->setField('cantidad_despues', DataTypes::String, false, '0.00')
-            ->setField('mrr_antes', DataTypes::String, true)
-            ->setField('mrr_despues', DataTypes::String, true)
+            ->setField('contract_id', DataTypes::Integer, true)
+            ->setField('contract_line_id', DataTypes::Integer, false)
+            ->setField('service_id', DataTypes::Integer, false)
+            ->setField('movement_type', DataTypes::String, true)
+            ->setField('mrr_category', DataTypes::String, true)
+            ->setField('effective_date', DataTypes::Date, true)
+            ->setField('quantity_before', DataTypes::String, false, '0.00')
+            ->setField('quantity_after', DataTypes::String, false, '0.00')
+            ->setField('mrr_before', DataTypes::String, true)
+            ->setField('mrr_after', DataTypes::String, true)
             ->setField('mrr_delta_mxn', DataTypes::String, false)
-            ->setField('tipo_cambio', DataTypes::String, false, '1.000000')
-            ->setField('usuario_id', DataTypes::Integer, false)
-            ->setField('solicitud_id', DataTypes::Integer, false)
-            ->setField('motivo', DataTypes::String, false)
-            ->setField('con_excepcion', DataTypes::Boolean, false, false)
-            ->setField('movimiento_revertido_id', DataTypes::Integer, false);
+            ->setField('exchange_rate', DataTypes::String, false, '1.000000')
+            ->setField('user_id', DataTypes::Integer, false)
+            ->setField('request_id', DataTypes::Integer, false)
+            ->setField('reason', DataTypes::String, false)
+            ->setField('has_exception', DataTypes::Boolean, false, false)
+            ->setField('excepted_policy', DataTypes::String, false)
+            ->setField('reversed_movement_id', DataTypes::Integer, false);
     }
 
     public function handle(Context $context): Result
@@ -83,7 +84,7 @@ final class MovementsService extends ModelService
         }
 
         if ($method === 'GET' && $id !== null) {
-            $row = Capsule::table('movimiento')->where('id', (int) $id)->first();
+            $row = Capsule::table('movements')->where('id', (int) $id)->first();
             if ($row === null) {
                 return Result::fail('Movimiento no encontrado.', 404);
             }
@@ -94,10 +95,10 @@ final class MovementsService extends ModelService
         // POST /api/movements con reversal_of → reversión contable.
         if ($method === 'POST' && $id === null && isset($request['reversal_of'])) {
             $auth = $context->getData('auth', []);
-            $userId = (int) ($request['usuario_id'] ?? $auth['user_id'] ?? 0);
-            $reason = trim((string) ($request['motivo'] ?? $request['reason'] ?? 'Reversión contable'));
+            $userId = (int) ($request['user_id'] ?? $auth['user_id'] ?? 0);
+            $reason = trim((string) ($request['reason'] ?? 'Reversión contable'));
             if ($userId < 1) {
-                return Result::fail('usuario_id es requerido para la reversión.', 422);
+                return Result::fail('user_id es requerido para la reversión.', 422);
             }
 
             return $this->createReversalMovement((int) $request['reversal_of'], $userId, $reason);
@@ -122,7 +123,7 @@ final class MovementsService extends ModelService
     /**
      * Inserta un movimiento inverso que referencia al original (RNF-3).
      * Invierte mrr_delta_mxn y cantidad/mrr antes↔después con bcmath.
-     * Sincroniza `mrr_mensual` en la misma transacción (RF-10).
+     * Sincroniza `monthly_mrr` en la misma transacción (RF-10).
      */
     public function createReversalMovement(int $originalMovementId, int $userId, string $reason): Result
     {
@@ -130,16 +131,16 @@ final class MovementsService extends ModelService
             return Result::fail('Identificador de movimiento original inválido.', 422);
         }
         if ($userId < 1) {
-            return Result::fail('usuario_id es requerido.', 422);
+            return Result::fail('user_id es requerido.', 422);
         }
 
-        $original = Capsule::table('movimiento')->where('id', $originalMovementId)->first();
+        $original = Capsule::table('movements')->where('id', $originalMovementId)->first();
         if ($original === null) {
             return Result::fail('Movimiento original no encontrado.', 404);
         }
 
-        $already = Capsule::table('movimiento')
-            ->where('movimiento_revertido_id', $originalMovementId)
+        $already = Capsule::table('movements')
+            ->where('reversed_movement_id', $originalMovementId)
             ->exists();
         if ($already) {
             return Result::fail('Este movimiento ya tiene una reversión registrada.', 422);
@@ -149,12 +150,12 @@ final class MovementsService extends ModelService
             $payload = FinancialCalculator::buildReversalPayload(
                 [
                     'id' => (int) $original->id,
-                    'categoria_mrr' => (string) $original->categoria_mrr,
-                    'mrr_antes' => (string) $original->mrr_antes,
-                    'mrr_despues' => (string) $original->mrr_despues,
+                    'mrr_category' => (string) $original->mrr_category,
+                    'mrr_before' => (string) $original->mrr_before,
+                    'mrr_after' => (string) $original->mrr_after,
                     'mrr_delta_mxn' => (string) $original->mrr_delta_mxn,
-                    'cantidad_antes' => (string) $original->cantidad_antes,
-                    'cantidad_despues' => (string) $original->cantidad_despues,
+                    'quantity_before' => (string) $original->quantity_before,
+                    'quantity_after' => (string) $original->quantity_after,
                 ],
                 $userId,
                 $reason,
@@ -163,22 +164,22 @@ final class MovementsService extends ModelService
             return Result::fail($exception->getMessage(), 500);
         }
 
-        $payload['contrato_id'] = (int) $original->contrato_id;
-        $payload['contrato_linea_id'] = $original->contrato_linea_id !== null
-            ? (int) $original->contrato_linea_id
+        $payload['contract_id'] = (int) $original->contract_id;
+        $payload['contract_line_id'] = $original->contract_line_id !== null
+            ? (int) $original->contract_line_id
             : null;
-        $payload['servicio_id'] = $original->servicio_id !== null ? (int) $original->servicio_id : null;
-        $payload['fecha_efectiva'] = (string) $original->fecha_efectiva;
-        $payload['tipo_cambio'] = (string) ($original->tipo_cambio ?? '1.000000');
-        $payload['solicitud_id'] = null;
-        $payload['con_excepcion'] = false;
+        $payload['service_id'] = $original->service_id !== null ? (int) $original->service_id : null;
+        $payload['effective_date'] = (string) $original->effective_date;
+        $payload['exchange_rate'] = (string) ($original->exchange_rate ?? '1.000000');
+        $payload['request_id'] = null;
+        $payload['has_exception'] = false;
         $payload['created_at'] = gmdate('Y-m-d H:i:s');
 
         return $this->insertMovementAndSyncMrr($payload, 'Reversión contable registrada');
     }
 
     /**
-     * INSERT inmutable + UPSERT de `mrr_mensual` en una sola transacción (RF-10 / RNF-1 / RNF-3).
+     * INSERT inmutable + UPSERT de `monthly_mrr` en una sola transacción (RF-10 / RNF-1 / RNF-3).
      *
      * @param array<string, mixed> $payload
      */
@@ -186,9 +187,9 @@ final class MovementsService extends ModelService
     {
         try {
             $row = Capsule::connection()->transaction(function () use ($payload) {
-                $id = Capsule::table('movimiento')->insertGetId($payload);
-                $this->syncMrrMensualFromMovement($payload);
-                $inserted = Capsule::table('movimiento')->where('id', $id)->first();
+                $id = Capsule::table('movements')->insertGetId($payload);
+                $this->syncMonthlyMrrFromMovement($payload);
+                $inserted = Capsule::table('movements')->where('id', $id)->first();
                 if ($inserted === null) {
                     throw new \RuntimeException('No se pudo leer el movimiento insertado.');
                 }
@@ -197,7 +198,7 @@ final class MovementsService extends ModelService
             });
         } catch (Throwable $exception) {
             return Result::fail(
-                'No se pudo registrar el movimiento / sincronizar mrr_mensual: ' . $exception->getMessage(),
+                'No se pudo registrar el movimiento ni sincronizar el MRR mensual: ' . $exception->getMessage(),
                 500,
             );
         }
@@ -206,70 +207,70 @@ final class MovementsService extends ModelService
     }
 
     /**
-     * Actualiza o inserta el acumulado de `mrr_mensual` sumando con bcadd (escala 2).
-     * `mes` = YYYY-MM derivado de fecha_efectiva (corte conceptual YYYY-MM-01).
+     * Actualiza o inserta el acumulado de `monthly_mrr` sumando con bcadd (escala 2).
+     * `month` = YYYY-MM derivado de effective_date (corte conceptual YYYY-MM-01).
      *
      * @param array<string, mixed> $movement
      */
-    private function syncMrrMensualFromMovement(array $movement): void
+    private function syncMonthlyMrrFromMovement(array $movement): void
     {
-        $categoria = (string) ($movement['categoria_mrr'] ?? '');
-        if ($categoria === 'transferencia' || $categoria === '') {
+        $category = (string) ($movement['mrr_category'] ?? '');
+        if ($category === 'transfer' || $category === '') {
             return;
         }
-        if (!in_array($categoria, FinancialCalculator::MRR_BRIDGE_CATEGORIES, true)) {
+        if (!in_array($category, FinancialCalculator::MRR_BRIDGE_CATEGORIES, true)) {
             return;
         }
 
-        $mes = FinancialCalculator::monthKeyFromEffectiveDate((string) $movement['fecha_efectiva']);
+        $month = FinancialCalculator::monthKeyFromEffectiveDate((string) $movement['effective_date']);
         $delta = FinancialCalculator::normalizeMoney((string) ($movement['mrr_delta_mxn'] ?? '0.00'));
         $dims = $this->resolveMrrDimensions(
-            (int) $movement['contrato_id'],
-            isset($movement['servicio_id']) && $movement['servicio_id'] !== null && $movement['servicio_id'] !== ''
-                ? (int) $movement['servicio_id']
+            (int) $movement['contract_id'],
+            isset($movement['service_id']) && $movement['service_id'] !== null && $movement['service_id'] !== ''
+                ? (int) $movement['service_id']
                 : null,
         );
 
-        $query = Capsule::table('mrr_mensual')
-            ->where('mes', $mes)
-            ->where('categoria', $categoria)
-            ->where('segmento_id', $dims['segmento_id']);
+        $query = Capsule::table('monthly_mrr')
+            ->where('month', $month)
+            ->where('category', $category)
+            ->where('segment_id', $dims['segment_id']);
 
-        if ($dims['emisor_id'] === null) {
-            $query->whereNull('emisor_id');
+        if ($dims['issuer_id'] === null) {
+            $query->whereNull('issuer_id');
         } else {
-            $query->where('emisor_id', $dims['emisor_id']);
+            $query->where('issuer_id', $dims['issuer_id']);
         }
 
-        if ($dims['servicio_id'] === null) {
-            $query->whereNull('servicio_id');
+        if ($dims['service_id'] === null) {
+            $query->whereNull('service_id');
         } else {
-            $query->where('servicio_id', $dims['servicio_id']);
+            $query->where('service_id', $dims['service_id']);
         }
 
         $existing = $query->lockForUpdate()->first();
         $nowUtc = gmdate('Y-m-d H:i:s');
 
         if ($existing !== null) {
-            $newMonto = FinancialCalculator::accumulateMrrMensualAmount(
-                (string) $existing->monto,
+            $newAmount = FinancialCalculator::accumulateMonthlyMrrAmount(
+                (string) $existing->amount,
                 $delta,
             );
-            Capsule::table('mrr_mensual')->where('id', (int) $existing->id)->update([
-                'monto' => $newMonto,
+            Capsule::table('monthly_mrr')->where('id', (int) $existing->id)->update([
+                'amount' => $newAmount,
                 'updated_at' => $nowUtc,
             ]);
 
             return;
         }
 
-        Capsule::table('mrr_mensual')->insert([
-            'mes' => $mes,
-            'segmento_id' => $dims['segmento_id'],
-            'emisor_id' => $dims['emisor_id'],
-            'servicio_id' => $dims['servicio_id'],
-            'categoria' => $categoria,
-            'monto' => $delta,
+        Capsule::table('monthly_mrr')->insert([
+            'month' => $month,
+            'segment_id' => $dims['segment_id'],
+            'issuer_id' => $dims['issuer_id'],
+            'service_id' => $dims['service_id'],
+            'category' => $category,
+            'amount' => $delta,
             'created_at' => $nowUtc,
             'updated_at' => $nowUtc,
         ]);
@@ -278,23 +279,23 @@ final class MovementsService extends ModelService
     /**
      * Resuelve dimensiones del agregado desde contrato → cliente.
      *
-     * @return array{segmento_id: int, emisor_id: int|null, servicio_id: int|null}
+     * @return array{segment_id: int, issuer_id: int|null, service_id: int|null}
      */
-    private function resolveMrrDimensions(int $contratoId, ?int $servicioId): array
+    private function resolveMrrDimensions(int $contractId, ?int $serviceId): array
     {
-        $row = Capsule::table('contrato as c')
-            ->leftJoin('cliente as cl', 'cl.id', '=', 'c.cliente_id')
-            ->where('c.id', $contratoId)
-            ->first(['c.segmento_id', 'cl.emisor_id']);
+        $row = Capsule::table('contracts as c')
+            ->leftJoin('clients as cl', 'cl.id', '=', 'c.client_id')
+            ->where('c.id', $contractId)
+            ->first(['c.segment_id', 'cl.issuer_id']);
 
         if ($row === null) {
-            throw new \RuntimeException("Contrato {$contratoId} no encontrado para sincronizar mrr_mensual.");
+            throw new \RuntimeException("Contrato {$contractId} no encontrado para sincronizar monthly_mrr.");
         }
 
         return [
-            'segmento_id' => (int) $row->segmento_id,
-            'emisor_id' => $row->emisor_id !== null ? (int) $row->emisor_id : null,
-            'servicio_id' => $servicioId,
+            'segment_id' => (int) $row->segment_id,
+            'issuer_id' => $row->issuer_id !== null ? (int) $row->issuer_id : null,
+            'service_id' => $serviceId,
         ];
     }
 
@@ -305,13 +306,13 @@ final class MovementsService extends ModelService
     private function listRecent(array $query): array
     {
         $limit = max(1, min(200, (int) ($query['limit'] ?? 50)));
-        $builder = Capsule::table('movimiento')->orderByDesc('id')->limit($limit);
+        $builder = Capsule::table('movements')->orderByDesc('id')->limit($limit);
 
-        if (!empty($query['contrato_id'])) {
-            $builder->where('contrato_id', (int) $query['contrato_id']);
+        if (!empty($query['contract_id'])) {
+            $builder->where('contract_id', (int) $query['contract_id']);
         }
-        if (!empty($query['categoria_mrr'])) {
-            $builder->where('categoria_mrr', (string) $query['categoria_mrr']);
+        if (!empty($query['mrr_category'])) {
+            $builder->where('mrr_category', (string) $query['mrr_category']);
         }
 
         return $builder->get()->map(fn (object $row): array => $this->mapRow($row))->all();
@@ -323,7 +324,7 @@ final class MovementsService extends ModelService
      */
     private function normalizeMoney(array $input): array
     {
-        foreach (['mrr_antes', 'mrr_despues', 'mrr_delta_mxn', 'cantidad_antes', 'cantidad_despues'] as $field) {
+        foreach (['mrr_before', 'mrr_after', 'mrr_delta_mxn', 'quantity_before', 'quantity_after'] as $field) {
             if (!isset($input[$field])) {
                 continue;
             }
@@ -340,12 +341,12 @@ final class MovementsService extends ModelService
         }
 
         if (
-            isset($input['mrr_antes'], $input['mrr_despues'])
+            isset($input['mrr_before'], $input['mrr_after'])
             && (!isset($input['mrr_delta_mxn']) || trim((string) $input['mrr_delta_mxn']) === '')
         ) {
             $input['mrr_delta_mxn'] = bcsub(
-                (string) $input['mrr_despues'],
-                (string) $input['mrr_antes'],
+                (string) $input['mrr_after'],
+                (string) $input['mrr_before'],
                 2,
             );
         }
@@ -360,24 +361,27 @@ final class MovementsService extends ModelService
     {
         return [
             'id' => (int) $row->id,
-            'contrato_id' => (int) $row->contrato_id,
-            'contrato_linea_id' => $row->contrato_linea_id !== null ? (int) $row->contrato_linea_id : null,
-            'servicio_id' => $row->servicio_id !== null ? (int) $row->servicio_id : null,
-            'tipo' => (string) $row->tipo,
-            'categoria_mrr' => (string) $row->categoria_mrr,
-            'fecha_efectiva' => (string) $row->fecha_efectiva,
-            'cantidad_antes' => (string) $row->cantidad_antes,
-            'cantidad_despues' => (string) $row->cantidad_despues,
-            'mrr_antes' => (string) $row->mrr_antes,
-            'mrr_despues' => (string) $row->mrr_despues,
+            'contract_id' => (int) $row->contract_id,
+            'contract_line_id' => $row->contract_line_id !== null ? (int) $row->contract_line_id : null,
+            'service_id' => $row->service_id !== null ? (int) $row->service_id : null,
+            'movement_type' => (string) $row->movement_type,
+            'mrr_category' => (string) $row->mrr_category,
+            'effective_date' => (string) $row->effective_date,
+            'quantity_before' => (string) $row->quantity_before,
+            'quantity_after' => (string) $row->quantity_after,
+            'mrr_before' => (string) $row->mrr_before,
+            'mrr_after' => (string) $row->mrr_after,
             'mrr_delta_mxn' => (string) $row->mrr_delta_mxn,
-            'tipo_cambio' => (string) $row->tipo_cambio,
-            'usuario_id' => $row->usuario_id !== null ? (int) $row->usuario_id : null,
-            'solicitud_id' => $row->solicitud_id !== null ? (int) $row->solicitud_id : null,
-            'motivo' => $row->motivo !== null ? (string) $row->motivo : null,
-            'con_excepcion' => (bool) $row->con_excepcion,
-            'movimiento_revertido_id' => isset($row->movimiento_revertido_id) && $row->movimiento_revertido_id !== null
-                ? (int) $row->movimiento_revertido_id
+            'exchange_rate' => (string) $row->exchange_rate,
+            'user_id' => $row->user_id !== null ? (int) $row->user_id : null,
+            'request_id' => $row->request_id !== null ? (int) $row->request_id : null,
+            'reason' => $row->reason !== null ? (string) $row->reason : null,
+            'has_exception' => (bool) $row->has_exception,
+            'excepted_policy' => isset($row->excepted_policy) && $row->excepted_policy !== null
+                ? (string) $row->excepted_policy
+                : null,
+            'reversed_movement_id' => isset($row->reversed_movement_id) && $row->reversed_movement_id !== null
+                ? (int) $row->reversed_movement_id
                 : null,
             'created_at' => (string) $row->created_at,
         ];

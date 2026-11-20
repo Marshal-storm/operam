@@ -71,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     configureRbacAuth(getToken)
   }, [getToken, logout])
 
-  // Soft-refresh de permisos desde MySQL (config_emisores, etc.) sin cerrar sesión.
+  // Soft-refresh de permisos desde MySQL (config_issuers, etc.) sin cerrar sesión.
   useEffect(() => {
     const token = sessionRef.current?.token
     if (!token || profileSyncDone.current) {

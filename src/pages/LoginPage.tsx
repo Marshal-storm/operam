@@ -3,7 +3,9 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Navigate } from 'react-router-dom'
 import { z } from 'zod'
-import { Button } from '@/components/ui/button'
+import { AppButton } from '@/components/ui/AppButton'
+import { AppCard } from '@/components/ui/AppCard'
+import { AppInput } from '@/components/ui/AppInput'
 import { ThemeToggleSwitch } from '@/components/ui/ThemeToggleSwitch'
 import { useAuth } from '@/context/AuthContext'
 import { useLoadingLock } from '@/context/LoadingLockContext'
@@ -71,6 +73,8 @@ export function LoginPage() {
     }
   }
 
+  const submitting = form.formState.isSubmitting
+
   return (
     <div className="relative flex min-h-svh overflow-hidden bg-[#F8FAFC] text-[#090D16] dark:bg-[#000000] dark:text-white">
       <div className="absolute right-4 top-4 z-20 md:right-6 md:top-6">
@@ -96,11 +100,11 @@ export function LoginPage() {
 
       {/* Columna formulario */}
       <section className="relative flex w-full flex-1 items-center justify-center border-slate-200/70 p-6 dark:border-white/[0.07] md:p-10 lg:w-1/2 lg:border-l">
-        <div
+        <AppCard
           className={cn(
-            'w-full max-w-md rounded-3xl border p-7 backdrop-blur-2xl md:p-8',
+            'w-full max-w-md rounded-3xl p-7 backdrop-blur-2xl md:p-8',
             'border-white bg-white/90 shadow-2xl',
-            'dark:border-white/[0.09] dark:bg-[#111113]/75 dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_20px_80px_rgba(0,0,0,0.65)] dark:backdrop-blur-2xl',
+            'dark:border-white/[0.09] dark:bg-[#111113]/75 dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_20px_80px_rgba(0,0,0,0.65)]',
           )}
         >
           <div className="mb-6 flex flex-col items-center lg:hidden">
@@ -123,11 +127,12 @@ export function LoginPage() {
               >
                 Correo electrónico <span className="text-red-500">*</span>
               </label>
-              <input
+              <AppInput
                 id="email"
                 type="email"
                 autoComplete="username"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none ring-[#0066FF]/40 transition focus:ring-2 dark:border-white/[0.08] dark:bg-white/[0.05] dark:focus:ring-[#0A84FF]/50"
+                error={Boolean(form.formState.errors.email)}
+                className="rounded-2xl px-4 py-3"
                 {...form.register('email')}
               />
               {form.formState.errors.email && (
@@ -144,11 +149,12 @@ export function LoginPage() {
               >
                 Contraseña <span className="text-red-500">*</span>
               </label>
-              <input
+              <AppInput
                 id="password"
                 type="password"
                 autoComplete="current-password"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none ring-[#0066FF]/40 transition focus:ring-2 dark:border-white/[0.08] dark:bg-white/[0.05] dark:focus:ring-[#0A84FF]/50"
+                error={Boolean(form.formState.errors.password)}
+                className="rounded-2xl px-4 py-3"
                 {...form.register('password')}
               />
               {form.formState.errors.password && (
@@ -164,17 +170,18 @@ export function LoginPage() {
               </div>
             )}
 
-            <Button
+            <AppButton
               type="submit"
-              className="w-full rounded-2xl bg-gradient-to-r from-blue-600 to-blue-500 py-3 font-semibold text-white shadow-[0_0_25px_rgba(37,99,235,0.45)] hover:from-blue-500 hover:to-blue-400"
-              disabled={form.formState.isSubmitting || blocked}
+              className="w-full rounded-2xl bg-gradient-to-r from-blue-600 to-blue-500 py-3 font-semibold shadow-[0_0_25px_rgba(37,99,235,0.45)] hover:from-blue-500 hover:to-blue-400"
+              disabled={blocked}
+              isLoading={submitting}
             >
-              {form.formState.isSubmitting ? 'Validando…' : 'Iniciar Sesión'}
-            </Button>
+              {submitting ? 'Validando…' : 'Iniciar Sesión'}
+            </AppButton>
           </form>
 
           <div className="mt-6 space-y-3 border-t border-slate-200/80 pt-4 dark:border-white/[0.07]">
-            <Button
+            <AppButton
               type="button"
               variant="ghost"
               className="w-full text-xs text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/5"
@@ -186,9 +193,9 @@ export function LoginPage() {
               }}
             >
               Autocompletar credenciales de prueba
-            </Button>
+            </AppButton>
           </div>
-        </div>
+        </AppCard>
       </section>
     </div>
   )

@@ -1,26 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Users } from 'lucide-react'
-import { useState } from 'react'
+import { Plus, Users } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
+import { AppBadge } from '@/components/ui/AppBadge'
+import { AppFilterField } from '@/components/ui/AppFilterField'
+import { AppButton } from '@/components/ui/AppButton'
+import { AppCard } from '@/components/ui/AppCard'
+import { AppInput, AppSearchInput } from '@/components/ui/AppInput'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { IosSwitch } from '@/components/ui/IosSwitch'
+  AppModal,
+  AppModalContent,
+  AppModalDescription,
+  AppModalHeader,
+  AppModalTitle,
+} from '@/components/ui/AppModal'
+import { AppSelect } from '@/components/ui/AppSelect'
+import { AppSwitch } from '@/components/ui/AppSwitch'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
-import { StatusPill } from '@/components/ui/StatusPill'
 import { useAuth } from '@/context/AuthContext'
 import { useScreenPreferences } from '@/context/ScreenPreferencesContext'
 import { useToast } from '@/context/ToastContext'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useSegments } from '@/hooks/useSegments'
 import { scheduleCriticalRelogin } from '@/lib/criticalRelogin'
 import { cn } from '@/lib/utils'
-import { fetchSegments } from '@/services/catalogService'
 import {
   createManagedUser,
   fetchManagedUsers,
@@ -44,22 +48,45 @@ export function UsersManagementPage() {
   const [pageSize, setLocalPageSize] = useState(preferredSize)
   const [search, setSearch] = useState('')
   const [rolFilter, setRolFilter] = useState('Todos')
-  const [segmentoFilter, setSegmentoFilter] = useState('Todos')
   const [estadoFilter, setEstadoFilter] = useState('Todos')
+  const {
+    segments,
+    filterOptions,
+    isSegmentLocked,
+    allowedSegment,
+  } = useSegments()
+  const [segmentoFilter, setSegmentoFilter] = useState(
+    isSegmentLocked ? allowedSegment : 'Todos',
+  )
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<ManagedUser | null>(null)
   const [form, setForm] = useState({
-    nombre: '',
+    name: '',
     email: '',
     password: '',
-    rol_id: '',
-    segmento_mode: 'todos' as 'todos' | 'operam' | 'construsync',
-    activo: true,
+    role_id: '',
+    /** 'todos' = alcance global; cualquier otro valor es el id del segmento. */
+    segment_choice: 'todos',
+    is_active: true,
   })
 
   const rolesQuery = useQuery({ queryKey: ['rbac', 'roles'], queryFn: fetchRoles })
-  const segmentsQuery = useQuery({ queryKey: ['segments'], queryFn: fetchSegments })
+
+  useEffect(() => {
+    if (isSegmentLocked) setSegmentoFilter(allowedSegment)
+  }, [isSegmentLocked, allowedSegment])
+
+  const segmentFormOptions = useMemo(
+    () => [
+      { value: 'todos', label: 'Todos' },
+      ...segments.map((segmentOption) => ({
+        value: String(segmentOption.id),
+        label: segmentOption.name,
+      })),
+    ],
+    [segments],
+  )
 
   const usersQuery = useQuery({
     queryKey: [
@@ -77,87 +104,76 @@ export function UsersManagementPage() {
         page,
         per_page: pageSize,
         search: search.trim() || undefined,
-        rol_id: rolFilter === 'Todos' ? undefined : rolFilter,
-        segmento:
-          segmentoFilter === 'Todos'
-            ? undefined
-            : segmentoFilter === 'Todos los segmentos'
-              ? 'sin_segmento'
-              : segmentoFilter,
-        estado:
+        role_id: rolFilter === 'Todos' ? undefined : rolFilter,
+        segment: segmentoFilter === 'Todos' ? undefined : segmentoFilter,
+        status:
           estadoFilter === 'Todos'
             ? undefined
             : estadoFilter === 'Activos'
-              ? 'activos'
-              : 'inactivos',
+              ? 'active'
+              : 'inactive',
       }),
   })
 
   function openCreate() {
-    if (!canCreate('config_usuarios')) return
+    if (!canCreate('config_users')) return
     setEditing(null)
     setForm({
-      nombre: '',
+      name: '',
       email: '',
       password: '',
-      rol_id: String(rolesQuery.data?.[0]?.id ?? ''),
-      segmento_mode: 'todos',
-      activo: true,
+      role_id: String(rolesQuery.data?.[0]?.id ?? ''),
+      segment_choice: 'todos',
+      is_active: true,
     })
     setModalOpen(true)
   }
 
   function openEdit(row: ManagedUser) {
-    if (!canEdit('config_usuarios')) return
-    const mode =
-      row.segmento_nombre === 'Operam'
-        ? 'operam'
-        : row.segmento_nombre === 'Construsync'
-          ? 'construsync'
-          : 'todos'
+    if (!canEdit('config_users')) return
     setEditing(row)
     setForm({
-      nombre: row.nombre,
+      name: row.name,
       email: row.email,
       password: '',
-      rol_id: String(row.rol_id ?? ''),
-      segmento_mode: mode,
-      activo: row.activo,
+      role_id: String(row.role_id ?? ''),
+      segment_choice: row.segment_id == null ? 'todos' : String(row.segment_id),
+      is_active: row.is_active,
     })
     setModalOpen(true)
   }
 
   function resolveSegmentoId(): number | null {
-    if (form.segmento_mode === 'todos') return null
-    const name = form.segmento_mode === 'operam' ? 'Operam' : 'Construsync'
-    return segmentsQuery.data?.find((s) => s.nombre === name)?.id ?? null
+    if (form.segment_choice === 'todos') return null
+    const id = Number(form.segment_choice)
+    return Number.isFinite(id) && id > 0 ? id : null
   }
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const rolId = Number(form.rol_id)
+      const rolId = Number(form.role_id)
       const segmentoId = resolveSegmentoId()
-      if (!form.nombre.trim() || !form.email.trim() || !rolId) {
+      if (!form.name.trim() || !form.email.trim() || !rolId) {
         throw new Error('Nombre, correo y rol son obligatorios.')
       }
       if (editing) {
         return updateManagedUser(editing.id, {
-          nombre: form.nombre.trim(),
+          name: form.name.trim(),
           email: form.email.trim().toLowerCase(),
-          rol_id: rolId,
-          segmento_id: segmentoId,
-          activo: form.activo,
+          role_id: rolId,
+          segment_id: segmentoId,
+          is_active: form.is_active,
           ...(form.password ? { password: form.password } : {}),
         })
       }
       if (!form.password) throw new Error('La contraseña es obligatoria al crear.')
       return createManagedUser({
-        nombre: form.nombre.trim(),
+        name: form.name.trim(),
         email: form.email.trim().toLowerCase(),
         password: form.password,
-        rol_id: rolId,
-        segmento_id: segmentoId,
-        activo: form.activo,
+        role_id: rolId,
+        segment_id: segmentoId,
+        is_active: form.is_active,
       })
     },
     onSuccess: async (saved) => {
@@ -170,9 +186,9 @@ export function UsersManagementPage() {
         isSelf &&
         Boolean(
           (saved as ManagedUser & { requires_reauth?: boolean }).requires_reauth ||
-            editing.rol_id !== saved.rol_id ||
-            editing.segmento_id !== saved.segmento_id ||
-            (editing.activo && !saved.activo),
+            editing.role_id !== saved.role_id ||
+            editing.segment_id !== saved.segment_id ||
+            (editing.is_active && !saved.is_active),
         )
 
       if (criticalSelf) {
@@ -202,82 +218,97 @@ export function UsersManagementPage() {
             </p>
           </div>
         </div>
-        {canCreate('config_usuarios') && (
-          <Button className="rounded-xl" onClick={openCreate}>
-            <Plus className="mr-1 h-4 w-4" /> Nuevo usuario
-          </Button>
+        {canCreate('config_users') && (
+          <AppButton onClick={openCreate}>
+            <Plus className="h-4 w-4" /> Nuevo usuario
+          </AppButton>
         )}
       </header>
 
-      <div className="glass-panel space-y-3 p-4">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setPage(1)
-            }}
-            placeholder="Buscar por nombre, correo o rol…"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
-          />
+      <AppCard className="space-y-3 p-4">
+        <AppSearchInput
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setPage(1)
+          }}
+          onClear={() => {
+            setSearch('')
+            setPage(1)
+          }}
+          placeholder="Buscar por nombre, correo o rol…"
+          aria-label="Buscar usuarios"
+        />
+        <div className="flex flex-wrap items-end gap-3">
+          <AppFilterField label="Rol">
+            <AppSelect
+              aria-label="Filtrar por rol"
+              className="w-auto min-w-[11rem]"
+              triggerClassName="h-8 py-1 text-xs"
+              value={rolFilter}
+              onValueChange={(v) => {
+                setRolFilter(v)
+                setPage(1)
+              }}
+              options={[
+                { value: 'Todos', label: 'Todos los roles' },
+                ...roles.map((r) => ({ value: String(r.id), label: r.name })),
+              ]}
+            />
+          </AppFilterField>
+          <AppFilterField label="Segmento">
+            <div className="ios-pill-track" role="group" aria-label="Segmento">
+              {filterOptions.map((opt) => (
+                <AppButton
+                  key={opt.value}
+                  type="button"
+                  variant={segmentoFilter === opt.value ? 'primary' : 'ghost'}
+                  size="sm"
+                  disabled={isSegmentLocked}
+                  onClick={() => {
+                    if (isSegmentLocked) return
+                    setSegmentoFilter(opt.value)
+                    setPage(1)
+                  }}
+                  className={cn(
+                    'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
+                    segmentoFilter === opt.value
+                      ? 'ios-pill-active'
+                      : 'text-slate-600 dark:text-slate-300',
+                    isSegmentLocked && 'cursor-not-allowed opacity-80',
+                  )}
+                >
+                  {opt.label}
+                </AppButton>
+              ))}
+            </div>
+          </AppFilterField>
+          <AppFilterField label="Estado">
+            <div className="ios-pill-track" role="group" aria-label="Estado">
+              {['Todos', 'Activos', 'Inactivos'].map((opt) => (
+                <AppButton
+                  key={opt}
+                  type="button"
+                  variant={estadoFilter === opt ? 'primary' : 'ghost'}
+                  size="sm"
+                  onClick={() => {
+                    setEstadoFilter(opt)
+                    setPage(1)
+                  }}
+                  className={cn(
+                    'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
+                    estadoFilter === opt ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
+                  )}
+                >
+                  {opt}
+                </AppButton>
+              ))}
+            </div>
+          </AppFilterField>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <select
-            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs dark:border-white/[0.08] dark:bg-white/[0.05]"
-            value={rolFilter}
-            onChange={(e) => {
-              setRolFilter(e.target.value)
-              setPage(1)
-            }}
-          >
-            <option value="Todos">Todos los roles</option>
-            {roles.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.nombre}
-              </option>
-            ))}
-          </select>
-          <div className="ios-pill-track">
-            {['Todos', 'Todos los segmentos', 'Operam', 'Construsync'].map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => {
-                  setSegmentoFilter(opt)
-                  setPage(1)
-                }}
-                className={cn(
-                  'rounded-xl px-2.5 py-1 text-xs',
-                  segmentoFilter === opt ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
-                )}
-              >
-                {opt === 'Todos los segmentos' ? 'Alcance Todos' : opt}
-              </button>
-            ))}
-          </div>
-          <div className="ios-pill-track">
-            {['Todos', 'Activos', 'Inactivos'].map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => {
-                  setEstadoFilter(opt)
-                  setPage(1)
-                }}
-                className={cn(
-                  'rounded-xl px-2.5 py-1 text-xs',
-                  estadoFilter === opt ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
-                )}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      </AppCard>
 
-      <section className="glass-panel overflow-hidden p-0">
+      <AppCard className="overflow-hidden p-0">
         {usersQuery.isLoading ? (
           <Skeleton className="h-56 w-full rounded-none" />
         ) : (
@@ -301,7 +332,7 @@ export function UsersManagementPage() {
                     >
                       <td className="px-4 py-3">
                         <p className="font-medium">
-                          {row.nombre}
+                          {row.name}
                           {user?.id === row.id && (
                             <span className="ml-2 text-[10px] font-semibold uppercase text-blue-500">
                               tú
@@ -310,34 +341,33 @@ export function UsersManagementPage() {
                         </p>
                         <p className="font-mono text-xs text-slate-500">{row.email}</p>
                       </td>
-                      <td className="px-4 py-3">{row.rol_nombre ?? row.rol}</td>
+                      <td className="px-4 py-3">{row.role_name ?? row.role_code}</td>
                       <td className="px-4 py-3">
-                        <StatusPill
+                        <AppBadge
                           label={
-                            row.segmento_id == null
-                              ? 'Todos (Operam + Construsync)'
-                              : row.segmento_nombre
+                            row.segment_id == null
+                              ? 'Todos'
+                              : (row.segment_name || 'Sin segmento')
                           }
-                          tone={row.segmento_id == null ? 'info' : 'neutral'}
+                          tone={row.segment_id == null ? 'info' : 'neutral'}
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <StatusPill
-                          label={row.activo ? 'Activo' : 'Inactivo'}
-                          tone={row.activo ? 'positive' : 'negative'}
+                        <AppBadge
+                          label={row.is_active ? 'Activo' : 'Inactivo'}
+                          tone={row.is_active ? 'success' : 'danger'}
                         />
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {canEdit('config_usuarios') && (
-                          <Button
+                        {canEdit('config_users') && (
+                          <AppButton
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="rounded-xl"
                             onClick={() => openEdit(row)}
                           >
                             Editar
-                          </Button>
+                          </AppButton>
                         )}
                       </td>
                     </tr>
@@ -348,28 +378,25 @@ export function UsersManagementPage() {
 
             <div className="space-y-3 p-4 md:hidden">
               {(usersQuery.data?.items ?? []).map((row) => (
-                <article
-                  key={row.id}
-                  className="rounded-2xl border border-slate-200/80 p-3 dark:border-white/[0.08]"
-                >
-                  <p className="font-medium">{row.nombre}</p>
+                <AppCard key={row.id} className="p-3">
+                  <p className="font-medium">{row.name}</p>
                   <p className="font-mono text-xs text-slate-500">{row.email}</p>
                   <p className="mt-2 text-xs text-slate-500">
-                    {row.rol_nombre ?? row.rol} ·{' '}
-                    {row.segmento_id == null ? 'Todos' : row.segmento_nombre}
+                    {row.role_name ?? row.role_code} ·{' '}
+                    {row.segment_id == null ? 'Todos' : row.segment_name || 'Sin segmento'}
                   </p>
-                  {canEdit('config_usuarios') && (
-                    <Button
+                  {canEdit('config_users') && (
+                    <AppButton
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="mt-3 w-full rounded-xl"
+                      className="mt-3 w-full"
                       onClick={() => openEdit(row)}
                     >
                       Editar
-                    </Button>
+                    </AppButton>
                   )}
-                </article>
+                </AppCard>
               ))}
             </div>
 
@@ -388,96 +415,88 @@ export function UsersManagementPage() {
             </div>
           </>
         )}
-      </section>
+      </AppCard>
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Editar usuario' : 'Nuevo usuario'}</DialogTitle>
-            <DialogDescription>
+      <AppModal open={modalOpen} onOpenChange={setModalOpen}>
+        <AppModalContent>
+          <AppModalHeader>
+            <AppModalTitle>{editing ? 'Editar usuario' : 'Nuevo usuario'}</AppModalTitle>
+            <AppModalDescription>
               Asigna rol y el segmento que podrá ver en todo el ERP.
-            </DialogDescription>
-          </DialogHeader>
+            </AppModalDescription>
+          </AppModalHeader>
           <div className="space-y-3">
             <label className="block text-sm">
               Nombre
-              <input
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
-                value={form.nombre}
-                onChange={(e) => setForm((f) => ({ ...f, nombre: e.target.value }))}
+              <AppInput
+                withLabelSpacing
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               />
             </label>
             <label className="block text-sm">
               Correo
-              <input
+              <AppInput
                 type="email"
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
+                withLabelSpacing
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
               />
             </label>
             <label className="block text-sm">
               Contraseña{editing ? ' (opcional)' : ''}
-              <input
+              <AppInput
                 type="password"
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
+                withLabelSpacing
                 value={form.password}
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
               />
             </label>
             <label className="block text-sm">
               Rol
-              <select
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
-                value={form.rol_id}
-                onChange={(e) => setForm((f) => ({ ...f, rol_id: e.target.value }))}
-              >
-                {roles.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.nombre}
-                  </option>
-                ))}
-              </select>
+              <AppSelect
+                withLabelSpacing
+                value={form.role_id || undefined}
+                onValueChange={(v) => setForm((f) => ({ ...f, role_id: v }))}
+                placeholder="Selecciona un rol…"
+                options={roles.map((role) => ({
+                  value: String(role.id),
+                  label: role.name,
+                }))}
+              />
             </label>
             <label className="block text-sm">
               Segmento asignado
-              <select
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
-                value={form.segmento_mode}
-                onChange={(e) =>
+              <AppSelect
+                withLabelSpacing
+                value={form.segment_choice}
+                onValueChange={(v) =>
                   setForm((f) => ({
                     ...f,
-                    segmento_mode: e.target.value as typeof f.segmento_mode,
+                    segment_choice: v,
                   }))
                 }
-              >
-                <option value="todos">Todos (Operam + Construsync)</option>
-                <option value="operam">Solo Operam</option>
-                <option value="construsync">Solo Construsync</option>
-              </select>
+                options={segmentFormOptions}
+              />
             </label>
             <label className="flex items-center gap-3 text-sm">
-              <IosSwitch
-                checked={form.activo}
-                onCheckedChange={(next) => setForm((f) => ({ ...f, activo: next }))}
+              <AppSwitch
+                checked={form.is_active}
+                onCheckedChange={(next) => setForm((f) => ({ ...f, is_active: next }))}
                 label="Usuario activo"
               />
               Usuario activo
             </label>
-            <Button
-              className="w-full rounded-xl"
-              disabled={saveMutation.isPending}
+            <AppButton
+              className="w-full"
+              isLoading={saveMutation.isPending}
               onClick={() => saveMutation.mutate()}
             >
-              {saveMutation.isPending
-                ? 'Guardando…'
-                : editing
-                  ? 'Guardar usuario'
-                  : 'Crear usuario'}
-            </Button>
+              {editing ? 'Guardar usuario' : 'Crear usuario'}
+            </AppButton>
           </div>
-        </DialogContent>
-      </Dialog>
+        </AppModalContent>
+      </AppModal>
     </div>
   )
 }

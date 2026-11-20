@@ -13,7 +13,7 @@ use System\Models\IssuersModel;
 
 /**
  * CRUD de emisores (RF-1) — endpoint `/api/issuers` (alias `/api/emisores`, `/api/emitters`).
- * Refs sensibles se enmascaran si el JWT no tiene `puede_editar` en `config_emisores`.
+ * Refs sensibles se enmascaran si el JWT no tiene `edit` en `config_issuers`.
  */
 final class IssuersService extends ModelService
 {
@@ -39,13 +39,13 @@ final class IssuersService extends ModelService
     {
         // hide_output = true: no se exponen en formatOutput genérico del framework.
         $this->validator
-            ->setField('nombre', DataTypes::String, true)
+            ->setField('name', DataTypes::String, true)
             ->setField('rfc', DataTypes::String, true)
             ->setField('api_url', DataTypes::String, false)
             ->setField('secret_ref', DataTypes::String, false, null, null, true)
             ->setField('integropay_merchant_token_ref', DataTypes::String, false, null, null, true)
             ->setField('integropay_device_token_ref', DataTypes::String, false, null, null, true)
-            ->setField('activo', DataTypes::Boolean, false, true);
+            ->setField('is_active', DataTypes::Boolean, false, true);
     }
 
     public function handle(Context $context): Result
@@ -144,7 +144,7 @@ final class IssuersService extends ModelService
         }
 
         if ($method === 'DELETE') {
-            $patched = $this->patch($issuerId, ['activo' => false], $context);
+            $patched = $this->patch($issuerId, ['is_active' => false], $context);
             if (!$patched->isSuccess()) {
                 return $patched;
             }
@@ -162,17 +162,17 @@ final class IssuersService extends ModelService
      */
     private function listForSelects(): array
     {
-        $rows = Capsule::table('emisor')
-            ->orderBy('nombre')
+        $rows = Capsule::table('issuers')
+            ->orderBy('name')
             ->get([
                 'id',
-                'nombre',
+                'name',
                 'rfc',
                 'api_url',
                 'secret_ref',
                 'integropay_merchant_token_ref',
                 'integropay_device_token_ref',
-                'activo',
+                'is_active',
             ]);
 
         return $rows->map(fn (object $row): array => $this->mapRow($row))->all();
@@ -186,7 +186,7 @@ final class IssuersService extends ModelService
         return isset($query['page'])
             || isset($query['per_page'])
             || (isset($query['search']) && trim((string) $query['search']) !== '')
-            || (isset($query['estado']) && trim((string) $query['estado']) !== '');
+            || (isset($query['status']) && trim((string) $query['status']) !== '');
     }
 
     /**
@@ -208,49 +208,49 @@ final class IssuersService extends ModelService
         }
 
         // Subconsulta de conteo: evita GROUP BY frágil con ONLY_FULL_GROUP_BY.
-        $counts = Capsule::table('instancia')
-            ->selectRaw('emisor_id, COUNT(*) as instancias_vinculadas')
-            ->groupBy('emisor_id');
+        $counts = Capsule::table('instances')
+            ->selectRaw('issuer_id, COUNT(*) as linked_instances_count')
+            ->groupBy('issuer_id');
 
-        $builder = Capsule::table('emisor as e')
-            ->leftJoinSub($counts, 'ic', 'ic.emisor_id', '=', 'e.id');
+        $builder = Capsule::table('issuers as e')
+            ->leftJoinSub($counts, 'ic', 'ic.issuer_id', '=', 'e.id');
 
         $search = trim((string) ($query['search'] ?? ''));
         if ($search !== '') {
             $like = '%' . $search . '%';
             $builder->where(static function (Builder $q) use ($like): void {
-                $q->where('e.nombre', 'like', $like)
+                $q->where('e.name', 'like', $like)
                     ->orWhere('e.rfc', 'like', $like);
             });
         }
 
-        $estado = strtolower(trim((string) ($query['estado'] ?? '')));
-        if (in_array($estado, ['activos', 'activo'], true)) {
-            $builder->where('e.activo', 1);
-        } elseif (in_array($estado, ['inactivos', 'inactivo'], true)) {
-            $builder->where('e.activo', 0);
+        $status = strtolower(trim((string) ($query['status'] ?? '')));
+        if ($status === 'active') {
+            $builder->where('e.is_active', 1);
+        } elseif ($status === 'inactive') {
+            $builder->where('e.is_active', 0);
         }
 
         $total = (int) (clone $builder)->count('e.id');
 
         $rows = $builder
-            ->orderBy('e.nombre')
+            ->orderBy('e.name')
             ->forPage($page, $perPage)
             ->get([
                 'e.id',
-                'e.nombre',
+                'e.name',
                 'e.rfc',
                 'e.api_url',
                 'e.secret_ref',
                 'e.integropay_merchant_token_ref',
                 'e.integropay_device_token_ref',
-                'e.activo',
-                'ic.instancias_vinculadas',
+                'e.is_active',
+                'ic.linked_instances_count',
             ]);
 
         $items = $rows->map(function (object $row): array {
             $mapped = $this->mapRow($row);
-            $mapped['instancias_vinculadas'] = (int) ($row->instancias_vinculadas ?? 0);
+            $mapped['linked_instances_count'] = (int) ($row->linked_instances_count ?? 0);
 
             return $mapped;
         })->all();
@@ -269,15 +269,15 @@ final class IssuersService extends ModelService
      */
     private function findEnriched(int $id): ?array
     {
-        $row = Capsule::table('emisor as e')->where('e.id', $id)->first([
+        $row = Capsule::table('issuers as e')->where('e.id', $id)->first([
             'e.id',
-            'e.nombre',
+            'e.name',
             'e.rfc',
             'e.api_url',
             'e.secret_ref',
             'e.integropay_merchant_token_ref',
             'e.integropay_device_token_ref',
-            'e.activo',
+            'e.is_active',
         ]);
 
         if ($row === null) {
@@ -285,8 +285,8 @@ final class IssuersService extends ModelService
         }
 
         $mapped = $this->mapRow($row);
-        $mapped['instancias_vinculadas'] = (int) Capsule::table('instancia')
-            ->where('emisor_id', $id)
+        $mapped['linked_instances_count'] = (int) Capsule::table('instances')
+            ->where('issuer_id', $id)
             ->count();
 
         return $mapped;
@@ -304,8 +304,8 @@ final class IssuersService extends ModelService
             $out['rfc'] = strtoupper(trim((string) ($out['rfc'] ?? '')));
         }
 
-        if (array_key_exists('nombre', $out)) {
-            $out['nombre'] = trim((string) $out['nombre']);
+        if (array_key_exists('name', $out)) {
+            $out['name'] = trim((string) $out['name']);
         }
 
         foreach (['api_url', ...self::SENSITIVE_FIELDS] as $field) {
@@ -321,12 +321,12 @@ final class IssuersService extends ModelService
             $out[$field] = $value === '' ? null : $value;
         }
 
-        if (array_key_exists('activo', $out)) {
-            $raw = $out['activo'];
+        if (array_key_exists('is_active', $out)) {
+            $raw = $out['is_active'];
             $parsed = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-            $out['activo'] = $parsed ?? (bool) (int) $raw;
+            $out['is_active'] = $parsed ?? (bool) (int) $raw;
         } elseif (!$partial) {
-            $out['activo'] = true;
+            $out['is_active'] = true;
         }
 
         return $out;
@@ -347,7 +347,7 @@ final class IssuersService extends ModelService
 
     private function assertUniqueRfc(string $rfc, ?int $exceptId = null): ?string
     {
-        $q = Capsule::table('emisor')->where('rfc', $rfc);
+        $q = Capsule::table('issuers')->where('rfc', $rfc);
         if ($exceptId !== null) {
             $q->where('id', '!=', $exceptId);
         }
@@ -379,11 +379,11 @@ final class IssuersService extends ModelService
             ? (string) $row->integropay_device_token_ref
             : null;
 
-        $canEdit = RbacAuthHelper::can($this->authContext, 'config_emisores', 'editar');
+        $canEdit = RbacAuthHelper::can($this->authContext, 'config_issuers', 'edit');
 
         return [
             'id' => (int) $row->id,
-            'nombre' => (string) $row->nombre,
+            'name' => (string) $row->name,
             'rfc' => (string) $row->rfc,
             'api_url' => $row->api_url !== null ? (string) $row->api_url : null,
             'has_erp_secret' => $secret !== null,
@@ -396,7 +396,7 @@ final class IssuersService extends ModelService
             'integropay_device_token_ref' => $canEdit
                 ? $device
                 : ($device !== null ? self::MASK : null),
-            'activo' => (bool) (int) $row->activo,
+            'is_active' => (bool) (int) $row->is_active,
         ];
     }
 }

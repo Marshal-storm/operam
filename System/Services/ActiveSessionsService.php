@@ -21,11 +21,11 @@ final class ActiveSessionsService extends ModelService
     {
         $this->validator
             ->setField('session_uid', DataTypes::String, true)
-            ->setField('usuario_id', DataTypes::Integer, true)
+            ->setField('user_id', DataTypes::Integer, true)
             ->setField('ip_address', DataTypes::String, false)
             ->setField('user_agent', DataTypes::String, false)
-            ->setField('expira_en', DataTypes::DateTime, true)
-            ->setField('revocada', DataTypes::Boolean, false, false)
+            ->setField('expires_at', DataTypes::DateTime, true)
+            ->setField('is_revoked', DataTypes::Boolean, false, false)
             ->setField('created_at', DataTypes::DateTime, false);
     }
 }

@@ -2,26 +2,35 @@ import { useEffect, useMemo, useState } from 'react'
 import { AgingPortfolioCard } from '@/components/dashboard/AgingPortfolioCard'
 import { MrrBridgeChart } from '@/components/dashboard/MrrBridgeChart'
 import { RecentMovementsTable } from '@/components/dashboard/RecentMovementsTable'
-import { Button } from '@/components/ui/button'
+import { AppButton } from '@/components/ui/AppButton'
+import { AppCard } from '@/components/ui/AppCard'
+import { AppFilterField } from '@/components/ui/AppFilterField'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/context/AuthContext'
 import { useLoadingLock } from '@/context/LoadingLockContext'
 import { useDashboardData } from '@/hooks/useDashboardData'
 import { useSegmentLock } from '@/hooks/useSegmentLock'
 import { cn, formatCurrencyMx } from '@/lib/utils'
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms)
-  })
-}
 import {
   DATA_SOURCE_OPTIONS,
   filterSnapshotMovements,
   type DataSourceMode,
 } from '@/services/dashboardService'
 import { SEGMENT_OPTIONS } from '@/services/mockDashboardData'
-import type { MrrCategory, ProductSegment } from '@/types/mrr'
+import type { MrrCategory } from '@/types/mrr'
+
+const MONTH_OPTIONS = [
+  { value: '2026-09', label: 'Sep 2026' },
+  { value: '2026-08', label: 'Ago 2026' },
+  { value: '2026-07', label: 'Jul 2026' },
+]
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
 
 type KpiCardProps = {
   label: string
@@ -33,12 +42,13 @@ type KpiCardProps = {
 
 function KpiCard({ label, value, hint, tone = 'neutral', onClick }: KpiCardProps) {
   return (
-    <button
+    <AppButton
       type="button"
+      variant="ghost"
       onClick={onClick}
-      className="glass-panel p-4 text-left transition hover:border-blue-500/30 md:p-5"
+      className="h-auto w-full flex-col items-start justify-start gap-0 rounded-2xl border border-slate-200/80 bg-white p-4 text-left font-normal shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-2xl hover:border-blue-500/30 hover:bg-white dark:border-white/[0.09] dark:bg-white/[0.03] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_12px_32px_rgba(0,0,0,0.6)] dark:hover:bg-white/[0.03] md:p-5"
     >
-      <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="text-sm font-normal text-slate-500 dark:text-slate-400">{label}</p>
       <p className="amount-tabular font-heading mt-2 text-2xl font-semibold text-[#090D16] dark:text-white md:text-[1.65rem]">
         {value}
       </p>
@@ -52,7 +62,7 @@ function KpiCard({ label, value, hint, tone = 'neutral', onClick }: KpiCardProps
       >
         {hint}
       </p>
-    </button>
+    </AppButton>
   )
 }
 
@@ -78,30 +88,40 @@ function PillGroup<T extends string>({
   options,
   value,
   onChange,
+  disabled = false,
 }: {
   label: string
   options: Array<{ value: T; label: string }>
   value: T
   onChange: (value: T) => void
+  disabled?: boolean
 }) {
   return (
-    <div className="ios-pill-track" role="group" aria-label={label}>
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => onChange(option.value)}
-          className={cn(
-            'rounded-xl px-3 py-1.5 text-sm transition',
-            value === option.value
-              ? 'ios-pill-active'
-              : 'text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-white/5',
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    <AppFilterField label={label}>
+      <div className="ios-pill-track" role="group" aria-label={label}>
+        {options.map((option) => {
+          const active = value === option.value
+          return (
+            <AppButton
+              key={option.value}
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={disabled}
+              onClick={() => onChange(option.value)}
+              className={cn(
+                'h-auto rounded-xl px-3 py-1.5 text-sm font-normal',
+                active
+                  ? 'bg-[#0066FF] font-medium text-white shadow-[0_0_15px_rgba(0,102,255,0.4)] hover:bg-[#0055DD] hover:text-white dark:bg-[#0A84FF] dark:text-white dark:shadow-[0_0_20px_rgba(10,132,255,0.35)] dark:hover:bg-[#0A74E0]'
+                  : 'text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-white/5',
+              )}
+            >
+              {option.label}
+            </AppButton>
+          )
+        })}
+      </div>
+    </AppFilterField>
   )
 }
 
@@ -112,22 +132,31 @@ export function DashboardPage() {
   const { user } = useAuth()
   const { withScreenLock } = useLoadingLock()
   const {
-    segmento: lockedSegmentFilter,
+    segment: lockedSegmentFilter,
     segmentOptions,
     isSegmentLocked,
   } = useSegmentLock()
-  const [segment, setSegment] = useState<ProductSegment>(
-    isSegmentLocked ? (lockedSegmentFilter as ProductSegment) : 'Todos',
+  const [segment, setSegment] = useState<string>(
+    isSegmentLocked ? lockedSegmentFilter : 'Todos',
   )
   const [month, setMonth] = useState('2026-09')
   const [mode, setMode] = useState<DataSourceMode>('mock')
   const [activeCategory, setActiveCategory] = useState<MrrCategory | null>(null)
 
+  const segmentChoices = useMemo(() => {
+    if (mode === 'api' || isSegmentLocked) return segmentOptions
+    return SEGMENT_OPTIONS.map((option) => ({ value: option, label: option }))
+  }, [mode, isSegmentLocked, segmentOptions])
+
   useEffect(() => {
     if (isSegmentLocked) {
-      setSegment(lockedSegmentFilter as ProductSegment)
+      setSegment(lockedSegmentFilter)
+      return
     }
-  }, [isSegmentLocked, lockedSegmentFilter])
+    if (mode === 'mock' && !SEGMENT_OPTIONS.includes(segment)) {
+      setSegment('Todos')
+    }
+  }, [isSegmentLocked, lockedSegmentFilter, mode, segment])
 
   const {
     data: snapshot,
@@ -145,7 +174,7 @@ export function DashboardPage() {
     return filterSnapshotMovements(snapshot, activeCategory, mode)
   }, [snapshot, activeCategory, mode])
 
-  const firstName = user?.nombre?.split(' ')[0] ?? 'Usuario'
+  const firstName = user?.name?.split(' ')[0] ?? 'Usuario'
 
   /** Candado breve al cambiar fuente / segmento / mes o al recargar. */
   async function runDashboardSync(
@@ -180,9 +209,9 @@ export function DashboardPage() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <PillGroup
-            label="Fuente de datos"
+            label="Fuente"
             value={mode}
             onChange={(next) => {
               if (next === mode) return
@@ -198,8 +227,9 @@ export function DashboardPage() {
           />
 
           <PillGroup
-            label="Filtro de segmento"
+            label="Segmento"
             value={segment}
+            disabled={isSegmentLocked}
             onChange={(next) => {
               if (isSegmentLocked || next === segment) return
               void runDashboardSync(() => {
@@ -207,70 +237,64 @@ export function DashboardPage() {
                 setActiveCategory(null)
               }, 'Sincronizando métricas del ERP...')
             }}
-            options={(isSegmentLocked ? segmentOptions : SEGMENT_OPTIONS).map((option) => ({
-              value: option as ProductSegment,
-              label: option,
-            }))}
+            options={segmentChoices}
           />
 
-          <label className="ios-pill-track items-center gap-2 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300">
-            <span className="sr-only">Mes</span>
-            <select
-              className="bg-transparent outline-none"
+          <AppFilterField label="Mes">
+            <AppSelect
+              aria-label="Mes"
               value={month}
-              onChange={(event) => {
-                const next = event.target.value
+              onValueChange={(next) => {
                 if (next === month) return
                 void runDashboardSync(() => {
                   setMonth(next)
                   setActiveCategory(null)
                 }, 'Sincronizando métricas del ERP...')
               }}
-              aria-label="Selector de mes"
-            >
-              <option value="2026-09">Sep 2026</option>
-              <option value="2026-08">Ago 2026</option>
-              <option value="2026-07">Jul 2026</option>
-            </select>
-          </label>
+              options={MONTH_OPTIONS}
+              triggerClassName="h-9 w-[9.5rem] rounded-2xl border-slate-200 bg-slate-100 px-3 dark:border-white/[0.08] dark:bg-white/[0.05]"
+            />
+          </AppFilterField>
         </div>
       </header>
 
       {(isLoading || (mode === 'api' && isFetching && !snapshot)) && <DashboardSkeleton />}
 
       {!isLoading && isError && isApiError && (
-        <section className="glass-panel border-red-500/30 p-5">
+        <AppCard className="border-red-500/30 p-5">
           <h2 className="text-base font-semibold text-red-500">No se pudieron cargar los datos</h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{errorMessage}</p>
-          <Button
-            className="mt-4 rounded-xl"
+          <AppButton
+            type="button"
+            className="mt-4"
             onClick={() =>
               void runDashboardSync(() => refetch(), 'Sincronizando métricas del ERP...')
             }
           >
             Reintentar
-          </Button>
-        </section>
+          </AppButton>
+        </AppCard>
       )}
 
       {!isLoading && !isApiError && (isEmpty || (isError && !isApiError)) && (
-        <section className="glass-panel p-5 text-center">
+        <AppCard className="p-5 text-center">
           <h2 className="text-base font-semibold">Sin datos</h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             No hay información de MRR para el segmento y mes seleccionados.
           </p>
           {mode === 'api' && (
-            <Button
-              className="mt-4 rounded-xl"
+            <AppButton
+              type="button"
+              className="mt-4"
               variant="outline"
               onClick={() =>
                 void runDashboardSync(() => refetch(), 'Sincronizando métricas del ERP...')
               }
             >
               Reintentar
-            </Button>
+            </AppButton>
           )}
-        </section>
+        </AppCard>
       )}
 
       {snapshot && !isEmpty && !isApiError && (
@@ -288,7 +312,7 @@ export function DashboardPage() {
               value={String(snapshot.kpis.activeContracts)}
               hint={`+${snapshot.kpis.newContracts} nuevos · -${snapshot.kpis.churnedContracts} bajas`}
               tone="info"
-              onClick={() => setActiveCategory('nuevo')}
+              onClick={() => setActiveCategory('new')}
             />
             <KpiCard
               label="NRR 12 meses"

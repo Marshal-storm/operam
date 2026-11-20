@@ -17,6 +17,7 @@ import {
   BadgePercent,
   Server,
   Building2,
+  Landmark,
   Package,
   Gift,
   SlidersHorizontal,
@@ -24,7 +25,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type ComponentType } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
+import { AppBadge } from '@/components/ui/AppBadge'
+import { AppButton } from '@/components/ui/AppButton'
 import { ThemeToggleSwitch } from '@/components/ui/ThemeToggleSwitch'
 import { useAuth } from '@/context/AuthContext'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -48,28 +50,29 @@ type ConfigSubItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard, module: 'dashboard' },
-  { label: 'Contratos', to: '/contratos', icon: FileText, module: 'contratos' },
-  { label: 'Clientes', to: '/clientes', icon: Users, module: 'clientes' },
-  { label: 'Solicitudes', to: '/solicitudes', icon: ClipboardList, module: 'solicitudes', badge: 3 },
-  { label: 'Cobranza', to: '/cobranza', icon: CreditCard, module: 'cobranza' },
+  { label: 'Contratos', to: '/contratos', icon: FileText, module: 'contracts' },
+  { label: 'Clientes', to: '/clientes', icon: Users, module: 'clients' },
+  { label: 'Solicitudes', to: '/solicitudes', icon: ClipboardList, module: 'requests', badge: 3 },
+  { label: 'Cobranza', to: '/cobranza', icon: CreditCard, module: 'collections' },
   {
     label: 'Promociones vigentes',
     to: '/promociones-vigentes',
     icon: Gift,
-    module: 'promociones_ventas',
+    module: 'sales_promotions',
   },
-  { label: 'Utilidad por segmento', to: '/utilidad', icon: PieChart, module: 'utilidad_segmento' },
+  { label: 'Utilidad por segmento', to: '/utilidad', icon: PieChart, module: 'segment_utility' },
 ]
 
 const CONFIG_SUBITEMS: ConfigSubItem[] = [
-  { label: 'Catálogo de servicios', to: '/configuracion/catalogo', icon: Package, module: 'config_catalogo' },
-  { label: 'Listas de precios', to: '/configuracion/precios', icon: Tags, module: 'config_precios' },
-  { label: 'Promociones', to: '/configuracion/promociones', icon: BadgePercent, module: 'config_promociones' },
-  { label: 'Emisores', to: '/configuracion/emisores', icon: Building2, module: 'config_emisores' },
-  { label: 'Instancias', to: '/configuracion/instancias', icon: Server, module: 'config_instancias' },
-  { label: 'Usuarios', to: '/configuracion/usuarios', icon: Users, module: 'config_usuarios' },
+  { label: 'Catálogo de servicios', to: '/configuracion/catalogo', icon: Package, module: 'config_catalog' },
+  { label: 'Listas de precios', to: '/configuracion/precios', icon: Tags, module: 'config_prices' },
+  { label: 'Promociones', to: '/configuracion/promociones', icon: BadgePercent, module: 'config_promotions' },
+  { label: 'Emisores', to: '/configuracion/emisores', icon: Landmark, module: 'config_issuers' },
+  { label: 'Instancias', to: '/configuracion/instancias', icon: Server, module: 'config_instances' },
+  { label: 'Usuarios', to: '/configuracion/usuarios', icon: Users, module: 'config_users' },
   { label: 'Roles y permisos', to: '/configuracion/roles', icon: Shield, module: 'config_roles' },
-  { label: 'Preferencias de pantalla', to: '/configuracion/preferencias', icon: SlidersHorizontal, module: 'config_preferencias' },
+  { label: 'Empresa', to: '/configuracion/empresa', icon: Building2, module: 'config_company' },
+  { label: 'Preferencias de pantalla', to: '/configuracion/preferencias', icon: SlidersHorizontal, module: 'config_preferences' },
 ]
 
 function UserAvatar({
@@ -147,13 +150,14 @@ function ConfigAccordion({
 
   return (
     <div className="space-y-1">
-      <button
+      <AppButton
         type="button"
+        variant="ghost"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',
+          'h-auto w-full justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-normal',
           inConfig
-            ? 'text-blue-600 dark:text-[#0A84FF]'
+            ? 'text-blue-600 hover:bg-transparent dark:text-[#0A84FF] dark:hover:bg-transparent'
             : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-zinc-400 dark:hover:bg-white/[0.05] dark:hover:text-white',
         )}
         aria-expanded={open}
@@ -163,7 +167,7 @@ function ConfigAccordion({
         <ChevronDown
           className={cn('h-4 w-4 shrink-0 transition-transform duration-200', open && 'rotate-180')}
         />
-      </button>
+      </AppButton>
 
       <div
         className={cn(
@@ -280,14 +284,16 @@ function SidebarChrome({
           </p>
         )}
         {showCollapse && (
-          <button
+          <AppButton
             type="button"
+            variant="outline"
+            size="icon"
             onClick={onToggle}
             aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm dark:border-white/[0.09] dark:bg-white/[0.05] dark:text-zinc-300"
+            className="h-7 w-7 shrink-0 rounded-full border-slate-200 bg-white text-slate-500 shadow-sm dark:border-white/[0.09] dark:bg-white/[0.05] dark:text-zinc-300"
           >
             <ChevronLeft className={cn('h-4 w-4 transition', collapsed && 'rotate-180')} />
-          </button>
+          </AppButton>
         )}
       </div>
 
@@ -299,16 +305,17 @@ function SidebarChrome({
           collapsed && 'px-2',
         )}
       >
-        <button
+        <AppButton
           type="button"
+          variant="ghost"
           className={cn(
-            'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-white/[0.05]',
+            'h-auto w-full justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-normal text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-white/[0.05]',
             collapsed && 'justify-center px-2',
           )}
         >
           <HelpCircle className="h-4 w-4 shrink-0" />
           {!collapsed && 'Ayuda'}
-        </button>
+        </AppButton>
 
         <div
           className={cn(
@@ -324,10 +331,11 @@ function SidebarChrome({
 
         <div className="my-1 border-t border-slate-200/80 dark:border-white/[0.07]" />
 
-        <button
+        <AppButton
           type="button"
+          variant="ghost"
           className={cn(
-            'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#EF4444] hover:bg-red-500/10',
+            'h-auto w-full justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#EF4444] hover:bg-red-500/10 hover:text-[#EF4444]',
             collapsed && 'justify-center px-2',
           )}
           onClick={() => {
@@ -338,7 +346,7 @@ function SidebarChrome({
         >
           <LogOut className="h-4 w-4 shrink-0" />
           {!collapsed && 'Cerrar sesión'}
-        </button>
+        </AppButton>
       </div>
     </div>
   )
@@ -346,31 +354,27 @@ function SidebarChrome({
 
 function HeaderUserProfile() {
   const { user } = useAuth()
-  const { rolNombre, segmentBadgeLabel, isSegmentLocked } = usePermissions()
+  const { roleName, segmentBadgeLabel, isSegmentLocked } = usePermissions()
   if (!user) return null
 
   return (
     <div className="flex items-center gap-3">
       <div className="hidden min-w-0 text-right sm:block">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-          {rolNombre ?? user.rol}
+          {roleName ?? user.role_code}
         </p>
         <p className="truncate text-sm font-semibold text-[#090D16] dark:text-white">
-          {user.nombre}
+          {user.name}
         </p>
       </div>
-      <span
-        className={cn(
-          'hidden max-w-[14rem] truncate rounded-full border px-2.5 py-1 text-[11px] font-medium md:inline-flex',
-          isSegmentLocked
-            ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-            : 'border-blue-500/20 bg-blue-50 text-blue-700 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-zinc-300',
-        )}
-        title={segmentBadgeLabel}
-      >
-        {segmentBadgeLabel}
+      <span className="hidden max-w-[14rem] md:inline-flex" title={segmentBadgeLabel}>
+        <AppBadge
+          label={segmentBadgeLabel}
+          tone={isSegmentLocked ? 'warning' : 'info'}
+          className="max-w-[14rem] truncate"
+        />
       </span>
-      <UserAvatar name={user.nombre} size="sm" />
+      <UserAvatar name={user.name} size="sm" />
     </div>
   )
 }
@@ -396,7 +400,8 @@ export function InternalLayout() {
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="relative flex h-14 shrink-0 items-center border-b border-slate-200/80 bg-white px-4 dark:border-white/[0.07] dark:bg-[#000000]">
-          <Button
+          <AppButton
+            type="button"
             variant="ghost"
             size="icon"
             className="mr-2 lg:hidden"
@@ -404,7 +409,7 @@ export function InternalLayout() {
             aria-label="Abrir menú"
           >
             <Menu className="h-5 w-5" />
-          </Button>
+          </AppButton>
 
           <div className="mx-auto flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-[#0A84FF] to-[#6366F1] text-xs font-black text-white">
@@ -427,18 +432,25 @@ export function InternalLayout() {
 
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <button
+          <AppButton
             type="button"
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            variant="ghost"
+            className="absolute inset-0 h-full w-full rounded-none bg-black/60 p-0 backdrop-blur-sm hover:bg-black/60"
             aria-label="Cerrar menú"
             onClick={() => setMobileOpen(false)}
           />
           <aside className="absolute inset-y-0 left-0 flex h-screen w-[min(18rem,85vw)] flex-col bg-white shadow-2xl dark:bg-[#070708]">
             <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-3 dark:border-white/[0.07]">
               <p className="font-semibold">Menú</p>
-              <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)}>
+              <AppButton
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setMobileOpen(false)}
+                aria-label="Cerrar menú"
+              >
                 <X className="h-5 w-5" />
-              </Button>
+              </AppButton>
             </div>
             <SidebarChrome
               collapsed={false}

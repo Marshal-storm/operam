@@ -7,7 +7,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import type { ModuleKey } from '@/types/auth'
 
 type ProtectedRouteProps = {
-  /** Si se indica, exige puede_ver en ese módulo. */
+  /** Si se indica, exige el permiso view en ese módulo. */
   requiredModule?: ModuleKey
   children?: ReactNode
 }

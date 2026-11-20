@@ -19,7 +19,7 @@ Operam es la **plataforma central de contratos y suscripciones** para los produc
 
 ### Regla de negocio inmutable (MRR)
 
-El **MRR nace exclusivamente de la bitácora `movimiento`**.  
+El **MRR nace exclusivamente de la bitácora `movements`**.  
 No se recalcula desde estado mutable de contratos: los deltas del Puente de MRR se derivan de esa bitácora (RNF-3). Montos siempre `DECIMAL(14,2)` / `brick-math` — **prohibido `float`**.
 
 ---
@@ -70,14 +70,25 @@ En MySQL:
 CREATE DATABASE operam_contratos CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Migraciones y seeders:
+Migraciones y seeders (esquema **100% inglés** en `snake_case`):
 
 ```bash
-vendor/bin/phinx migrate
-vendor/bin/phinx seed:run
+# Preferir PHP 8.3 de Laragon si el PATH trae otra versión
+D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx migrate
+D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx seed:run
+```
+
+Reset limpio local (DROP tablas legacy en español + actuales, luego migrate/seed):
+
+```bash
+D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe database/scripts/reset_english_schema.php
+D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx migrate
+D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx seed:run
 ```
 
 (Alternativa Composer: `composer migrate` / `composer seed`.)
+
+Tablas canónicas: `segments`, `issuers`, `clients`, `contracts`, `movements`, `collection_statuses`, `monthly_mrr`, `users`, `active_sessions`, `auth_attempts`, `services`, `instances`, `price_lists`, `price_list_items`, `promotions`, `roles`, `system_modules`, `role_permissions`. Triggers RNF-3: `trg_movements_prevent_update` / `trg_movements_prevent_delete`.
 
 ### Paso 4 — Generador CLI de `operam/servicios`
 
@@ -118,7 +129,7 @@ Suite oficial en `tests/Unit/FinancialRulesTest.php` (configurada en `phpunit.xm
 2. RF-2 paquetes de 5 usuarios → `1860.00` / ahorro `300.00`.
 3. Reversión inmutable RNF-3 → deltas que se cancelan a `0.00`.
 4. `MovementsModel` bloquea UPDATE/DELETE con `RuntimeException`.
-5. Acumulación `mrr_mensual` con `bcadd` (RF-10) sin pérdida de centavos.
+5. Acumulación `monthly_mrr` con `bcadd` (RF-10) sin pérdida de centavos.
 
 ---
 
@@ -128,19 +139,19 @@ Usuarios del `EnterpriseUsersSeeder` + vínculo RBAC (`RbacRolesAndPermissionsSe
 
 | Email | Password | Rol RBAC | Segmento |
 |-------|----------|----------|----------|
-| `admin@operam.mx` | `Operam2026*` | Administrador General (`admin_general`) | Todos (`segmento_id = NULL`) |
+| `admin@operam.mx` | `Operam2026*` | Administrador General (`admin_general`) | Todos (`segment_id = NULL`) |
 | `operador@operam.mx` | `Operam2026*` | Operador Operam (`operador_comercial`) | Solo Operam |
 | `supervisor@construsync.mx` | `Constru2026*` | Supervisor Construsync (`supervisor_segmento`) | Solo Construsync |
 
 ### Flujo JWT empresarial + RBAC
 
-1. `POST /api/login` → `LoginService` valida credenciales contra `usuario`.
+1. `POST /api/login` → `LoginService` valida credenciales contra `users` (solo `role_id`, sin columna legacy `rol`).
 2. Firma **JWT HS256** con `JWT_TOKEN_KEY` (`iss` = `JWT_TOKEN_ISSUER`, `exp` = `DEF_EXPIRATION_TIME`).
-3. Claim `jti` incluye `rol_id`, `rol_nombre`, `segmento_id`, `segmento_nombre` (`Todos` si NULL) y mapa `permisos` CRUD por `modulo_clave` multinivel (`config_catalogo`, `config_roles`, etc.).
-4. Sesión revocable en tabla `sesion_activa` (claim `jti`). Cambiar `rol_id`/`segmento_id`/`activo` o la matriz `rol_permiso` revoca sesiones afectadas → HTTP 401.
-5. Rate limiting de fallos en `auth_intento` (bloqueo temporal 429).
+3. Claim `jti` incluye `name`, `role_id`, `role_name`, `role_code`, `segment_id`, `segment_name` (`Todos` si NULL) y mapa `permissions` con `view` / `create` / `edit` / `delete` por `module_key` (`contracts`, `clients`, `config_catalog`, `config_issuers`, `config_roles`, etc.).
+4. Sesión revocable en `active_sessions` (`is_revoked`, `expires_at`, `user_id`). Cambiar `role_id` / `segment_id` / `is_active` o la matriz `role_permissions` revoca sesiones afectadas → HTTP 401.
+5. Rate limiting de fallos en `auth_attempts` (`is_successful`, bloqueo temporal 429).
 6. Rutas protegidas en `AppService::before_get` excepto `$freeuris` (`login`).
-7. Perfil: `GET /api/me`. Roles (`config_roles`): `/api/roles`, `/api/roles/modules`, `PUT /api/roles/{id}/permissions`. Usuarios (`config_usuarios`): `/api/users`.
+7. Perfil: `GET /api/me` (payload en inglés). Roles (`config_roles`): `/api/roles`, `/api/roles/modules`, `PUT /api/roles/{id}/permissions`. Usuarios (`config_users`): `/api/users`.
 
 En UI: botón **Autocompletar credenciales de prueba** en Login (rellena el formulario; el login sigue siendo HTTP real).
 
@@ -160,8 +171,9 @@ D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx seed:run -
 
 Obligatorios para quien continúe el proyecto:
 
-- **Código** (variables, funciones, clases, archivos): 100% **inglés**.
+- **Código** (variables, funciones, clases, archivos, payloads JSON): 100% **inglés**.
 - **Comentarios**: español. **UI**: español (`es-MX`).
+- **Base de datos (inquebrantable):** tablas, columnas y valores `ENUM` **solo inglés** `snake_case`. Prohibido Spanglish en MySQL/Phinx.
 - Dinero: `DECIMAL(14,2)` / Money — **sin floats**.
 - Tipografía: **Ubuntu** (títulos/KPI), **DM Sans** / Ubuntu (UI), **DM Mono** + `tabular-nums` (folios/montos).
 - Loading: barra arcoíris Operam + candado de pantalla (sin modal central).
@@ -169,6 +181,7 @@ Obligatorios para quien continúe el proyecto:
 - DB: solo migraciones/seeders Phinx — **prohibido `.sql` sueltos**.
 - Auth: JWT del framework — **prohibido Sanctum**.
 - **Cero mockups** fuera del Dashboard (Login, Catálogo, Contratos, Clientes, Cobranza, Solicitudes).
+- **Kit atómico (Single Source of Truth):** prohibido `<select>` / `<input>` / `<textarea>` / `<button>` nativos en `src/pages/**` o componentes de negocio. Importar solo desde `src/components/ui/` (`AppCard`, `AppInput`, `AppSelect`, `AppButton`, `AppBadge`, `AppModal`, `AppSwitch`, `AppTableWrapper`). Un cambio visual global = un archivo del kit.
 
 Detalle completo: archivo `.cursorrules` en la raíz.
 
@@ -178,8 +191,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 
 - [x] **Módulo 0:** Cimientos, Stack, Phinx y Reglas Senior.
 - [x] **Módulo 1:** Dashboard General Interno, Puente de MRR, Cartera y Seguridad JWT Nivel Empresa.
-- [x] **Módulo 2:** Catálogos Base, Instancias, Listas de Precios, Emisores y RBAC Multinivel (RF-1, RF-2) — pantallas `/configuracion/*`, CRUD API/MySQL real, triggers RNF-3 y suite PHPUnit (BCMath).
-- [x] **Parte B — RBAC multinivel:** 15 claves (`principal` + `config_*` incluyendo `config_emisores` e `config_instancias` separados), pantallas separadas Usuarios / Roles, alcance de segmento, revocación de `sesion_activa` ante cambios críticos + auto-logout 401.
+- [x] **Módulo 2 (checkpoint cerrado):** Catálogos, Listas de Precios con escalas (RF-2), Emisores, Instancias, Promociones, Empresa (`config_company`), Preferencias de pantalla, RBAC multinivel (16 `module_key` en inglés), esquema MySQL 100% inglés, Kit Atómico (`AppSelect`/`AppInput`/`AppCard`/…), filtros con `AppFilterField`, segmentos dinámicos (`useSegments`), cero mockups fuera del Dashboard, Spinner + Toasts globales.
 - [ ] **Módulo 3:** Motor de Contratos y Bitácora Inmutable (RF-3).
 - [ ] **Módulo 4:** Cobranza, Saldos, Portal Cliente con Magic Links e IntegroPAY (RF-4 a RF-8).
 
@@ -191,7 +203,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 
 | Archivo | Descripción |
 |---------|-------------|
-| `.cursorrules` | Reglas senior (stack, Phinx, JWT, RBAC §11, Liquid Glass, tipografía, loading lock, cero mockups fuera del Dashboard, TTS). |
+| `.cursorrules` | Reglas senior: BD inglés, Kit Atómico §3.1, RBAC §11, filtros con label, cero mockups, Spinner+Toasts, Liquid Glass, TTS. |
 | `.env.example` | Plantilla de variables Vite / MySQL / JWT. |
 | `.gitignore` | Excluye `node_modules/`, `vendor/`, `dist/`, `.env`, temporales. |
 | `.oxlintrc.json` | Oxlint. |
@@ -218,19 +230,29 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `index.css` | Tokens Liquid Glass + tipografía Operam + rainbow bar. |
 | `context/ThemeContext.tsx` | Tema `system` \| `light` \| `dark` + `localStorage`. |
 | `context/AuthContext.tsx` | Sesión JWT global (solo API real) + reexport `usePermissions`. |
-| `hooks/usePermissions.ts` | Helpers `canView/Create/Edit/Delete` + `allowedSegment` / `isSegmentLocked`. |
-| `hooks/useSegmentLock.ts` | Fija filtro de segmento cuando el JWT trae alcance exclusivo. |
+| `hooks/usePermissions.ts` | Helpers `canView/Create/Edit/Delete` + alcance por `segment_id` / `isSegmentLocked`. |
+| `hooks/useSegments.ts` | Hook central TanStack Query → `GET /api/segments` (mapa id→nombre, opciones de filtro). |
+| `hooks/useSegmentLock.ts` | Filtro de segmento dinámico + bloqueo JWT (sin nombres quemados). |
+| `components/ui/AppFilterField.tsx` | Label visible obligatorio para grupos de filtros en toolbars. |
 | `context/ScreenPreferencesContext.tsx` | pageSize (10/25/50/100) + densidad de tablas (`localStorage`). |
 | `context/LoadingLockContext.tsx` | Candado global + `withScreenLock` / start/stop. |
 | `context/ToastContext.tsx` | Toasts globales iOS Liquid Glass (`useToast`: success/error/warning/info/apiError). |
 | `components/ui/GlobalLoadingOverlay.tsx` | Barra arcoíris + velo + spinner central limpio en mutaciones. |
-| `components/ui/ThemeToggleSwitch.tsx` | Switch iOS luna/sol. |
-| `components/ui/StatusPill.tsx` | Píldoras semáforo (verde/ámbar/rojo) con punto luminoso. |
-| `components/ui/button.tsx` / `dialog.tsx` / `skeleton.tsx` | Primitivos shadcn. |
-| `components/ui/PaginationBar.tsx` | Paginación (total, pageSize, páginas) para tablas del ERP. |
+| `components/ui/ThemeToggleSwitch.tsx` | Switch iOS luna/sol (primitivo del kit). |
+| `components/ui/appTokens.ts` | Tokens compartidos de campo/tarjeta/popover (borde, focus, sombra). |
+| `components/ui/AppButton.tsx` | Botón atómico (`primary` / `secondary` / `outline` / `ghost` / `danger` + `isLoading`). |
+| `components/ui/AppInput.tsx` | Input / moneda / búsqueda / textarea atómicos. |
+| `components/ui/AppSelect.tsx` | Select Radix Liquid Glass; buscador si >6 opciones; semáforo por opción. |
+| `components/ui/AppCard.tsx` | Tarjeta Liquid Glass (`Header` / `Content` / `Footer`). |
+| `components/ui/AppBadge.tsx` | Píldoras semáforo (`success` \| `warning` \| `danger` \| `info` \| `neutral`). |
+| `components/ui/AppModal.tsx` | Diálogo accesible sobre `@radix-ui/react-dialog`. |
+| `components/ui/AppSwitch.tsx` | Interruptor estilo iOS. |
+| `components/ui/AppTableWrapper.tsx` | Contenedor de tabla (toolbar cristal, cuerpo, pie). |
+| `components/ui/StatusPill.tsx` / `IosSwitch.tsx` / `button.tsx` / `dialog.tsx` | Aliases de compatibilidad → kit `App*`. |
+| `components/ui/skeleton.tsx` | Skeleton de carga. |
+| `components/ui/PaginationBar.tsx` | Paginación con `AppSelect` + `AppButton` (total, pageSize, páginas). |
 | `components/auth/ProtectedRoute.tsx` | Barrera de login + `requiredModule` RBAC. |
 | `components/auth/AccessRestrictedView.tsx` | Vista “Acceso restringido por tu rol”. |
-| `components/ui/IosSwitch.tsx` | Switch iOS para matriz CRUD de permisos. |
 | `components/layout/InternalLayout.tsx` | Sidebar filtrado por `canView` + padre Configuración si hay ≥1 `config_*` + badge de alcance. |
 | `components/auth/SessionSecurityBridge.tsx` | Escucha 401 globales → toast + logout + `/login`. |
 | `components/dashboard/MrrBridgeChart.tsx` | Puente MRR con colores por tema. |
@@ -238,13 +260,14 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `components/dashboard/RecentMovementsTable.tsx` | Tabla/tarjetas + status pills. |
 | `pages/LoginPage.tsx` | Login 2 columnas Liquid Glass → `POST /api/login`. |
 | `pages/DashboardPage.tsx` | Dashboard KPIs + switch Mockup/API (única excepción). |
-| `pages/config/CatalogServicesPage.tsx` | `/configuracion/catalogo` — tabla paginada API + filtros + CRUD. |
-| `pages/config/PriceListsPage.tsx` | `/configuracion/precios` — directorio → detalle con columna Rango/Escala (RF-2), validación de traslapes y `saveVolumeMatrix`. |
-| `pages/config/PromotionsPage.tsx` | `/configuracion/promociones` — cards verde/ámbar + filtros. |
-| `pages/config/IssuersPage.tsx` | `/configuracion/emisores` — CRUD exclusivo RF-1 (`emisor`) con filtros, badges IntegroPAY y paginación (`config_emisores`). |
-| `pages/config/InstancesPage.tsx` | `/configuracion/instancias` — CRUD exclusivo de instancias/VPS; filtro por emisor; sin modal de emisores (`config_instancias`). |
-| `pages/config/ScreenPreferencesPage.tsx` | `/configuracion/preferencias` — pageSize y densidad (`config_preferencias`). |
-| `pages/config/UsersManagementPage.tsx` | `/configuracion/usuarios` — cuentas, rol y segmento (`config_usuarios`). |
+| `pages/config/CatalogServicesPage.tsx` | `/configuracion/catalogo` — tabla paginada API + filtros + CRUD (`config_catalog`). |
+| `pages/config/PriceListsPage.tsx` | `/configuracion/precios` — directorio → detalle con columna Rango/Escala (RF-2), validación de traslapes y `saveVolumeMatrix` (`config_prices`). |
+| `pages/config/PromotionsPage.tsx` | `/configuracion/promociones` — cards verde/ámbar + filtros (`config_promotions`). |
+| `pages/config/IssuersPage.tsx` | `/configuracion/emisores` — CRUD exclusivo RF-1 (`issuers`) con filtros, badges IntegroPAY y paginación (`config_issuers`). |
+| `pages/config/InstancesPage.tsx` | `/configuracion/instancias` — CRUD exclusivo de instancias/VPS; filtro por emisor; sin modal de emisores (`config_instances`). |
+| `pages/config/CompanySettingsPage.tsx` | `/configuracion/empresa` — parámetros comerciales por segmento (`default_credit_days`, `usd_exchange_rate`) vía `config_company`. |
+| `pages/config/ScreenPreferencesPage.tsx` | `/configuracion/preferencias` — solo pageSize y densidad visual (`config_preferences`). |
+| `pages/config/UsersManagementPage.tsx` | `/configuracion/usuarios` — cuentas, rol y segmento (`config_users`). |
 | `pages/config/RolesPermissionsPage.tsx` | `/configuracion/roles` — matriz multinivel sin preselección (`config_roles`). |
 | `services/sessionSecurity.ts` / `lib/criticalRelogin.ts` | Interceptor 401 + logout diferido ante cambios críticos propios. |
 | `pages/SalesPromotionsPage.tsx` | `/promociones-vigentes` — solo lectura + copiar código (ventas). |
@@ -268,17 +291,18 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `backend/bootstrap/env.php` | Carga `.env` a `getenv` / `$_ENV`. |
 | `backend/bootstrap/eloquent.php` | Capsule Eloquent + MySQL UTC. |
 | `System/Core/*` | Result, Context, DataValidator, DataFormat. |
-| `System/Support/FinancialCalculator.php` | Calculadora BCMath pura: `optimizeUserPackages`, `calculateMrrBridge`, `buildReversalPayload`, `accumulateMrrMensualAmount`. |
+| `System/Support/FinancialCalculator.php` | Calculadora BCMath pura: `optimizeUserPackages`, `calculateMrrBridge`, `buildReversalPayload`, `accumulateMonthlyMrrAmount`. Categorías en inglés; ignora `transfer`; `movement_type` = `reversal`. |
 | `System/Services/*` | Login, App, RbacAuthHelper, Roles, Users, Segments (RF-1), Issuers (refs enmascaradas), Movements (RNF-3 + sync RF-10) + catálogo. |
 | `System/Models/*` | Users/Sessions + Roles + SegmentsModel + IssuersModel + MovementsModel (inmutable) + catálogo. |
-| `database/migrations/*` | MRR + auth + catálogo + RBAC + emisores (000006) + split (000007) + triggers RNF-3 (000008) + paquete RF-2 / FX USD (000009). |
-| `database/migrations/20260925000009_add_package_link_and_fx_rate.php` | `servicio.servicio_paquete_id` + `factor_paquete`; `segmento.tipo_cambio_usd`; vínculo OP-USR→OP-PKG5. |
-| `database/seeds/*` | Sep 2026 + EnterpriseUsers + CatalogAndPricing + RbacRolesAndPermissions (15 módulos + Gestor de Promociones). |
+| `database/migrations/*` | Esquema inglés consolidado: MRR (000001), auth (000002), catálogo (000003), RBAC (000004); 000005–000007/000009 no-op de secuencia; triggers RNF-3 (000008). |
+| `database/scripts/reset_english_schema.php` | DROP tablas legacy (español) + actuales + `phinxlog` para remigrar en limpio. |
+| `database/migrations/20260925000009_add_package_link_and_fx_rate.php` | No-op de secuencia. Columnas vivas: `services.package_service_id` + `package_factor`; `segments.usd_exchange_rate`. |
+| `database/seeds/*` | Sep 2026 + EnterpriseUsers + CatalogAndPricing + RbacRolesAndPermissions (15 `module_key` en inglés + Gestor de Promociones). |
 | `backend/src/Models/*` | Movement, Client, Contract, Segment, Issuer, MonthlyMrr, CollectionStatus. |
 | `backend/src/Services/MovementService.php` | Alta inmutable auxiliar (Operam\Services) + Money. |
-| `System/Services/MovementsService.php` | API `operam/servicios`: INSERT + reversión + sync transaccional `mrr_mensual` (bcadd); bloqueo UPDATE/DELETE. |
-| `System/Services/SegmentsService.php` | GET/PATCH `dias_credito_default` por segmento (RF-1) con alcance RBAC. |
-| `System/Models/MovementsModel.php` | Eloquent `movimiento` con eventos `updating`/`deleting` (RNF-3). |
-| `System/Models/SegmentsModel.php` | Eloquent `segmento` (`dias_credito_default`). |
-| `database/migrations/20260925000008_enforce_movimiento_immutability_rnf3.php` | Triggers MySQL anti-UPDATE/DELETE + columna `movimiento_revertido_id`. |
+| `System/Services/MovementsService.php` | API `operam/servicios`: INSERT + reversión + sync transaccional `monthly_mrr` (bcadd); bloqueo UPDATE/DELETE. |
+| `System/Services/SegmentsService.php` | GET/PATCH `default_credit_days` y `usd_exchange_rate` por segmento (RF-1) con alcance RBAC. |
+| `System/Models/MovementsModel.php` | Eloquent `movements` con eventos `updating`/`deleting` (RNF-3). |
+| `System/Models/SegmentsModel.php` | Eloquent `segments` (`default_credit_days`, `usd_exchange_rate`). |
+| `database/migrations/20260925000008_enforce_movimiento_immutability_rnf3.php` | Triggers MySQL anti-UPDATE/DELETE sobre `movements` + columna `reversed_movement_id`. |
 | `backend/tests/MoneyTest.php` | Tests auxiliares de Money (legado; la suite oficial vive en `tests/Unit`). |

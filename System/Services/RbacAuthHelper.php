@@ -14,61 +14,61 @@ final class RbacAuthHelper
 {
     /**
      * @return array{
-     *   rol_id: int|null,
-     *   rol_nombre: string|null,
-     *   rol_codigo: string|null,
-     *   segmento_id: int|null,
-     *   segmento_nombre: string,
-     *   permisos: array<string, array{ver: bool, crear: bool, editar: bool, eliminar: bool}>
+     *   role_id: int|null,
+     *   role_name: string|null,
+     *   role_code: string|null,
+     *   segment_id: int|null,
+     *   segment_name: string,
+     *   permissions: array<string, array{view: bool, create: bool, edit: bool, delete: bool}>
      * }
      */
     public static function buildProfileForUser(UsersModel $user): array
     {
-        $rolId = $user->rol_id !== null ? (int) $user->rol_id : null;
-        $rolNombre = null;
-        $rolCodigo = null;
-        $permisos = [];
+        $roleId = $user->role_id !== null ? (int) $user->role_id : null;
+        $roleName = null;
+        $roleCode = null;
+        $permissions = [];
 
-        if ($rolId !== null) {
-            $rol = Capsule::table('rol')->where('id', $rolId)->first();
-            if ($rol) {
-                $rolNombre = (string) $rol->nombre;
-                $rolCodigo = (string) $rol->codigo;
+        if ($roleId !== null) {
+            $role = Capsule::table('roles')->where('id', $roleId)->first();
+            if ($role) {
+                $roleName = (string) $role->name;
+                $roleCode = (string) $role->code;
             }
 
-            $rows = Capsule::table('rol_permiso')
-                ->where('rol_id', $rolId)
-                ->get(['modulo_clave', 'puede_ver', 'puede_crear', 'puede_editar', 'puede_eliminar']);
+            $rows = Capsule::table('role_permissions')
+                ->where('role_id', $roleId)
+                ->get(['module_key', 'can_view', 'can_create', 'can_edit', 'can_delete']);
 
             foreach ($rows as $row) {
-                $permisos[(string) $row->modulo_clave] = [
-                    'ver' => (bool) $row->puede_ver,
-                    'crear' => (bool) $row->puede_crear,
-                    'editar' => (bool) $row->puede_editar,
-                    'eliminar' => (bool) $row->puede_eliminar,
+                $permissions[(string) $row->module_key] = [
+                    'view' => (bool) $row->can_view,
+                    'create' => (bool) $row->can_create,
+                    'edit' => (bool) $row->can_edit,
+                    'delete' => (bool) $row->can_delete,
                 ];
             }
         }
 
-        $segmentoId = $user->segmento_id !== null ? (int) $user->segmento_id : null;
-        $segmentoNombre = 'Todos';
-        if ($segmentoId !== null) {
-            $seg = Capsule::table('segmento')->where('id', $segmentoId)->value('nombre');
-            $segmentoNombre = $seg ? (string) $seg : 'Todos';
+        $segmentId = $user->segment_id !== null ? (int) $user->segment_id : null;
+        $segmentName = 'Todos';
+        if ($segmentId !== null) {
+            $segment = Capsule::table('segments')->where('id', $segmentId)->value('name');
+            $segmentName = $segment ? (string) $segment : 'Todos';
         }
 
         return [
-            'rol_id' => $rolId,
-            'rol_nombre' => $rolNombre,
-            'rol_codigo' => $rolCodigo,
-            'segmento_id' => $segmentoId,
-            'segmento_nombre' => $segmentoNombre,
-            'permisos' => $permisos,
+            'role_id' => $roleId,
+            'role_name' => $roleName,
+            'role_code' => $roleCode,
+            'segment_id' => $segmentId,
+            'segment_name' => $segmentName,
+            'permissions' => $permissions,
         ];
     }
 
     /**
-     * Fuerza el filtro de segmento cuando el JWT tiene segmento_id fijo.
+     * Fuerza el filtro de segmento cuando el JWT tiene segment_id fijo.
      *
      * @param array<string, mixed> $auth
      * @param array<string, mixed> $query
@@ -76,36 +76,36 @@ final class RbacAuthHelper
      */
     public static function applySegmentFilterToQuery(array $auth, array $query): array
     {
-        $segmentoId = $auth['segmento_id'] ?? null;
-        $segmentoNombre = (string) ($auth['segmento_nombre'] ?? 'Todos');
-        if ($segmentoId === null || $segmentoNombre === '' || $segmentoNombre === 'Todos') {
+        $segmentId = $auth['segment_id'] ?? null;
+        $segmentName = (string) ($auth['segment_name'] ?? 'Todos');
+        if ($segmentId === null || $segmentName === '' || $segmentName === 'Todos') {
             return $query;
         }
 
-        $query['segmento'] = $segmentoNombre;
-        $query['segmento_id'] = (int) $segmentoId;
+        $query['segment'] = $segmentName;
+        $query['segment_id'] = (int) $segmentId;
 
         return $query;
     }
 
     /**
-     * Valida que un payload con segmento_id no escape el alcance del usuario.
+     * Valida que un payload con segment_id no escape el alcance del usuario.
      *
      * @param array<string, mixed> $auth
      * @param array<string, mixed> $payload
      */
     public static function assertSegmentWriteAllowed(array $auth, array $payload): ?string
     {
-        $lockedId = $auth['segmento_id'] ?? null;
+        $lockedId = $auth['segment_id'] ?? null;
         if ($lockedId === null) {
             return null;
         }
 
-        if (!array_key_exists('segmento_id', $payload)) {
+        if (!array_key_exists('segment_id', $payload)) {
             return null;
         }
 
-        $incoming = $payload['segmento_id'];
+        $incoming = $payload['segment_id'];
         if ($incoming === null || $incoming === '' || (int) $incoming !== (int) $lockedId) {
             return 'No puedes asignar o consultar un segmento fuera de tu alcance.';
         }
@@ -118,9 +118,9 @@ final class RbacAuthHelper
      */
     public static function can(array $auth, string $moduleKey, string $action): bool
     {
-        /** @var array<string, array{ver?: bool, crear?: bool, editar?: bool, eliminar?: bool}> $permisos */
-        $permisos = $auth['permisos'] ?? [];
-        $module = $permisos[$moduleKey] ?? null;
+        /** @var array<string, array{view?: bool, create?: bool, edit?: bool, delete?: bool}> $permissions */
+        $permissions = $auth['permissions'] ?? [];
+        $module = $permissions[$moduleKey] ?? null;
         if ($module === null) {
             return false;
         }
@@ -129,7 +129,7 @@ final class RbacAuthHelper
     }
 
     /**
-     * Revoca todas las sesiones activas de un usuario (cambio de rol/segmento/activo).
+     * Revoca todas las sesiones activas de un usuario (cambio de rol, segmento o estado).
      */
     public static function revokeSessionsForUser(int $userId): int
     {
@@ -137,23 +137,23 @@ final class RbacAuthHelper
             return 0;
         }
 
-        return (int) Capsule::table('sesion_activa')
-            ->where('usuario_id', $userId)
-            ->where('revocada', false)
-            ->update(['revocada' => true]);
+        return (int) Capsule::table('active_sessions')
+            ->where('user_id', $userId)
+            ->where('is_revoked', false)
+            ->update(['is_revoked' => true]);
     }
 
     /**
-     * Revoca sesiones de todos los usuarios con un rol (cambio de matriz permisos).
+     * Revoca sesiones de todos los usuarios con un rol (cambio de matriz de permisos).
      */
-    public static function revokeSessionsForRole(int $rolId): int
+    public static function revokeSessionsForRole(int $roleId): int
     {
-        if ($rolId <= 0) {
+        if ($roleId <= 0) {
             return 0;
         }
 
-        $userIds = Capsule::table('usuario')
-            ->where('rol_id', $rolId)
+        $userIds = Capsule::table('users')
+            ->where('role_id', $roleId)
             ->pluck('id')
             ->all();
 
@@ -161,9 +161,9 @@ final class RbacAuthHelper
             return 0;
         }
 
-        return (int) Capsule::table('sesion_activa')
-            ->whereIn('usuario_id', $userIds)
-            ->where('revocada', false)
-            ->update(['revocada' => true]);
+        return (int) Capsule::table('active_sessions')
+            ->whereIn('user_id', $userIds)
+            ->where('is_revoked', false)
+            ->update(['is_revoked' => true]);
     }
 }

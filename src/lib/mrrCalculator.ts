@@ -2,35 +2,36 @@ import type { MrrBridgeStep, MrrCategory } from '@/types/mrr'
 
 /** Colores del Puente de MRR (mockup Imagen 1). */
 export const MRR_BRIDGE_COLORS = {
-  inicio: '#52504C',
+  start: '#52504C',
   positive: '#0D528C',
   negative: '#9C4206',
-  fin: '#1E1E1C',
+  end: '#1E1E1C',
 } as const
 
-/** Orden canónico de deltas del puente (excluye inicio/fin). */
+/** Orden canónico de deltas del puente (excluye start/end). */
 export const MRR_DELTA_CATEGORY_ORDER = [
-  'nuevo',
+  'new',
   'expansion',
-  'ajuste_precio',
-  'cambio_frecuencia',
-  'contraccion',
+  'price_adjustment',
+  'frequency_change',
+  'contraction',
   'churn',
-  'reactivacion',
-] as const satisfies ReadonlyArray<Exclude<MrrCategory, 'inicio' | 'fin'>>
+  'reactivation',
+] as const satisfies ReadonlyArray<Exclude<MrrCategory, 'start' | 'end'>>
 
 export type MrrDeltaCategory = (typeof MRR_DELTA_CATEGORY_ORDER)[number]
 
+/** Etiquetas visibles en español; las claves del puente son ENUMs en inglés. */
 const CATEGORY_LABELS: Record<MrrCategory, string> = {
-  inicio: 'Inicio',
-  nuevo: 'Nuevo',
+  start: 'Inicio',
+  new: 'Nuevo',
   expansion: 'Expansión',
-  ajuste_precio: 'Ajuste de precio',
-  cambio_frecuencia: 'Cambio de frecuencia',
-  contraccion: 'Contracción',
+  price_adjustment: 'Ajuste de precio',
+  frequency_change: 'Cambio de frecuencia',
+  contraction: 'Contracción',
   churn: 'Churn',
-  reactivacion: 'Reactivación',
-  fin: 'Fin',
+  reactivation: 'Reactivación',
+  end: 'Fin',
 }
 
 /**
@@ -88,23 +89,23 @@ export type MrrDeltasByCategory = Partial<Record<MrrDeltaCategory, number>> &
  * Compatible con mockup y con agregados de API/`mrr_mensual`.
  */
 export function buildMrrBridgeSteps(
-  mrrInicio: number,
+  mrrStart: number,
   deltasByCategory: MrrDeltasByCategory,
 ): MrrBridgeStep[] {
-  const inicio = roundMoney2(mrrInicio)
-  let accumulatedCents = toCents(inicio)
+  const opening = roundMoney2(mrrStart)
+  let accumulatedCents = toCents(opening)
 
   const steps: MrrBridgeStep[] = [
     {
-      label: CATEGORY_LABELS.inicio,
-      category: 'inicio',
+      label: CATEGORY_LABELS.start,
+      category: 'start',
       deltaMxn: 0,
       start: 0,
-      size: inicio,
-      accumulated: inicio,
+      size: opening,
+      accumulated: opening,
       type: 'total',
-      color: MRR_BRIDGE_COLORS.inicio,
-      displayLabel: formatBridgeCompactLabel(inicio, false),
+      color: MRR_BRIDGE_COLORS.start,
+      displayLabel: formatBridgeCompactLabel(opening, false),
     },
   ]
 
@@ -130,17 +131,17 @@ export function buildMrrBridgeSteps(
     })
   }
 
-  const fin = fromCents(accumulatedCents)
+  const closing = fromCents(accumulatedCents)
   steps.push({
-    label: CATEGORY_LABELS.fin,
-    category: 'fin',
+    label: CATEGORY_LABELS.end,
+    category: 'end',
     deltaMxn: 0,
     start: 0,
-    size: fin,
-    accumulated: fin,
+    size: closing,
+    accumulated: closing,
     type: 'total',
-    color: MRR_BRIDGE_COLORS.fin,
-    displayLabel: formatBridgeCompactLabel(fin, false),
+    color: MRR_BRIDGE_COLORS.end,
+    displayLabel: formatBridgeCompactLabel(closing, false),
   })
 
   return steps

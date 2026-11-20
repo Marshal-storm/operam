@@ -6,8 +6,10 @@ use Phinx\Seed\AbstractSeed;
 
 /**
  * Módulos multinivel (15) + roles iniciales con matriz CRUD (idempotente).
- * Incluye rol de ejemplo "Gestor de Promociones".
+ * Incluye el rol de ejemplo "Gestor de Promociones".
  * Emisores e Instancias son submódulos independientes.
+ * Claves de módulo y group_key en inglés. Nombres y descripciones visibles en español.
+ * Los códigos de rol (admin_general, operador_comercial, etc.) se conservan: la app los referencia.
  */
 final class RbacRolesAndPermissionsSeeder extends AbstractSeed
 {
@@ -22,7 +24,7 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
     {
         $nowUtc = gmdate('Y-m-d H:i:s');
         $this->seedModules();
-        $this->purgeLegacyConfigModule($nowUtc);
+        $this->purgeLegacyConfigModule();
         $roleIds = $this->seedRoles($nowUtc);
         $this->seedPermissions($roleIds, $nowUtc);
         $this->linkExistingUsers($roleIds, $nowUtc);
@@ -31,35 +33,36 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
     private function seedModules(): void
     {
         $modules = [
-            ['clave' => 'dashboard', 'nombre' => 'Dashboard y Puente de MRR', 'grupo' => 'principal', 'orden' => 10],
-            ['clave' => 'contratos', 'nombre' => 'Contratos y bitácora', 'grupo' => 'principal', 'orden' => 20],
-            ['clave' => 'clientes', 'nombre' => 'Directorio de clientes', 'grupo' => 'principal', 'orden' => 30],
-            ['clave' => 'solicitudes', 'nombre' => 'Solicitudes de compra/horas', 'grupo' => 'principal', 'orden' => 40],
-            ['clave' => 'cobranza', 'nombre' => 'Cobranza y cartera', 'grupo' => 'principal', 'orden' => 50],
-            ['clave' => 'utilidad_segmento', 'nombre' => 'Utilidad por segmento', 'grupo' => 'principal', 'orden' => 60],
-            ['clave' => 'promociones_ventas', 'nombre' => 'Promociones vigentes (ventas)', 'grupo' => 'principal', 'orden' => 70],
-            ['clave' => 'config_catalogo', 'nombre' => 'Catálogo de servicios', 'grupo' => 'configuracion', 'orden' => 110],
-            ['clave' => 'config_precios', 'nombre' => 'Listas de precios', 'grupo' => 'configuracion', 'orden' => 120],
-            ['clave' => 'config_promociones', 'nombre' => 'Promociones (admin)', 'grupo' => 'configuracion', 'orden' => 130],
-            ['clave' => 'config_emisores', 'nombre' => 'Emisores', 'grupo' => 'configuracion', 'orden' => 140],
-            ['clave' => 'config_instancias', 'nombre' => 'Instancias', 'grupo' => 'configuracion', 'orden' => 145],
-            ['clave' => 'config_usuarios', 'nombre' => 'Usuarios del sistema', 'grupo' => 'configuracion', 'orden' => 150],
-            ['clave' => 'config_roles', 'nombre' => 'Roles y permisos', 'grupo' => 'configuracion', 'orden' => 160],
-            ['clave' => 'config_preferencias', 'nombre' => 'Preferencias de pantalla', 'grupo' => 'configuracion', 'orden' => 170],
+            ['module_key' => 'dashboard', 'name' => 'Dashboard y Puente de MRR', 'group_key' => 'main', 'sort_order' => 10],
+            ['module_key' => 'contracts', 'name' => 'Contratos y bitácora', 'group_key' => 'main', 'sort_order' => 20],
+            ['module_key' => 'clients', 'name' => 'Directorio de clientes', 'group_key' => 'main', 'sort_order' => 30],
+            ['module_key' => 'requests', 'name' => 'Solicitudes de compra/horas', 'group_key' => 'main', 'sort_order' => 40],
+            ['module_key' => 'collections', 'name' => 'Cobranza y cartera', 'group_key' => 'main', 'sort_order' => 50],
+            ['module_key' => 'segment_utility', 'name' => 'Utilidad por segmento', 'group_key' => 'main', 'sort_order' => 60],
+            ['module_key' => 'sales_promotions', 'name' => 'Promociones vigentes (ventas)', 'group_key' => 'main', 'sort_order' => 70],
+            ['module_key' => 'config_catalog', 'name' => 'Catálogo de servicios', 'group_key' => 'configuration', 'sort_order' => 110],
+            ['module_key' => 'config_prices', 'name' => 'Listas de precios', 'group_key' => 'configuration', 'sort_order' => 120],
+            ['module_key' => 'config_promotions', 'name' => 'Promociones (admin)', 'group_key' => 'configuration', 'sort_order' => 130],
+            ['module_key' => 'config_issuers', 'name' => 'Emisores', 'group_key' => 'configuration', 'sort_order' => 140],
+            ['module_key' => 'config_instances', 'name' => 'Instancias', 'group_key' => 'configuration', 'sort_order' => 145],
+            ['module_key' => 'config_users', 'name' => 'Usuarios del sistema', 'group_key' => 'configuration', 'sort_order' => 150],
+            ['module_key' => 'config_roles', 'name' => 'Roles y permisos', 'group_key' => 'configuration', 'sort_order' => 160],
+            ['module_key' => 'config_company', 'name' => 'Empresa', 'group_key' => 'configuration', 'sort_order' => 165],
+            ['module_key' => 'config_preferences', 'name' => 'Preferencias de pantalla', 'group_key' => 'configuration', 'sort_order' => 170],
         ];
 
-        $table = $this->table('modulo_sistema');
+        $table = $this->table('system_modules');
         foreach ($modules as $module) {
             $existing = $this->fetchRow(sprintf(
-                "SELECT id FROM modulo_sistema WHERE clave = '%s'",
-                $this->quote($module['clave'])
+                "SELECT id FROM system_modules WHERE module_key = '%s'",
+                $this->quote($module['module_key'])
             ));
             if ($existing) {
                 $this->execute(sprintf(
-                    "UPDATE modulo_sistema SET nombre = '%s', grupo = '%s', orden = %d WHERE id = %d",
-                    $this->quote($module['nombre']),
-                    $this->quote($module['grupo']),
-                    (int) $module['orden'],
+                    "UPDATE system_modules SET name = '%s', group_key = '%s', sort_order = %d WHERE id = %d",
+                    $this->quote($module['name']),
+                    $this->quote($module['group_key']),
+                    (int) $module['sort_order'],
                     (int) $existing['id']
                 ));
                 continue;
@@ -68,11 +71,14 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
         }
     }
 
-    private function purgeLegacyConfigModule(string $nowUtc): void
+    /**
+     * Elimina el módulo único heredado "configuracion" si quedó de un seeder anterior.
+     * Los permisos viven en los submódulos config_* .
+     */
+    private function purgeLegacyConfigModule(): void
     {
-        unset($nowUtc);
-        $this->execute("DELETE FROM rol_permiso WHERE modulo_clave = 'configuracion'");
-        $this->execute("DELETE FROM modulo_sistema WHERE clave = 'configuracion'");
+        $this->execute("DELETE FROM role_permissions WHERE module_key = 'configuracion'");
+        $this->execute("DELETE FROM system_modules WHERE module_key = 'configuracion'");
     }
 
     /**
@@ -82,70 +88,70 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
     {
         $roles = [
             [
-                'codigo' => 'admin_general',
-                'nombre' => 'Administrador General',
-                'descripcion' => 'CRUD total en módulos operativos y todos los submódulos de configuración. Alcance: Todos.',
-                'es_sistema' => 1,
+                'code' => 'admin_general',
+                'name' => 'Administrador General',
+                'description' => 'CRUD total en módulos operativos y todos los submódulos de configuración. Alcance: Todos.',
+                'is_system' => 1,
             ],
             [
-                'codigo' => 'operador_comercial',
-                'nombre' => 'Operador Operam',
-                'descripcion' => 'Opera dashboard, contratos, clientes, solicitudes y promociones. Sin configuración. Segmento: Operam.',
-                'es_sistema' => 1,
+                'code' => 'operador_comercial',
+                'name' => 'Operador Operam',
+                'description' => 'Opera dashboard, contratos, clientes, solicitudes y promociones. Sin configuración. Segmento: Operam.',
+                'is_system' => 1,
             ],
             [
-                'codigo' => 'supervisor_segmento',
-                'nombre' => 'Supervisor Construsync',
-                'descripcion' => 'Ver y editar en su segmento. Sin configuración. Segmento: Construsync.',
-                'es_sistema' => 1,
+                'code' => 'supervisor_segmento',
+                'name' => 'Supervisor Construsync',
+                'description' => 'Ver y editar en su segmento. Sin configuración. Segmento: Construsync.',
+                'is_system' => 1,
             ],
             [
-                'codigo' => 'ejecutivo_ventas',
-                'nombre' => 'Ejecutivo de Ventas',
-                'descripcion' => 'Ver dashboard, crear contratos/clientes, ver promociones de ventas. Sin configuración.',
-                'es_sistema' => 1,
+                'code' => 'ejecutivo_ventas',
+                'name' => 'Ejecutivo de Ventas',
+                'description' => 'Ver dashboard, crear contratos/clientes, ver promociones de ventas. Sin configuración.',
+                'is_system' => 1,
             ],
             [
-                'codigo' => 'gestor_promociones',
-                'nombre' => 'Gestor de Promociones',
-                'descripcion' => 'Ejemplo especializado: solo administra Promociones (config) y consulta promociones de ventas. Sin precios ni usuarios.',
-                'es_sistema' => 0,
+                'code' => 'gestor_promociones',
+                'name' => 'Gestor de Promociones',
+                'description' => 'Ejemplo especializado: solo administra Promociones (config) y consulta promociones de ventas. Sin precios ni usuarios.',
+                'is_system' => 0,
             ],
         ];
 
         $ids = [];
-        $table = $this->table('rol');
+        $table = $this->table('roles');
         foreach ($roles as $role) {
             $existing = $this->fetchRow(sprintf(
-                "SELECT id FROM rol WHERE codigo = '%s'",
-                $this->quote($role['codigo'])
+                "SELECT id FROM roles WHERE code = '%s'",
+                $this->quote($role['code'])
             ));
             if ($existing) {
                 $this->execute(sprintf(
-                    "UPDATE rol SET nombre = '%s', descripcion = '%s', es_sistema = %d, activo = 1, updated_at = '%s' WHERE id = %d",
-                    $this->quote($role['nombre']),
-                    $this->quote($role['descripcion']),
-                    (int) $role['es_sistema'],
+                    "UPDATE roles SET name = '%s', description = '%s', is_system = %d, is_active = 1, updated_at = '%s' WHERE id = %d",
+                    $this->quote($role['name']),
+                    $this->quote($role['description']),
+                    (int) $role['is_system'],
                     $nowUtc,
                     (int) $existing['id']
                 ));
-                $ids[$role['codigo']] = (int) $existing['id'];
+                $ids[$role['code']] = (int) $existing['id'];
                 continue;
             }
             $table->insert([
-                'codigo' => $role['codigo'],
-                'nombre' => $role['nombre'],
-                'descripcion' => $role['descripcion'],
-                'es_sistema' => $role['es_sistema'],
-                'activo' => 1,
+                'code' => $role['code'],
+                'name' => $role['name'],
+                'description' => $role['description'],
+                'is_system' => $role['is_system'],
+                'is_active' => 1,
                 'created_at' => $nowUtc,
                 'updated_at' => $nowUtc,
             ])->saveData();
             $row = $this->fetchRow(sprintf(
-                "SELECT id FROM rol WHERE codigo = '%s'",
-                $this->quote($role['codigo'])
+                "SELECT id FROM roles WHERE code = '%s'",
+                $this->quote($role['code'])
             ));
-            $ids[$role['codigo']] = (int) $row['id'];
+            $ids[$role['code']] = (int) $row['id'];
         }
 
         return $ids;
@@ -156,106 +162,106 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
      */
     private function seedPermissions(array $roleIds, string $nowUtc): void
     {
-        $principal = [
+        $main = [
             'dashboard',
-            'contratos',
-            'clientes',
-            'solicitudes',
-            'cobranza',
-            'utilidad_segmento',
-            'promociones_ventas',
+            'contracts',
+            'clients',
+            'requests',
+            'collections',
+            'segment_utility',
+            'sales_promotions',
         ];
         $config = [
-            'config_catalogo',
-            'config_precios',
-            'config_promociones',
-            'config_emisores',
-            'config_instancias',
-            'config_usuarios',
+            'config_catalog',
+            'config_prices',
+            'config_promotions',
+            'config_issuers',
+            'config_instances',
+            'config_users',
             'config_roles',
-            'config_preferencias',
-        ];
-        $allModules = array_merge($principal, $config);
+            'config_company',
+            'config_preferences',
+        ];        $allModules = array_merge($main, $config);
 
         $zeroConfig = [];
-        foreach ($config as $clave) {
-            $zeroConfig[$clave] = [0, 0, 0, 0];
+        foreach ($config as $moduleKey) {
+            $zeroConfig[$moduleKey] = [0, 0, 0, 0];
         }
 
         $matrices = [
             'admin_general' => $this->fullCrudMatrix($allModules),
             'operador_comercial' => array_merge([
                 'dashboard' => [1, 0, 0, 0],
-                'contratos' => [1, 1, 1, 0],
-                'clientes' => [1, 1, 1, 0],
-                'solicitudes' => [1, 1, 1, 0],
-                'cobranza' => [0, 0, 0, 0],
-                'utilidad_segmento' => [0, 0, 0, 0],
-                'promociones_ventas' => [1, 0, 0, 0],
+                'contracts' => [1, 1, 1, 0],
+                'clients' => [1, 1, 1, 0],
+                'requests' => [1, 1, 1, 0],
+                'collections' => [0, 0, 0, 0],
+                'segment_utility' => [0, 0, 0, 0],
+                'sales_promotions' => [1, 0, 0, 0],
             ], $zeroConfig),
             'supervisor_segmento' => array_merge([
                 'dashboard' => [1, 0, 0, 0],
-                'contratos' => [1, 1, 1, 0],
-                'clientes' => [1, 1, 1, 0],
-                'solicitudes' => [1, 1, 1, 0],
-                'cobranza' => [1, 0, 1, 0],
-                'utilidad_segmento' => [1, 0, 0, 0],
-                'promociones_ventas' => [1, 0, 0, 0],
+                'contracts' => [1, 1, 1, 0],
+                'clients' => [1, 1, 1, 0],
+                'requests' => [1, 1, 1, 0],
+                'collections' => [1, 0, 1, 0],
+                'segment_utility' => [1, 0, 0, 0],
+                'sales_promotions' => [1, 0, 0, 0],
             ], $zeroConfig),
             'ejecutivo_ventas' => array_merge([
                 'dashboard' => [1, 0, 0, 0],
-                'contratos' => [1, 1, 0, 0],
-                'clientes' => [1, 1, 0, 0],
-                'solicitudes' => [0, 0, 0, 0],
-                'cobranza' => [0, 0, 0, 0],
-                'utilidad_segmento' => [0, 0, 0, 0],
-                'promociones_ventas' => [1, 0, 0, 0],
+                'contracts' => [1, 1, 0, 0],
+                'clients' => [1, 1, 0, 0],
+                'requests' => [0, 0, 0, 0],
+                'collections' => [0, 0, 0, 0],
+                'segment_utility' => [0, 0, 0, 0],
+                'sales_promotions' => [1, 0, 0, 0],
             ], $zeroConfig),
             'gestor_promociones' => array_merge([
                 'dashboard' => [1, 0, 0, 0],
-                'contratos' => [0, 0, 0, 0],
-                'clientes' => [0, 0, 0, 0],
-                'solicitudes' => [0, 0, 0, 0],
-                'cobranza' => [0, 0, 0, 0],
-                'utilidad_segmento' => [0, 0, 0, 0],
-                'promociones_ventas' => [1, 0, 0, 0],
+                'contracts' => [0, 0, 0, 0],
+                'clients' => [0, 0, 0, 0],
+                'requests' => [0, 0, 0, 0],
+                'collections' => [0, 0, 0, 0],
+                'segment_utility' => [0, 0, 0, 0],
+                'sales_promotions' => [1, 0, 0, 0],
             ], array_merge($zeroConfig, [
-                'config_promociones' => [1, 1, 1, 0],
+                'config_promotions' => [1, 1, 1, 0],
             ])),
         ];
 
-        $table = $this->table('rol_permiso');
-        foreach ($matrices as $codigo => $matrix) {
-            $rolId = $roleIds[$codigo] ?? null;
-            if ($rolId === null) {
+        $table = $this->table('role_permissions');
+        foreach ($matrices as $code => $matrix) {
+            $roleId = $roleIds[$code] ?? null;
+            if ($roleId === null) {
                 continue;
             }
-            foreach ($matrix as $moduloClave => $flags) {
-                [$ver, $crear, $editar, $eliminar] = $flags;
+            foreach ($matrix as $moduleKey => $flags) {
+                [$canView, $canCreate, $canEdit, $canDelete] = $flags;
                 $existing = $this->fetchRow(sprintf(
-                    "SELECT id FROM rol_permiso WHERE rol_id = %d AND modulo_clave = '%s'",
-                    $rolId,
-                    $this->quote($moduloClave)
+                    "SELECT id FROM role_permissions WHERE role_id = %d AND module_key = '%s'",
+                    $roleId,
+                    $this->quote($moduleKey)
                 ));
                 if ($existing) {
                     $this->execute(sprintf(
-                        "UPDATE rol_permiso SET puede_ver = %d, puede_crear = %d, puede_editar = %d, puede_eliminar = %d, updated_at = '%s' WHERE id = %d",
-                        $ver,
-                        $crear,
-                        $editar,
-                        $eliminar,
+                        "UPDATE role_permissions SET can_view = %d, can_create = %d, can_edit = %d, can_delete = %d, updated_at = '%s' WHERE id = %d",
+                        $canView,
+                        $canCreate,
+                        $canEdit,
+                        $canDelete,
                         $nowUtc,
                         (int) $existing['id']
                     ));
                     continue;
                 }
                 $table->insert([
-                    'rol_id' => $rolId,
-                    'modulo_clave' => $moduloClave,
-                    'puede_ver' => $ver,
-                    'puede_crear' => $crear,
-                    'puede_editar' => $editar,
-                    'puede_eliminar' => $eliminar,
+                    'role_id' => $roleId,
+                    'module_key' => $moduleKey,
+                    'can_view' => $canView,
+                    'can_create' => $canCreate,
+                    'can_edit' => $canEdit,
+                    'can_delete' => $canDelete,
                     'created_at' => $nowUtc,
                     'updated_at' => $nowUtc,
                 ])->saveData();
@@ -270,14 +276,16 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
     private function fullCrudMatrix(array $modules): array
     {
         $matrix = [];
-        foreach ($modules as $clave) {
-            $matrix[$clave] = [1, 1, 1, 1];
+        foreach ($modules as $moduleKey) {
+            $matrix[$moduleKey] = [1, 1, 1, 1];
         }
 
         return $matrix;
     }
 
     /**
+     * Enlaza usuarios semilla con su rol. No escribe una columna `rol`: solo role_id.
+     *
      * @param array<string, int> $roleIds
      */
     private function linkExistingUsers(array $roleIds, string $nowUtc): void
@@ -287,45 +295,41 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
 
         $links = [
             'admin@operam.mx' => [
-                'rol_id' => $roleIds['admin_general'] ?? null,
-                'segmento_id' => null,
-                'rol_legacy' => 'admin',
+                'role_id' => $roleIds['admin_general'] ?? null,
+                'segment_id' => null,
             ],
             'operador@operam.mx' => [
-                'rol_id' => $roleIds['operador_comercial'] ?? null,
-                'segmento_id' => $operamId,
-                'rol_legacy' => 'operador',
+                'role_id' => $roleIds['operador_comercial'] ?? null,
+                'segment_id' => $operamId,
             ],
             'supervisor@construsync.mx' => [
-                'rol_id' => $roleIds['supervisor_segmento'] ?? null,
-                'segmento_id' => $construId,
-                'rol_legacy' => 'operador',
+                'role_id' => $roleIds['supervisor_segmento'] ?? null,
+                'segment_id' => $construId,
             ],
         ];
 
         foreach ($links as $email => $data) {
-            if ($data['rol_id'] === null) {
+            if ($data['role_id'] === null) {
                 continue;
             }
-            $segmentSql = $data['segmento_id'] === null
+            $segmentSql = $data['segment_id'] === null
                 ? 'NULL'
-                : (string) (int) $data['segmento_id'];
+                : (string) (int) $data['segment_id'];
             $this->execute(sprintf(
-                "UPDATE usuario SET rol_id = %d, segmento_id = %s, rol = '%s', updated_at = '%s' WHERE email = '%s'",
-                (int) $data['rol_id'],
+                "UPDATE users SET role_id = %d, segment_id = %s, updated_at = '%s' WHERE email = '%s'",
+                (int) $data['role_id'],
                 $segmentSql,
-                $this->quote($data['rol_legacy']),
                 $nowUtc,
                 $this->quote($email)
             ));
         }
     }
 
-    private function segmentIdByName(string $nombre): ?int
+    private function segmentIdByName(string $name): ?int
     {
         $row = $this->fetchRow(sprintf(
-            "SELECT id FROM segmento WHERE nombre = '%s'",
-            $this->quote($nombre)
+            "SELECT id FROM segments WHERE name = '%s'",
+            $this->quote($name)
         ));
 
         return $row ? (int) $row['id'] : null;

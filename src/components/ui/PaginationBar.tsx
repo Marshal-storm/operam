@@ -1,6 +1,8 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useScreenPreferences, type PageSizeOption } from '@/context/ScreenPreferencesContext'
 import { cn } from '@/lib/utils'
+import { AppButton } from './AppButton'
+import { AppSelect } from './AppSelect'
 
 type PaginationBarProps = {
   page: number
@@ -11,8 +13,15 @@ type PaginationBarProps = {
   className?: string
 }
 
+const PAGE_SIZE_OPTIONS = [
+  { value: '10', label: '10' },
+  { value: '25', label: '25' },
+  { value: '50', label: '50' },
+  { value: '100', label: '100' },
+]
+
 /**
- * Barra de paginación Operam: total, selector pageSize y páginas.
+ * Barra de paginación Operam: total, selector pageSize (AppSelect) y páginas.
  */
 export function PaginationBar({
   page,
@@ -47,35 +56,34 @@ export function PaginationBar({
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
-        {onPageSizeChange && (
+        {onPageSizeChange ? (
           <label className="flex items-center gap-1.5 text-xs text-slate-500">
             Por página
-            <select
-              className="rounded-lg border border-slate-200 bg-white px-2 py-1 font-mono text-xs tabular-nums dark:border-white/[0.08] dark:bg-white/[0.05]"
-              value={size}
-              onChange={(e) => {
-                onPageSizeChange(Number(e.target.value) as PageSizeOption)
+            <AppSelect
+              aria-label="Registros por página"
+              value={String(size)}
+              onValueChange={(v) => {
+                onPageSizeChange(Number(v) as PageSizeOption)
                 onPageChange(1)
               }}
-            >
-              {[10, 25, 50, 100].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
+              options={PAGE_SIZE_OPTIONS}
+              triggerClassName="mt-0 h-8 w-[4.5rem] py-1 text-xs font-mono tabular-nums"
+              searchable={false}
+            />
           </label>
-        )}
+        ) : null}
 
-        <button
+        <AppButton
           type="button"
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
           disabled={safePage <= 1}
           onClick={() => onPageChange(safePage - 1)}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 disabled:opacity-40 dark:border-white/[0.08]"
           aria-label="Página anterior"
         >
           <ChevronLeft className="h-4 w-4" />
-        </button>
+        </AppButton>
 
         {pages.map((p, idx) =>
           p === '…' ? (
@@ -83,31 +91,30 @@ export function PaginationBar({
               …
             </span>
           ) : (
-            <button
+            <AppButton
               key={p}
               type="button"
+              variant={p === safePage ? 'primary' : 'outline'}
+              size="sm"
+              className="h-8 min-w-8 px-2 font-mono tabular-nums"
               onClick={() => onPageChange(p)}
-              className={cn(
-                'flex h-8 min-w-8 items-center justify-center rounded-lg px-2 font-mono text-xs tabular-nums',
-                p === safePage
-                  ? 'bg-[#0066FF] text-white dark:bg-[#0A84FF]'
-                  : 'border border-slate-200 hover:bg-slate-50 dark:border-white/[0.08] dark:hover:bg-white/[0.05]',
-              )}
             >
               {p}
-            </button>
+            </AppButton>
           ),
         )}
 
-        <button
+        <AppButton
           type="button"
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
           disabled={safePage >= totalPages}
           onClick={() => onPageChange(safePage + 1)}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 disabled:opacity-40 dark:border-white/[0.08]"
           aria-label="Página siguiente"
         >
           <ChevronRight className="h-4 w-4" />
-        </button>
+        </AppButton>
       </div>
     </div>
   )

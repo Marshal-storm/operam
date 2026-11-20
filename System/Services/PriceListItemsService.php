@@ -11,8 +11,8 @@ use System\Core\Result;
 use System\Models\PriceListItemsModel;
 
 /**
- * CRUD de ítems / escalas de lista de precios (`lista_precio_item`).
- * RF-2: rangos por volumen `[cantidad_min, cantidad_max]` sin traslapes.
+ * CRUD de ítems / escalas de lista de precios (`price_list_items`).
+ * RF-2: rangos por volumen `[min_quantity, max_quantity]` sin traslapes.
  * Montos siempre DECIMAL(14,2) como string — sin float.
  */
 final class PriceListItemsService extends ModelService
@@ -25,12 +25,12 @@ final class PriceListItemsService extends ModelService
     protected function configureFields(): void
     {
         $this->validator
-            ->setField('lista_precio_id', DataTypes::Integer, true)
-            ->setField('servicio_id', DataTypes::Integer, true)
-            ->setField('frecuencia', DataTypes::String, true)
-            ->setField('cantidad_min', DataTypes::Integer, false, 1)
-            ->setField('cantidad_max', DataTypes::Integer, false)
-            ->setField('precio_unitario', DataTypes::String, true);
+            ->setField('price_list_id', DataTypes::Integer, true)
+            ->setField('service_id', DataTypes::Integer, true)
+            ->setField('frequency', DataTypes::String, true)
+            ->setField('min_quantity', DataTypes::Integer, false, 1)
+            ->setField('max_quantity', DataTypes::Integer, false)
+            ->setField('unit_price', DataTypes::String, true);
     }
 
     public function handle(Context $context): Result
@@ -100,16 +100,16 @@ final class PriceListItemsService extends ModelService
      */
     private function removeProductFromList(array $input): Result
     {
-        $listaId = (int) ($input['lista_precio_id'] ?? 0);
-        $servicioId = (int) ($input['servicio_id'] ?? 0);
+        $priceListId = (int) ($input['price_list_id'] ?? 0);
+        $serviceId = (int) ($input['service_id'] ?? 0);
 
-        if ($listaId < 1 || $servicioId < 1) {
-            return Result::fail('lista_precio_id y servicio_id son requeridos.', 400);
+        if ($priceListId < 1 || $serviceId < 1) {
+            return Result::fail('price_list_id y service_id son requeridos.', 400);
         }
 
-        $deleted = Capsule::table('lista_precio_item')
-            ->where('lista_precio_id', $listaId)
-            ->where('servicio_id', $servicioId)
+        $deleted = Capsule::table('price_list_items')
+            ->where('price_list_id', $priceListId)
+            ->where('service_id', $serviceId)
             ->delete();
 
         if ($deleted === 0) {
@@ -118,8 +118,8 @@ final class PriceListItemsService extends ModelService
 
         return Result::ok(
             [
-                'lista_precio_id' => $listaId,
-                'servicio_id' => $servicioId,
+                'price_list_id' => $priceListId,
+                'service_id' => $serviceId,
                 'deleted' => $deleted,
             ],
             'Producto quitado de la lista',
@@ -132,17 +132,17 @@ final class PriceListItemsService extends ModelService
      */
     private function normalizeMoney(array $input): array
     {
-        if (isset($input['precio_unitario'])) {
-            $raw = trim((string) $input['precio_unitario']);
+        if (isset($input['unit_price'])) {
+            $raw = trim((string) $input['unit_price']);
             if (!preg_match('/^\d+(\.\d{1,2})?$/', $raw)) {
-                $input['precio_unitario'] = '';
+                $input['unit_price'] = '';
             } else {
                 if (!str_contains($raw, '.')) {
                     $raw .= '.00';
                 } elseif (preg_match('/^\d+\.\d$/', $raw)) {
                     $raw .= '0';
                 }
-                $input['precio_unitario'] = $raw;
+                $input['unit_price'] = $raw;
             }
         }
 
@@ -150,22 +150,22 @@ final class PriceListItemsService extends ModelService
     }
 
     /**
-     * Normaliza cantidad_min (>=1) y cantidad_max (null = en adelante).
+     * Normaliza min_quantity (>=1) y max_quantity (null = en adelante).
      *
      * @param array<string, mixed> $input
      * @return array<string, mixed>
      */
     private function normalizeScale(array $input): array
     {
-        if (array_key_exists('cantidad_min', $input)) {
-            $input['cantidad_min'] = max(1, (int) $input['cantidad_min']);
+        if (array_key_exists('min_quantity', $input)) {
+            $input['min_quantity'] = max(1, (int) $input['min_quantity']);
         }
-        if (array_key_exists('cantidad_max', $input)) {
-            $raw = $input['cantidad_max'];
+        if (array_key_exists('max_quantity', $input)) {
+            $raw = $input['max_quantity'];
             if ($raw === null || $raw === '' || $raw === false) {
-                $input['cantidad_max'] = null;
+                $input['max_quantity'] = null;
             } else {
-                $input['cantidad_max'] = (int) $raw;
+                $input['max_quantity'] = (int) $raw;
             }
         }
 
@@ -174,42 +174,42 @@ final class PriceListItemsService extends ModelService
 
     /**
      * Valida rango individual y ausencia de traslapes por
-     * lista_precio_id + servicio_id + frecuencia.
+     * price_list_id + service_id + frequency.
      *
      * @param array<string, mixed> $input
      */
     private function assertValidScale(array $input, ?int $exceptId): ?string
     {
-        $listaId = (int) ($input['lista_precio_id'] ?? 0);
-        $servicioId = (int) ($input['servicio_id'] ?? 0);
-        $frecuencia = trim((string) ($input['frecuencia'] ?? ''));
-        $min = (int) ($input['cantidad_min'] ?? 1);
-        $max = array_key_exists('cantidad_max', $input) && $input['cantidad_max'] !== null
-            ? (int) $input['cantidad_max']
+        $priceListId = (int) ($input['price_list_id'] ?? 0);
+        $serviceId = (int) ($input['service_id'] ?? 0);
+        $frequency = trim((string) ($input['frequency'] ?? ''));
+        $min = (int) ($input['min_quantity'] ?? 1);
+        $max = array_key_exists('max_quantity', $input) && $input['max_quantity'] !== null
+            ? (int) $input['max_quantity']
             : null;
 
-        if ($listaId < 1 || $servicioId < 1 || $frecuencia === '') {
-            return 'lista_precio_id, servicio_id y frecuencia son requeridos para la escala.';
+        if ($priceListId < 1 || $serviceId < 1 || $frequency === '') {
+            return 'price_list_id, service_id y frequency son requeridos para la escala.';
         }
         if ($min < 1) {
-            return 'cantidad_min debe ser un entero mayor o igual a 1.';
+            return 'min_quantity debe ser un entero mayor o igual a 1.';
         }
         if ($max !== null && $max < $min) {
-            return 'cantidad_max no puede ser menor que cantidad_min.';
+            return 'max_quantity no puede ser menor que min_quantity.';
         }
 
-        $query = Capsule::table('lista_precio_item')
-            ->where('lista_precio_id', $listaId)
-            ->where('servicio_id', $servicioId)
-            ->where('frecuencia', $frecuencia);
+        $query = Capsule::table('price_list_items')
+            ->where('price_list_id', $priceListId)
+            ->where('service_id', $serviceId)
+            ->where('frequency', $frequency);
         if ($exceptId !== null) {
             $query->where('id', '!=', $exceptId);
         }
 
-        $siblings = $query->get(['id', 'cantidad_min', 'cantidad_max']);
+        $siblings = $query->get(['id', 'min_quantity', 'max_quantity']);
         foreach ($siblings as $sibling) {
-            $sibMin = (int) $sibling->cantidad_min;
-            $sibMax = $sibling->cantidad_max !== null ? (int) $sibling->cantidad_max : null;
+            $sibMin = (int) $sibling->min_quantity;
+            $sibMax = $sibling->max_quantity !== null ? (int) $sibling->max_quantity : null;
             if ($this->rangesOverlap($min, $max, $sibMin, $sibMax)) {
                 return sprintf(
                     'El rango %s se traslapa con el escalón existente %s (misma lista, producto y frecuencia).',
@@ -244,35 +244,35 @@ final class PriceListItemsService extends ModelService
      */
     private function listEnriched(): array
     {
-        $rows = Capsule::table('lista_precio_item as lpi')
-            ->leftJoin('servicio as s', 's.id', '=', 'lpi.servicio_id')
-            ->orderBy('lpi.lista_precio_id')
-            ->orderBy('lpi.servicio_id')
-            ->orderBy('lpi.cantidad_min')
-            ->orderBy('lpi.frecuencia')
+        $rows = Capsule::table('price_list_items as lpi')
+            ->leftJoin('services as s', 's.id', '=', 'lpi.service_id')
+            ->orderBy('lpi.price_list_id')
+            ->orderBy('lpi.service_id')
+            ->orderBy('lpi.min_quantity')
+            ->orderBy('lpi.frequency')
             ->get([
                 'lpi.id',
-                'lpi.lista_precio_id',
-                'lpi.servicio_id',
-                's.codigo as servicio_codigo',
-                's.nombre as servicio_nombre',
-                'lpi.frecuencia',
-                'lpi.cantidad_min',
-                'lpi.cantidad_max',
-                'lpi.precio_unitario',
+                'lpi.price_list_id',
+                'lpi.service_id',
+                's.code as service_code',
+                's.name as service_name',
+                'lpi.frequency',
+                'lpi.min_quantity',
+                'lpi.max_quantity',
+                'lpi.unit_price',
             ]);
 
         return $rows->map(static function (object $item): array {
             return [
                 'id' => (int) $item->id,
-                'lista_precio_id' => (int) $item->lista_precio_id,
-                'servicio_id' => (int) $item->servicio_id,
-                'servicio_codigo' => (string) ($item->servicio_codigo ?? ''),
-                'servicio_nombre' => (string) ($item->servicio_nombre ?? ''),
-                'frecuencia' => (string) $item->frecuencia,
-                'cantidad_min' => (int) $item->cantidad_min,
-                'cantidad_max' => $item->cantidad_max !== null ? (int) $item->cantidad_max : null,
-                'precio_unitario' => (string) $item->precio_unitario,
+                'price_list_id' => (int) $item->price_list_id,
+                'service_id' => (int) $item->service_id,
+                'service_code' => (string) ($item->service_code ?? ''),
+                'service_name' => (string) ($item->service_name ?? ''),
+                'frequency' => (string) $item->frequency,
+                'min_quantity' => (int) $item->min_quantity,
+                'max_quantity' => $item->max_quantity !== null ? (int) $item->max_quantity : null,
+                'unit_price' => (string) $item->unit_price,
             ];
         })->all();
     }

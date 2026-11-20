@@ -20,17 +20,17 @@ final class PromotionsService extends ModelService
     protected function configureFields(): void
     {
         $this->validator
-            ->setField('codigo', DataTypes::String, true)
-            ->setField('nombre', DataTypes::String, true)
-            ->setField('segmento_id', DataTypes::Integer, false)
-            ->setField('tipo_descuento', DataTypes::String, true)
-            ->setField('valor_descuento', DataTypes::String, true)
-            ->setField('aplica_a', DataTypes::String, false, 'recurrente')
-            ->setField('vigente_desde', DataTypes::Date, true)
-            ->setField('vigente_hasta', DataTypes::Date, false)
-            ->setField('usos_maximos', DataTypes::Integer, false)
-            ->setField('usos_actuales', DataTypes::Integer, false, 0)
-            ->setField('activa', DataTypes::Boolean, false, true);
+            ->setField('code', DataTypes::String, true)
+            ->setField('name', DataTypes::String, true)
+            ->setField('segment_id', DataTypes::Integer, false)
+            ->setField('discount_type', DataTypes::String, true)
+            ->setField('discount_value', DataTypes::String, true)
+            ->setField('applies_to', DataTypes::String, false, 'recurring')
+            ->setField('valid_from', DataTypes::Date, true)
+            ->setField('valid_until', DataTypes::Date, false)
+            ->setField('max_uses', DataTypes::Integer, false)
+            ->setField('current_uses', DataTypes::Integer, false, 0)
+            ->setField('is_active', DataTypes::Boolean, false, true);
     }
 
     public function handle(Context $context): Result
@@ -48,8 +48,8 @@ final class PromotionsService extends ModelService
             if ($denied !== null) {
                 return Result::fail($denied, 403);
             }
-            if (($auth['segmento_id'] ?? null) !== null) {
-                $request['segmento_id'] = (int) $auth['segmento_id'];
+            if (($auth['segment_id'] ?? null) !== null) {
+                $request['segment_id'] = (int) $auth['segment_id'];
             }
             $input = $this->normalizeMoney($request);
 
@@ -65,8 +65,8 @@ final class PromotionsService extends ModelService
             if ($denied !== null) {
                 return Result::fail($denied, 403);
             }
-            if (($auth['segmento_id'] ?? null) !== null) {
-                $request['segmento_id'] = (int) $auth['segmento_id'];
+            if (($auth['segment_id'] ?? null) !== null) {
+                $request['segment_id'] = (int) $auth['segment_id'];
             }
 
             return $this->update($promoId, $this->normalizeMoney($request), $context);
@@ -75,7 +75,7 @@ final class PromotionsService extends ModelService
             return $this->patch($promoId, $this->normalizeMoney($request), $context);
         }
         if ($method === 'DELETE') {
-            return $this->patch($promoId, ['activa' => false], $context);
+            return $this->patch($promoId, ['is_active' => false], $context);
         }
 
         return Result::fail('Método no soportado.', 405);
@@ -87,15 +87,15 @@ final class PromotionsService extends ModelService
      */
     private function normalizeMoney(array $input): array
     {
-        if (isset($input['valor_descuento'])) {
-            $raw = trim((string) $input['valor_descuento']);
+        if (isset($input['discount_value'])) {
+            $raw = trim((string) $input['discount_value']);
             if (preg_match('/^\d+(\.\d{1,2})?$/', $raw)) {
                 if (!str_contains($raw, '.')) {
                     $raw .= '.00';
                 } elseif (preg_match('/^\d+\.\d$/', $raw)) {
                     $raw .= '0';
                 }
-                $input['valor_descuento'] = $raw;
+                $input['discount_value'] = $raw;
             }
         }
 
@@ -108,13 +108,13 @@ final class PromotionsService extends ModelService
      */
     private function listEnriched(array $auth = []): array
     {
-        $builder = Capsule::table('promocion as p')
-            ->leftJoin('segmento as seg', 'seg.id', '=', 'p.segmento_id');
+        $builder = Capsule::table('promotions as p')
+            ->leftJoin('segments as seg', 'seg.id', '=', 'p.segment_id');
 
-        if (($auth['segmento_id'] ?? null) !== null) {
+        if (($auth['segment_id'] ?? null) !== null) {
             $builder->where(static function ($q) use ($auth): void {
-                $q->where('p.segmento_id', (int) $auth['segmento_id'])
-                    ->orWhereNull('p.segmento_id');
+                $q->where('p.segment_id', (int) $auth['segment_id'])
+                    ->orWhereNull('p.segment_id');
             });
         }
 
@@ -122,35 +122,35 @@ final class PromotionsService extends ModelService
             ->orderBy('p.id')
             ->get([
                 'p.id',
-                'p.codigo',
-                'p.nombre',
-                'p.segmento_id',
-                'seg.nombre as segmento',
-                'p.tipo_descuento',
-                'p.valor_descuento',
-                'p.aplica_a',
-                'p.vigente_desde',
-                'p.vigente_hasta',
-                'p.usos_maximos',
-                'p.usos_actuales',
-                'p.activa',
+                'p.code',
+                'p.name',
+                'p.segment_id',
+                'seg.name as segment_name',
+                'p.discount_type',
+                'p.discount_value',
+                'p.applies_to',
+                'p.valid_from',
+                'p.valid_until',
+                'p.max_uses',
+                'p.current_uses',
+                'p.is_active',
             ]);
 
         return $rows->map(static function (object $row): array {
             return [
                 'id' => (int) $row->id,
-                'codigo' => (string) $row->codigo,
-                'nombre' => (string) $row->nombre,
-                'segmento' => $row->segmento !== null ? (string) $row->segmento : null,
-                'segmento_id' => $row->segmento_id !== null ? (int) $row->segmento_id : null,
-                'tipo_descuento' => (string) $row->tipo_descuento,
-                'valor_descuento' => (string) $row->valor_descuento,
-                'aplica_a' => (string) $row->aplica_a,
-                'vigente_desde' => (string) $row->vigente_desde,
-                'vigente_hasta' => $row->vigente_hasta !== null ? (string) $row->vigente_hasta : null,
-                'usos_maximos' => $row->usos_maximos !== null ? (int) $row->usos_maximos : null,
-                'usos_actuales' => (int) $row->usos_actuales,
-                'activa' => (bool) $row->activa,
+                'code' => (string) $row->code,
+                'name' => (string) $row->name,
+                'segment_name' => $row->segment_name !== null ? (string) $row->segment_name : null,
+                'segment_id' => $row->segment_id !== null ? (int) $row->segment_id : null,
+                'discount_type' => (string) $row->discount_type,
+                'discount_value' => (string) $row->discount_value,
+                'applies_to' => (string) $row->applies_to,
+                'valid_from' => (string) $row->valid_from,
+                'valid_until' => $row->valid_until !== null ? (string) $row->valid_until : null,
+                'max_uses' => $row->max_uses !== null ? (int) $row->max_uses : null,
+                'current_uses' => (int) $row->current_uses,
+                'is_active' => (bool) $row->is_active,
             ];
         })->all();
     }

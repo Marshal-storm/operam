@@ -18,11 +18,11 @@ final class UsersService extends ModelService
     {
         $this->validator
             ->setField('email', DataTypes::Email, true)
-            ->setField('nombre', DataTypes::String, true)
+            ->setField('name', DataTypes::String, true)
             ->setField('password_hash', DataTypes::String, false, null, null, true)
-            ->setField('rol', DataTypes::String, true)
-            ->setField('segmento_id', DataTypes::Integer, false)
-            ->setField('activo', DataTypes::Boolean, false, true)
-            ->setField('ultimo_acceso', DataTypes::DateTime, false);
+            ->setField('role_id', DataTypes::Integer, false)
+            ->setField('segment_id', DataTypes::Integer, false)
+            ->setField('is_active', DataTypes::Boolean, false, true)
+            ->setField('last_login_at', DataTypes::DateTime, false);
     }
 }

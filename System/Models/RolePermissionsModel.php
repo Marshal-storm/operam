@@ -8,28 +8,28 @@ use Illuminate\Database\Eloquent\Model;
 
 final class RolePermissionsModel extends Model
 {
-    protected $table = 'rol_permiso';
+    protected $table = 'role_permissions';
 
     /** Alias obligatorio del framework operam/servicios. */
     public $alias = 'rperm';
 
     /** @var list<string> */
     protected $fillable = [
-        'rol_id',
-        'modulo_clave',
-        'puede_ver',
-        'puede_crear',
-        'puede_editar',
-        'puede_eliminar',
+        'role_id',
+        'module_key',
+        'can_view',
+        'can_create',
+        'can_edit',
+        'can_delete',
     ];
 
     /** @var array<string, string> */
     protected $casts = [
-        'rol_id' => 'integer',
-        'puede_ver' => 'boolean',
-        'puede_crear' => 'boolean',
-        'puede_editar' => 'boolean',
-        'puede_eliminar' => 'boolean',
+        'role_id' => 'integer',
+        'can_view' => 'boolean',
+        'can_create' => 'boolean',
+        'can_edit' => 'boolean',
+        'can_delete' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom'
-import { StatusPill } from '@/components/ui/StatusPill'
+import { AppBadge } from '@/components/ui/AppBadge'
+import { AppCard } from '@/components/ui/AppCard'
+import { AppTableWrapper } from '@/components/ui/AppTableWrapper'
 import { formatCurrencyMx, formatDateEsMx, cn } from '@/lib/utils'
 import type { MrrCategory, MrrMovement } from '@/types/mrr'
 
@@ -14,9 +16,9 @@ function DeltaAmount({ value }: { value: string }) {
   const abs = negative ? value.slice(1) : value
 
   return (
-    <StatusPill
+    <AppBadge
       label={`${negative ? '-' : '+'}${formatCurrencyMx(abs)}`}
-      tone={negative ? 'negative' : 'positive'}
+      tone={negative ? 'danger' : 'success'}
     />
   )
 }
@@ -39,22 +41,22 @@ export function RecentMovementsTable({
   title = 'Movimientos recientes',
 }: RecentMovementsTableProps) {
   const categoryLabels: Partial<Record<MrrCategory, string>> = {
-    nuevo: 'Nuevo',
+    new: 'Nuevo',
     expansion: 'Expansión',
-    ajuste_precio: 'Ajuste de precio',
-    cambio_frecuencia: 'Cambio de frecuencia',
-    contraccion: 'Contracción',
+    price_adjustment: 'Ajuste de precio',
+    frequency_change: 'Cambio de frecuencia',
+    contraction: 'Contracción',
     churn: 'Churn',
-    reactivacion: 'Reactivación',
+    reactivation: 'Reactivación',
   }
 
   const heading =
-    activeCategory && activeCategory !== 'inicio' && activeCategory !== 'fin'
+    activeCategory && activeCategory !== 'start' && activeCategory !== 'end'
       ? `Movimientos · ${categoryLabels[activeCategory] ?? activeCategory}`
       : title
 
   return (
-    <section className="glass-panel p-4 md:p-5">
+    <AppCard className="p-4 md:p-5">
       <header className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold capitalize md:text-lg">{heading}</h2>
         <Link
@@ -73,18 +75,21 @@ export function RecentMovementsTable({
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex gap-3">
-                <ClientAvatar name={movement.cliente_nombre} />
+                <ClientAvatar name={movement.client_name} />
                 <div>
                   <p className="text-sm font-medium">
-                    {formatDateEsMx(movement.fecha_efectiva)} ·{' '}
-                    <span className="font-mono tabular-nums">{movement.contrato_folio}</span>
+                    {formatDateEsMx(movement.effective_date)} ·{' '}
+                    <span className="font-mono tabular-nums">{movement.contract_folio}</span>
                   </p>
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    {movement.cliente_nombre} · {movement.segmento}
+                    {movement.client_name} · {movement.segment}
                   </p>
-                  <p className="mt-1 text-sm">{movement.descripcion}</p>
+                  <p className="mt-1 text-sm">{movement.description}</p>
                   <div className="mt-2">
-                    <StatusPill label={movement.categoria_mrr} tone="info" />
+                    <AppBadge
+                      label={categoryLabels[movement.mrr_category] ?? movement.mrr_category}
+                      tone="info"
+                    />
                   </div>
                 </div>
               </div>
@@ -95,7 +100,7 @@ export function RecentMovementsTable({
       </div>
 
       <div className="hidden md:block">
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 dark:border-white/[0.09]">
+        <AppTableWrapper>
           <table className="w-full table-fixed text-left text-sm">
             <thead>
               <tr className="bg-slate-100/90 text-slate-500 dark:bg-white/[0.05] dark:text-zinc-400">
@@ -114,22 +119,22 @@ export function RecentMovementsTable({
                   className="border-t border-slate-200/70 dark:border-white/[0.06]"
                 >
                   <td className="px-3 py-3 text-slate-600 dark:text-slate-300">
-                    {formatDateEsMx(movement.fecha_efectiva)}
+                    {formatDateEsMx(movement.effective_date)}
                   </td>
                   <td className="px-3 py-3 font-mono text-sm font-medium tabular-nums">
-                    {movement.contrato_folio}
+                    {movement.contract_folio}
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2">
-                      <ClientAvatar name={movement.cliente_nombre} />
-                      <span className="truncate">{movement.cliente_nombre}</span>
+                      <ClientAvatar name={movement.client_name} />
+                      <span className="truncate">{movement.client_name}</span>
                     </div>
                   </td>
                   <td className="px-3 py-3">
-                    <StatusPill label={movement.segmento} tone="neutral" />
+                    <AppBadge label={movement.segment} tone="neutral" />
                   </td>
                   <td className="px-3 py-3 text-slate-600 dark:text-slate-300">
-                    {movement.descripcion}
+                    {movement.description}
                   </td>
                   <td className={cn('px-3 py-3 text-right')}>
                     <DeltaAmount value={movement.mrr_delta_mxn} />
@@ -138,7 +143,7 @@ export function RecentMovementsTable({
               ))}
             </tbody>
           </table>
-        </div>
+        </AppTableWrapper>
       </div>
 
       {movements.length === 0 && (
@@ -146,6 +151,6 @@ export function RecentMovementsTable({
           No hay movimientos para mostrar con el filtro actual.
         </p>
       )}
-    </section>
+    </AppCard>
   )
 }

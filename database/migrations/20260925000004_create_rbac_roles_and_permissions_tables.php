@@ -5,14 +5,14 @@ declare(strict_types=1);
 use Phinx\Migration\AbstractMigration;
 
 /**
- * RBAC dinámico: rol, modulo_sistema, rol_permiso + usuario.rol_id.
- * alcance_segmento = usuario.segmento_id (NULL = Todos).
+ * RBAC dinámico: roles, system_modules, role_permissions + FK users.role_id.
+ * Alcance de segmento = users.segment_id (NULL = Todos).
  */
 final class CreateRbacRolesAndPermissionsTables extends AbstractMigration
 {
     public function change(): void
     {
-        $this->table('rol', [
+        $this->table('roles', [
             'id' => false,
             'primary_key' => ['id'],
             'engine' => 'InnoDB',
@@ -20,11 +20,11 @@ final class CreateRbacRolesAndPermissionsTables extends AbstractMigration
             'comment' => 'Roles del sistema (matriz CRUD editable)',
         ])
             ->addColumn('id', 'integer', ['identity' => true, 'signed' => false])
-            ->addColumn('codigo', 'string', ['limit' => 40, 'null' => false])
-            ->addColumn('nombre', 'string', ['limit' => 80, 'null' => false])
-            ->addColumn('descripcion', 'string', ['limit' => 255, 'null' => true])
-            ->addColumn('es_sistema', 'boolean', ['default' => false, 'null' => false])
-            ->addColumn('activo', 'boolean', ['default' => true, 'null' => false])
+            ->addColumn('code', 'string', ['limit' => 40, 'null' => false])
+            ->addColumn('name', 'string', ['limit' => 80, 'null' => false])
+            ->addColumn('description', 'string', ['limit' => 255, 'null' => true])
+            ->addColumn('is_system', 'boolean', ['default' => false, 'null' => false])
+            ->addColumn('is_active', 'boolean', ['default' => true, 'null' => false])
             ->addColumn('created_at', 'timestamp', [
                 'default' => 'CURRENT_TIMESTAMP',
                 'null' => false,
@@ -36,25 +36,25 @@ final class CreateRbacRolesAndPermissionsTables extends AbstractMigration
                 'null' => false,
                 'comment' => 'UTC (RNF-11)',
             ])
-            ->addIndex(['codigo'], ['unique' => true, 'name' => 'uk_rol_codigo'])
+            ->addIndex(['code'], ['unique' => true, 'name' => 'uk_roles_code'])
             ->create();
 
-        $this->table('modulo_sistema', [
+        $this->table('system_modules', [
             'id' => false,
             'primary_key' => ['id'],
             'engine' => 'InnoDB',
             'collation' => 'utf8mb4_unicode_ci',
-            'comment' => 'Catálogo de módulos con clave de permiso',
+            'comment' => 'Catálogo de módulos con clave de permiso (inglés)',
         ])
             ->addColumn('id', 'integer', ['identity' => true, 'signed' => false])
-            ->addColumn('clave', 'string', ['limit' => 50, 'null' => false])
-            ->addColumn('nombre', 'string', ['limit' => 100, 'null' => false])
-            ->addColumn('grupo', 'string', ['limit' => 50, 'null' => false])
-            ->addColumn('orden', 'integer', ['null' => false, 'default' => 0])
-            ->addIndex(['clave'], ['unique' => true, 'name' => 'uk_modulo_sistema_clave'])
+            ->addColumn('module_key', 'string', ['limit' => 50, 'null' => false])
+            ->addColumn('name', 'string', ['limit' => 100, 'null' => false])
+            ->addColumn('group_key', 'string', ['limit' => 50, 'null' => false])
+            ->addColumn('sort_order', 'integer', ['null' => false, 'default' => 0])
+            ->addIndex(['module_key'], ['unique' => true, 'name' => 'uk_system_modules_key'])
             ->create();
 
-        $this->table('rol_permiso', [
+        $this->table('role_permissions', [
             'id' => false,
             'primary_key' => ['id'],
             'engine' => 'InnoDB',
@@ -62,12 +62,12 @@ final class CreateRbacRolesAndPermissionsTables extends AbstractMigration
             'comment' => 'Matriz CRUD por rol y módulo',
         ])
             ->addColumn('id', 'integer', ['identity' => true, 'signed' => false])
-            ->addColumn('rol_id', 'integer', ['signed' => false, 'null' => false])
-            ->addColumn('modulo_clave', 'string', ['limit' => 50, 'null' => false])
-            ->addColumn('puede_ver', 'boolean', ['default' => false, 'null' => false])
-            ->addColumn('puede_crear', 'boolean', ['default' => false, 'null' => false])
-            ->addColumn('puede_editar', 'boolean', ['default' => false, 'null' => false])
-            ->addColumn('puede_eliminar', 'boolean', ['default' => false, 'null' => false])
+            ->addColumn('role_id', 'integer', ['signed' => false, 'null' => false])
+            ->addColumn('module_key', 'string', ['limit' => 50, 'null' => false])
+            ->addColumn('can_view', 'boolean', ['default' => false, 'null' => false])
+            ->addColumn('can_create', 'boolean', ['default' => false, 'null' => false])
+            ->addColumn('can_edit', 'boolean', ['default' => false, 'null' => false])
+            ->addColumn('can_delete', 'boolean', ['default' => false, 'null' => false])
             ->addColumn('created_at', 'timestamp', [
                 'default' => 'CURRENT_TIMESTAMP',
                 'null' => false,
@@ -80,28 +80,22 @@ final class CreateRbacRolesAndPermissionsTables extends AbstractMigration
                 'comment' => 'UTC (RNF-11)',
             ])
             ->addIndex(
-                ['rol_id', 'modulo_clave'],
-                ['unique' => true, 'name' => 'uk_rol_permiso_rol_modulo']
+                ['role_id', 'module_key'],
+                ['unique' => true, 'name' => 'uk_role_permissions_role_module']
             )
-            ->addForeignKey('rol_id', 'rol', 'id', [
+            ->addForeignKey('role_id', 'roles', 'id', [
                 'delete' => 'CASCADE',
                 'update' => 'CASCADE',
-                'constraint' => 'fk_rol_permiso_rol',
+                'constraint' => 'fk_role_permissions_role',
             ])
             ->create();
 
-        // Compatibilidad: se conserva usuario.rol (enum legacy) y se agrega rol_id.
-        $this->table('usuario')
-            ->addColumn('rol_id', 'integer', [
-                'signed' => false,
-                'null' => true,
-                'after' => 'rol',
-            ])
-            ->addIndex(['rol_id'], ['name' => 'idx_usuario_rol_id'])
-            ->addForeignKey('rol_id', 'rol', 'id', [
+        // FK diferida: roles se crea aquí; users.role_id ya existía desde auth.
+        $this->table('users')
+            ->addForeignKey('role_id', 'roles', 'id', [
                 'delete' => 'SET_NULL',
                 'update' => 'CASCADE',
-                'constraint' => 'fk_usuario_rol',
+                'constraint' => 'fk_users_role',
             ])
             ->update();
     }

@@ -7,39 +7,39 @@ namespace Operam\Models;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Agregado mensual de MRR. Tabla física: `mrr_mensual`.
+ * Agregado mensual de MRR. Tabla física: `monthly_mrr`.
  */
 final class MonthlyMrr extends BaseModel
 {
-    protected $table = 'mrr_mensual';
+    protected $table = 'monthly_mrr';
 
     /** @var list<string> */
     protected $fillable = [
-        'mes',
-        'segmento_id',
-        'emisor_id',
-        'servicio_id',
-        'categoria',
-        'monto',
+        'month',
+        'segment_id',
+        'issuer_id',
+        'service_id',
+        'category',
+        'amount',
     ];
 
     /** @var array<string, string> */
     protected $casts = [
-        'segmento_id' => 'integer',
-        'emisor_id' => 'integer',
-        'servicio_id' => 'integer',
-        'monto' => 'decimal:2',
+        'segment_id' => 'integer',
+        'issuer_id' => 'integer',
+        'service_id' => 'integer',
+        'amount' => 'decimal:2',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
 
     public function segment(): BelongsTo
     {
-        return $this->belongsTo(Segment::class, 'segmento_id');
+        return $this->belongsTo(Segment::class, 'segment_id');
     }
 
     public function issuer(): BelongsTo
     {
-        return $this->belongsTo(Issuer::class, 'emisor_id');
+        return $this->belongsTo(Issuer::class, 'issuer_id');
     }
 }

@@ -7,22 +7,27 @@ import {
 
 const catalogTableFeatures = tableFeatures({})
 import { useQuery } from '@tanstack/react-query'
-import { Pencil, Plus, Search } from 'lucide-react'
+import { Pencil, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 import { fetchServices } from '@/services/catalogService'
-import { Button } from '@/components/ui/button'
+import { AppBadge } from '@/components/ui/AppBadge'
+import { AppFilterField } from '@/components/ui/AppFilterField'
+import { AppButton } from '@/components/ui/AppButton'
+import { AppCard } from '@/components/ui/AppCard'
+import { AppInput, AppSearchInput, AppTextarea } from '@/components/ui/AppInput'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  AppModal,
+  AppModalContent,
+  AppModalDescription,
+  AppModalHeader,
+  AppModalTitle,
+} from '@/components/ui/AppModal'
+import { AppSelect } from '@/components/ui/AppSelect'
+import { AppSwitch } from '@/components/ui/AppSwitch'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
-import { StatusPill } from '@/components/ui/StatusPill'
 import { useScreenPreferences } from '@/context/ScreenPreferencesContext'
 import { useToast } from '@/context/ToastContext'
 import { useServicesConfig } from '@/hooks/useConfigCatalog'
@@ -32,52 +37,62 @@ import { cn } from '@/lib/utils'
 import type { CatalogService, ServiceType, ServiceUnit } from '@/types/catalog'
 
 const UNIT_LABELS: Record<ServiceUnit, string> = {
-  usuario: 'Usuario',
-  paquete_5_usuarios: 'Paquete 5',
-  timbre: 'Timbre',
-  hora: 'Hora',
-  licencia: 'Licencia',
-  instancia: 'Instancia',
+  user: 'Usuario',
+  pack_5_users: 'Paquete 5',
+  stamp: 'Timbre',
+  hour: 'Hora',
+  license: 'Licencia',
+  instance: 'Instancia',
 }
 
 const TYPE_LABELS: Record<ServiceType, string> = {
-  recurrente: 'Recurrente',
-  consumo: 'Consumo',
-  unico: 'Pago único',
+  recurring: 'Recurrente',
+  consumption: 'Consumo',
+  single: 'Pago único',
 }
 
+const TYPE_FILTERS: Array<{ value: string; label: string }> = [
+  { value: 'all', label: 'Todos' },
+  { value: 'recurring', label: 'Recurrente' },
+  { value: 'consumption', label: 'Consumo' },
+  { value: 'single', label: 'Pago único' },
+]
+
+const STATUS_FILTERS: Array<{ value: string; label: string }> = [
+  { value: 'all', label: 'Todos' },
+  { value: 'active', label: 'Disponibles' },
+  { value: 'inactive', label: 'Inactivos' },
+]
+
 const formSchema = z.object({
-  codigo: z.string().min(2).max(40),
-  nombre: z.string().min(3).max(120),
-  descripcion: z.string().optional(),
-  segmento_id: z.string().min(1),
-  tipo: z.enum(['recurrente', 'consumo', 'unico']),
-  unidad_medida: z.enum([
-    'usuario',
-    'paquete_5_usuarios',
-    'timbre',
-    'hora',
-    'licencia',
-    'instancia',
+  code: z.string().min(2).max(40),
+  name: z.string().min(3).max(120),
+  description: z.string().optional(),
+  segment_id: z.string().min(1),
+  service_type: z.enum(['recurring', 'consumption', 'single']),
+  unit_of_measure: z.enum([
+    'user',
+    'pack_5_users',
+    'stamp',
+    'hour',
+    'license',
+    'instance',
   ]),
-  permite_conversion_paquete: z.boolean(),
-  servicio_paquete_id: z.string().optional(),
-  factor_paquete: z.string().regex(/^[1-9]\d*$/, 'Factor entero entre 1 y 100'),
-  activo: z.boolean(),
+  allow_package_conversion: z.boolean(),
+  package_service_id: z.string().optional(),
+  package_factor: z.string().regex(/^[1-9]\d*$/, 'Factor entero entre 1 y 100'),
+  is_active: z.boolean(),
 }).superRefine((values, ctx) => {
-  if (values.permite_conversion_paquete && !values.servicio_paquete_id) {
+  if (values.allow_package_conversion && !values.package_service_id) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: 'Selecciona el producto paquete destino (RF-2).',
-      path: ['servicio_paquete_id'],
+      path: ['package_service_id'],
     })
   }
 })
 
 type FormValues = z.infer<typeof formSchema>
-
-const inputClass =
-  'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0066FF]/30 dark:border-white/[0.08] dark:bg-white/[0.05]'
 
 /**
  * Catálogo de servicios — tabla paginada API + filtros (100+ productos).
@@ -87,8 +102,8 @@ export function CatalogServicesPage() {
   const toast = useToast()
   const { canCreate, canEdit, canDelete } = usePermissions()
   const {
-    segmento,
-    setSegmento,
+    segment,
+    setSegment,
     segmentOptions,
     isSegmentLocked,
     lockedSegmentId,
@@ -100,29 +115,19 @@ export function CatalogServicesPage() {
     setPage(1)
   }, [preferredSize])
   const [search, setSearch] = useState('')
-  const [tipo, setTipo] = useState('Todos')
-  const [estado, setEstado] = useState('Todos')
+  const [serviceType, setServiceType] = useState('all')
+  const [status, setStatus] = useState('all')
 
   const queryParams = useMemo(
     () => ({
       page,
       per_page: pageSize,
       search: search.trim() || undefined,
-      segmento: segmento === 'Todos' ? undefined : segmento,
-      tipo:
-        tipo === 'Todos'
-          ? undefined
-          : tipo === 'Pago único'
-            ? 'unico'
-            : tipo.toLowerCase(),
-      estado:
-        estado === 'Todos'
-          ? undefined
-          : estado === 'Disponibles'
-            ? 'disponibles'
-            : 'inactivos',
+      segment: segment === 'Todos' ? undefined : segment,
+      service_type: serviceType === 'all' ? undefined : serviceType,
+      status: status === 'all' ? undefined : status,
     }),
-    [page, pageSize, search, segmento, tipo, estado],
+    [page, pageSize, search, segment, serviceType, status],
   )
 
   const {
@@ -144,139 +149,127 @@ export function CatalogServicesPage() {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      codigo: '',
-      nombre: '',
-      descripcion: '',
-      segmento_id: '1',
-      tipo: 'recurrente',
-      unidad_medida: 'licencia',
-      permite_conversion_paquete: false,
-      servicio_paquete_id: '',
-      factor_paquete: '5',
-      activo: true,
+      code: '',
+      name: '',
+      description: '',
+      segment_id: '1',
+      service_type: 'recurring',
+      unit_of_measure: 'license',
+      allow_package_conversion: false,
+      package_service_id: '',
+      package_factor: '5',
+      is_active: true,
     },
   })
 
   const allowsPackage = useWatch({
     control: form.control,
-    name: 'permite_conversion_paquete',
+    name: 'allow_package_conversion',
   })
-  const watchedSegmentoId = useWatch({
+  const watchedSegmentId = useWatch({
     control: form.control,
-    name: 'segmento_id',
+    name: 'segment_id',
   })
 
   const packageOptionsQuery = useQuery({
-    queryKey: ['config', 'services', 'packages', watchedSegmentoId],
-    queryFn: () => fetchServices({ page: 1, per_page: 100, estado: 'disponibles' }),
+    queryKey: ['config', 'services', 'packages', watchedSegmentId],
+    queryFn: () => fetchServices({ page: 1, per_page: 100, status: 'active' }),
     enabled: modalOpen && Boolean(allowsPackage),
     staleTime: 30_000,
   })
 
   const packageOptions = useMemo(() => {
     const rows = packageOptionsQuery.data?.items ?? []
-    const segmentoId = Number(watchedSegmentoId)
+    const segmentId = Number(watchedSegmentId)
     return rows.filter(
       (s) =>
-        s.unidad_medida === 'paquete_5_usuarios' &&
-        (!Number.isFinite(segmentoId) || s.segmento_id === segmentoId) &&
+        s.unit_of_measure === 'pack_5_users' &&
+        (!Number.isFinite(segmentId) || s.segment_id === segmentId) &&
         (!editing || s.id !== editing.id),
     )
-  }, [packageOptionsQuery.data?.items, watchedSegmentoId, editing])
+  }, [packageOptionsQuery.data?.items, watchedSegmentId, editing])
 
   const columns = useMemo<Array<ColumnDef<typeof catalogTableFeatures, CatalogService>>>(
     () => [
       {
-        accessorKey: 'codigo',
+        accessorKey: 'code',
         header: 'SKU',
         cell: ({ row }) => (
-          <span className="font-mono text-xs tabular-nums">{row.original.codigo}</span>
+          <span className="font-mono text-xs tabular-nums">{row.original.code}</span>
         ),
       },
       {
-        accessorKey: 'nombre',
+        accessorKey: 'name',
         header: 'Producto',
         cell: ({ row }) => (
           <div>
-            <p className="font-medium">{row.original.nombre}</p>
-            {row.original.descripcion && (
-              <p className="line-clamp-1 text-xs text-slate-500">{row.original.descripcion}</p>
+            <p className="font-medium">{row.original.name}</p>
+            {row.original.description && (
+              <p className="line-clamp-1 text-xs text-slate-500">{row.original.description}</p>
             )}
           </div>
         ),
       },
       {
-        accessorKey: 'segmento',
+        accessorKey: 'segment_name',
         header: 'Segmento',
-        cell: ({ row }) => <StatusPill label={row.original.segmento} tone="info" />,
+        cell: ({ row }) => (
+          <AppBadge label={row.original.segment_name || '—'} tone="info" />
+        ),
       },
       {
-        accessorKey: 'tipo',
+        accessorKey: 'service_type',
         header: 'Tipo',
-        cell: ({ row }) => TYPE_LABELS[row.original.tipo],
+        cell: ({ row }) => TYPE_LABELS[row.original.service_type],
       },
       {
-        accessorKey: 'unidad_medida',
+        accessorKey: 'unit_of_measure',
         header: 'Unidad',
-        cell: ({ row }) => UNIT_LABELS[row.original.unidad_medida],
+        cell: ({ row }) => UNIT_LABELS[row.original.unit_of_measure],
       },
       {
-        accessorKey: 'activo',
+        accessorKey: 'is_active',
         header: 'Estado',
         cell: ({ row }) => (
-          <button
-            type="button"
-            disabled={!canEdit('config_catalogo') && !canDelete('config_catalogo')}
-            onClick={() => {
-              if (!canEdit('config_catalogo') && !canDelete('config_catalogo')) return
-              void (async () => {
-                try {
-                  const next = !row.original.activo
-                  await toggleService({ id: row.original.id, activo: next })
-                  toast.success(
-                    next ? 'Producto activado' : 'Producto desactivado',
-                    row.original.nombre,
-                  )
-                } catch (error) {
-                  toast.apiError(error)
-                }
-              })()
-            }}
-            className="flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <span
-              className={cn(
-                'relative h-6 w-11 rounded-full transition',
-                row.original.activo ? 'bg-[#34C759]' : 'bg-slate-300 dark:bg-white/20',
-              )}
-            >
-              <span
-                className={cn(
-                  'absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition',
-                  row.original.activo && 'translate-x-5',
-                )}
-              />
-            </span>
+          <div className="flex items-center gap-2">
+            <AppSwitch
+              checked={row.original.is_active}
+              disabled={!canEdit('config_catalog') && !canDelete('config_catalog')}
+              label={row.original.is_active ? 'Desactivar producto' : 'Activar producto'}
+              onCheckedChange={(next) => {
+                if (!canEdit('config_catalog') && !canDelete('config_catalog')) return
+                void (async () => {
+                  try {
+                    await toggleService({ id: row.original.id, is_active: next })
+                    toast.success(
+                      next ? 'Producto activado' : 'Producto desactivado',
+                      row.original.name,
+                    )
+                  } catch (error) {
+                    toast.apiError(error)
+                  }
+                })()
+              }}
+            />
             <span className="text-xs text-slate-500">
-              {row.original.activo ? 'Disponible' : 'Inactivo'}
+              {row.original.is_active ? 'Disponible' : 'Inactivo'}
             </span>
-          </button>
+          </div>
         ),
       },
       {
         id: 'actions',
         header: '',
         cell: ({ row }) =>
-          canEdit('config_catalogo') ? (
-            <Button
+          canEdit('config_catalog') ? (
+            <AppButton
               type="button"
               variant="outline"
               size="sm"
-              className="rounded-xl"
               onClick={() => openEdit(row.original)}
             >
-              <Pencil className="mr-1 h-3.5 w-3.5" /> Editar
-            </Button>
+              <Pencil className="h-3.5 w-3.5" /> Editar
+            </AppButton>
           ) : null,
       },
     ],
@@ -290,67 +283,67 @@ export function CatalogServicesPage() {
   })
 
   function openCreate() {
-    if (!canCreate('config_catalogo')) return
+    if (!canCreate('config_catalog')) return
     setEditing(null)
     form.reset({
-      codigo: '',
-      nombre: '',
-      descripcion: '',
-      segmento_id: String(lockedSegmentId ?? segments[0]?.id ?? 1),
-      tipo: 'recurrente',
-      unidad_medida: 'licencia',
-      permite_conversion_paquete: false,
-      servicio_paquete_id: '',
-      factor_paquete: '5',
-      activo: true,
+      code: '',
+      name: '',
+      description: '',
+      segment_id: String(lockedSegmentId ?? segments[0]?.id ?? 1),
+      service_type: 'recurring',
+      unit_of_measure: 'license',
+      allow_package_conversion: false,
+      package_service_id: '',
+      package_factor: '5',
+      is_active: true,
     })
     setModalOpen(true)
   }
 
   function openEdit(service: CatalogService) {
-    if (!canEdit('config_catalogo')) return
+    if (!canEdit('config_catalog')) return
     setEditing(service)
     form.reset({
-      codigo: service.codigo,
-      nombre: service.nombre,
-      descripcion: service.descripcion ?? '',
-      segmento_id: String(service.segmento_id),
-      tipo: service.tipo,
-      unidad_medida: service.unidad_medida,
-      permite_conversion_paquete: service.permite_conversion_paquete,
-      servicio_paquete_id: service.servicio_paquete_id
-        ? String(service.servicio_paquete_id)
+      code: service.code,
+      name: service.name,
+      description: service.description ?? '',
+      segment_id: String(service.segment_id),
+      service_type: service.service_type,
+      unit_of_measure: service.unit_of_measure,
+      allow_package_conversion: service.allow_package_conversion,
+      package_service_id: service.package_service_id
+        ? String(service.package_service_id)
         : '',
-      factor_paquete: String(service.factor_paquete ?? 5),
-      activo: service.activo,
+      package_factor: String(service.package_factor ?? 5),
+      is_active: service.is_active,
     })
     setModalOpen(true)
   }
 
   async function onSubmit(values: FormValues) {
     const payload = {
-      codigo: values.codigo,
-      nombre: values.nombre,
-      descripcion: values.descripcion?.trim() || null,
-      segmento_id: Number(values.segmento_id),
-      tipo: values.tipo,
-      unidad_medida: values.unidad_medida,
-      permite_conversion_paquete: values.permite_conversion_paquete,
-      servicio_paquete_id: values.permite_conversion_paquete
-        ? Number(values.servicio_paquete_id)
+      code: values.code,
+      name: values.name,
+      description: values.description?.trim() || null,
+      segment_id: Number(values.segment_id),
+      service_type: values.service_type,
+      unit_of_measure: values.unit_of_measure,
+      allow_package_conversion: values.allow_package_conversion,
+      package_service_id: values.allow_package_conversion
+        ? Number(values.package_service_id)
         : null,
-      factor_paquete: values.permite_conversion_paquete
-        ? Math.min(100, Math.max(1, Number(values.factor_paquete) || 5))
+      package_factor: values.allow_package_conversion
+        ? Math.min(100, Math.max(1, Number(values.package_factor) || 5))
         : 5,
-      activo: values.activo,
+      is_active: values.is_active,
     }
     try {
       if (editing) {
         await updateService({ id: editing.id, data: payload })
-        toast.success('Producto actualizado', payload.nombre)
+        toast.success('Producto actualizado', payload.name)
       } else {
         await createService(payload)
-        toast.success('Producto creado', payload.nombre)
+        toast.success('Producto creado', payload.name)
       }
       setModalOpen(false)
     } catch (error) {
@@ -360,21 +353,21 @@ export function CatalogServicesPage() {
 
   function resetFilters(partial: Record<string, string>) {
     if ('search' in partial) setSearch(partial.search!)
-    if ('segmento' in partial) setSegmento(partial.segmento!)
-    if ('tipo' in partial) setTipo(partial.tipo!)
-    if ('estado' in partial) setEstado(partial.estado!)
+    if ('segment' in partial) setSegment(partial.segment as typeof segment)
+    if ('service_type' in partial) setServiceType(partial.service_type!)
+    if ('status' in partial) setStatus(partial.status!)
     setPage(1)
   }
 
   if (isApiError && !items.length) {
     return (
-      <section className="glass-panel border-red-500/30 p-5">
+      <AppCard className="border-red-500/30 p-5">
         <h2 className="font-heading font-semibold text-red-500">Error al cargar</h2>
         <p className="mt-1 text-sm text-slate-500">{errorMessage}</p>
-        <Button className="mt-4 rounded-xl" onClick={() => void refetch()}>
+        <AppButton className="mt-4" onClick={() => void refetch()}>
           Reintentar
-        </Button>
-      </section>
+        </AppButton>
+      </AppCard>
     )
   }
 
@@ -389,55 +382,56 @@ export function CatalogServicesPage() {
             Busca, filtra y pagina cientos de productos desde MySQL
           </p>
         </div>
-        {canCreate('config_catalogo') && (
-          <Button className="rounded-xl" onClick={openCreate}>
-            <Plus className="mr-1 h-4 w-4" /> Nuevo producto
-          </Button>
+        {canCreate('config_catalog') && (
+          <AppButton onClick={openCreate}>
+            <Plus className="h-4 w-4" /> Nuevo producto
+          </AppButton>
         )}
       </header>
 
-      <div className="glass-panel space-y-3 p-4">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setPage(1)
-            }}
-            placeholder="Buscar por nombre, SKU o descripción…"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-[#0066FF]/30 dark:border-white/[0.08] dark:bg-white/[0.05]"
-          />
-        </div>
+      <AppCard className="space-y-3 p-4">
+        <AppSearchInput
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setPage(1)
+          }}
+          onClear={() => {
+            setSearch('')
+            setPage(1)
+          }}
+          placeholder="Buscar por nombre, SKU o descripción…"
+          aria-label="Buscar productos"
+        />
         <div className="flex flex-wrap gap-2">
           <FilterGroup
             label="Segmento"
-            value={segmento}
+            value={segment}
             options={segmentOptions}
             onChange={(v) => {
               if (isSegmentLocked) return
-              resetFilters({ segmento: v })
+              resetFilters({ segment: v })
             }}
           />
           <FilterGroup
             label="Tipo"
-            value={tipo}
-            options={['Todos', 'Recurrente', 'Consumo', 'Pago único']}
-            onChange={(v) => resetFilters({ tipo: v })}
+            value={serviceType}
+            options={TYPE_FILTERS}
+            onChange={(v) => resetFilters({ service_type: v })}
           />
           <FilterGroup
             label="Estado"
-            value={estado}
-            options={['Todos', 'Disponibles', 'Inactivos']}
-            onChange={(v) => resetFilters({ estado: v })}
+            value={status}
+            options={STATUS_FILTERS}
+            onChange={(v) => resetFilters({ status: v })}
           />
         </div>
-      </div>
+      </AppCard>
 
       {isLoading ? (
         <Skeleton className="h-64 w-full rounded-2xl" />
       ) : (
-        <section className="glass-panel overflow-hidden p-0">
+        <AppCard className="overflow-hidden p-0">
           {/* Desktop table */}
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
@@ -461,7 +455,7 @@ export function CatalogServicesPage() {
                     key={row.id}
                     className={cn(
                       'border-b border-slate-100 dark:border-white/[0.04]',
-                      !row.original.activo && 'opacity-60',
+                      !row.original.is_active && 'opacity-60',
                     )}
                   >
                     {row.getAllCells().map((cell) => (
@@ -478,33 +472,30 @@ export function CatalogServicesPage() {
           {/* Mobile cards UI-4 */}
           <div className="space-y-3 p-4 md:hidden">
             {items.map((service) => (
-              <article
-                key={service.id}
-                className="rounded-2xl border border-slate-200/80 p-4 dark:border-white/[0.08]"
-              >
+              <AppCard key={service.id} className="p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-mono text-xs tabular-nums text-slate-500">{service.codigo}</p>
-                    <p className="font-heading font-semibold">{service.nombre}</p>
+                    <p className="font-mono text-xs tabular-nums text-slate-500">{service.code}</p>
+                    <p className="font-heading font-semibold">{service.name}</p>
                     <p className="mt-1 text-xs text-slate-500">
-                      {service.segmento} · {TYPE_LABELS[service.tipo]}
+                      {service.segment_name || '—'} · {TYPE_LABELS[service.service_type]}
                     </p>
                   </div>
-                  <StatusPill
-                    label={service.activo ? 'Disponible' : 'Inactivo'}
-                    tone={service.activo ? 'positive' : 'neutral'}
+                  <AppBadge
+                    label={service.is_active ? 'Disponible' : 'Inactivo'}
+                    tone={service.is_active ? 'success' : 'neutral'}
                   />
                 </div>
-                <Button
+                <AppButton
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="mt-3 w-full rounded-xl"
+                  className="mt-3 w-full"
                   onClick={() => openEdit(service)}
                 >
                   Editar
-                </Button>
-              </article>
+                </AppButton>
+              </AppCard>
             ))}
           </div>
 
@@ -525,101 +516,139 @@ export function CatalogServicesPage() {
               }}
             />
           </div>
-        </section>
+        </AppCard>
       )}
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Editar producto' : 'Nuevo producto'}</DialogTitle>
-            <DialogDescription>Se guarda en MySQL vía API real.</DialogDescription>
-          </DialogHeader>
+      <AppModal open={modalOpen} onOpenChange={setModalOpen}>
+        <AppModalContent>
+          <AppModalHeader>
+            <AppModalTitle>{editing ? 'Editar producto' : 'Nuevo producto'}</AppModalTitle>
+            <AppModalDescription>Se guarda en MySQL vía API real.</AppModalDescription>
+          </AppModalHeader>
           <form className="space-y-3" onSubmit={form.handleSubmit(onSubmit)}>
             <label className="block text-sm">
               Código
-              <input className={cn(inputClass, 'font-mono')} {...form.register('codigo')} />
+              <AppInput withLabelSpacing mono {...form.register('code')} />
             </label>
             <label className="block text-sm">
               Nombre
-              <input className={inputClass} {...form.register('nombre')} />
+              <AppInput withLabelSpacing {...form.register('name')} />
             </label>
             <label className="block text-sm">
               Descripción
-              <textarea className={inputClass} rows={2} {...form.register('descripcion')} />
+              <AppTextarea withLabelSpacing rows={2} {...form.register('description')} />
             </label>
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
                 Segmento
-                <select className={inputClass} {...form.register('segmento_id')}>
-                  {segments.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nombre}
-                    </option>
-                  ))}
-                </select>
+                <AppSelect
+                  withLabelSpacing
+                  value={form.watch('segment_id')}
+                  onValueChange={(v) =>
+                    form.setValue('segment_id', v, { shouldValidate: true })
+                  }
+                  options={segments.map((s) => ({
+                    value: String(s.id),
+                    label: s.name,
+                  }))}
+                />
               </label>
               <label className="block text-sm">
                 Tipo
-                <select className={inputClass} {...form.register('tipo')}>
-                  <option value="recurrente">Recurrente</option>
-                  <option value="consumo">Consumo</option>
-                  <option value="unico">Pago único</option>
-                </select>
+                <AppSelect
+                  withLabelSpacing
+                  value={form.watch('service_type')}
+                  onValueChange={(v) =>
+                    form.setValue('service_type', v as FormValues['service_type'], {
+                      shouldValidate: true,
+                    })
+                  }
+                  options={[
+                    { value: 'recurring', label: 'Recurrente' },
+                    { value: 'consumption', label: 'Consumo' },
+                    { value: 'single', label: 'Pago único' },
+                  ]}
+                />
               </label>
             </div>
             <label className="block text-sm">
               Unidad
-              <select className={inputClass} {...form.register('unidad_medida')}>
-                {(Object.keys(UNIT_LABELS) as ServiceUnit[]).map((u) => (
-                  <option key={u} value={u}>
-                    {UNIT_LABELS[u]}
-                  </option>
-                ))}
-              </select>
+              <AppSelect
+                withLabelSpacing
+                value={form.watch('unit_of_measure')}
+                onValueChange={(v) =>
+                  form.setValue('unit_of_measure', v as FormValues['unit_of_measure'], {
+                    shouldValidate: true,
+                  })
+                }
+                options={(Object.keys(UNIT_LABELS) as ServiceUnit[]).map((u) => ({
+                  value: u,
+                  label: UNIT_LABELS[u],
+                }))}
+              />
             </label>
             <label className="flex items-center gap-3 text-sm">
-              <input type="checkbox" {...form.register('permite_conversion_paquete')} />
+              <AppSwitch
+                checked={form.watch('allow_package_conversion')}
+                onCheckedChange={(next) =>
+                  form.setValue('allow_package_conversion', next, { shouldValidate: true })
+                }
+                label="Agrupar automáticamente cada 5 usuarios"
+              />
               Agrupar automáticamente cada 5 usuarios
             </label>
             {allowsPackage && (
-              <div className="space-y-3 rounded-2xl border border-slate-200/80 p-3 dark:border-white/[0.08]">
+              <AppCard className="space-y-3 p-3">
                 <label className="block text-sm">
                   Producto paquete destino (RF-2)
-                  <select className={inputClass} {...form.register('servicio_paquete_id')}>
-                    <option value="">Selecciona un paquete…</option>
-                    {packageOptions.map((pkg) => (
-                      <option key={pkg.id} value={pkg.id}>
-                        {pkg.codigo} — {pkg.nombre}
-                      </option>
-                    ))}
-                  </select>
-                  {form.formState.errors.servicio_paquete_id && (
+                  <AppSelect
+                    withLabelSpacing
+                    placeholder="Selecciona un paquete…"
+                    value={form.watch('package_service_id') || undefined}
+                    onValueChange={(v) =>
+                      form.setValue('package_service_id', v, { shouldValidate: true })
+                    }
+                    error={Boolean(form.formState.errors.package_service_id)}
+                    options={packageOptions.map((pkg) => ({
+                      value: String(pkg.id),
+                      label: `${pkg.code} — ${pkg.name}`,
+                    }))}
+                  />
+                  {form.formState.errors.package_service_id && (
                     <span className="mt-1 block text-xs text-red-500">
-                      {form.formState.errors.servicio_paquete_id.message}
+                      {form.formState.errors.package_service_id.message}
                     </span>
                   )}
                 </label>
                 <label className="block text-sm">
                   Factor de paquete
-                  <input
+                  <AppInput
                     type="number"
                     min={1}
                     max={100}
-                    className={cn(inputClass, 'font-mono tabular-nums')}
-                    {...form.register('factor_paquete')}
+                    withLabelSpacing
+                    mono
+                    {...form.register('package_factor')}
                   />
                 </label>
-              </div>
+              </AppCard>
             )}
             <label className="flex items-center gap-3 text-sm">
-              <input type="checkbox" {...form.register('activo')} /> Disponible
+              <AppSwitch
+                checked={form.watch('is_active')}
+                onCheckedChange={(next) =>
+                  form.setValue('is_active', next, { shouldValidate: true })
+                }
+                label="Disponible"
+              />
+              Disponible
             </label>
-            <Button type="submit" className="w-full rounded-xl">
+            <AppButton type="submit" className="w-full">
               {editing ? 'Guardar' : 'Crear'}
-            </Button>
+            </AppButton>
           </form>
-        </DialogContent>
-      </Dialog>
+        </AppModalContent>
+      </AppModal>
     </div>
   )
 }
@@ -632,26 +661,33 @@ function FilterGroup({
 }: {
   label: string
   value: string
-  options: string[]
+  options: Array<string | { value: string; label: string }>
   onChange: (v: string) => void
 }) {
   return (
-    <div className="ios-pill-track" role="group" aria-label={label}>
-      {options.map((opt) => (
-        <button
-          key={opt}
-          type="button"
-          onClick={() => onChange(opt)}
-          className={cn(
-            'rounded-xl px-2.5 py-1 text-xs transition',
-            value === opt
-              ? 'ios-pill-active'
-              : 'text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-white/5',
-          )}
-        >
-          {opt}
-        </button>
-      ))}
-    </div>
+    <AppFilterField label={label}>
+      <div className="ios-pill-track" role="group" aria-label={label}>
+        {options.map((opt) => {
+          const item = typeof opt === 'string' ? { value: opt, label: opt } : opt
+          return (
+            <AppButton
+              key={item.value}
+              type="button"
+              variant={value === item.value ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={() => onChange(item.value)}
+              className={cn(
+                'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
+                value === item.value
+                  ? 'ios-pill-active'
+                  : 'text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-white/5',
+              )}
+            >
+              {item.label}
+            </AppButton>
+          )
+        })}
+      </div>
+    </AppFilterField>
   )
 }

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 
 final class SystemModulesModel extends Model
 {
-    protected $table = 'modulo_sistema';
+    protected $table = 'system_modules';
 
     /** Alias obligatorio del framework operam/servicios. */
     public $alias = 'modsys';
@@ -17,14 +17,14 @@ final class SystemModulesModel extends Model
 
     /** @var list<string> */
     protected $fillable = [
-        'clave',
-        'nombre',
-        'grupo',
-        'orden',
+        'module_key',
+        'name',
+        'group_key',
+        'sort_order',
     ];
 
     /** @var array<string, string> */
     protected $casts = [
-        'orden' => 'integer',
+        'sort_order' => 'integer',
     ];
 }

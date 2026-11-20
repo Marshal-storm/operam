@@ -9,14 +9,15 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { AppBadge } from '@/components/ui/AppBadge'
+import { AppCard } from '@/components/ui/AppCard'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { StatusPill } from '@/components/ui/StatusPill'
+  AppModal,
+  AppModalContent,
+  AppModalDescription,
+  AppModalHeader,
+  AppModalTitle,
+} from '@/components/ui/AppModal'
 import { useTheme } from '@/context/ThemeContext'
 import { formatCurrencyMx, formatDateEsMx } from '@/lib/utils'
 import type { MrrBridgeStep, MrrCategory, MrrMovement } from '@/types/mrr'
@@ -46,8 +47,8 @@ function themeBarColor(
   step: MrrBridgeStep,
   isDark: boolean,
 ): string {
-  if (step.category === 'inicio') return isDark ? '#3F3F46' : '#334155'
-  if (step.category === 'fin') return isDark ? '#FAFAFA' : '#0F172A'
+  if (step.category === 'start') return isDark ? '#3F3F46' : '#334155'
+  if (step.category === 'end') return isDark ? '#FAFAFA' : '#0F172A'
   if (step.type === 'negative') return isDark ? '#F97316' : '#EF4444'
   return isDark ? '#0A84FF' : '#2563EB'
 }
@@ -98,23 +99,23 @@ function MovementList({ movements }: { movements: MrrMovement[] }) {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#0A84FF] to-[#6366F1] text-xs font-bold text-white">
-                  {movement.cliente_nombre.replace(/[\[\]]/g, '').slice(0, 1).toUpperCase()}
+                  {movement.client_name.replace(/[\[\]]/g, '').slice(0, 1).toUpperCase()}
                 </span>
                 <span className="font-medium">
-                  {formatDateEsMx(movement.fecha_efectiva)} · {movement.contrato_folio}
+                  {formatDateEsMx(movement.effective_date)} · {movement.contract_folio}
                 </span>
               </div>
-              <StatusPill
+              <AppBadge
                 label={`${negative ? '-' : '+'}${formatCurrencyMx(
                   negative ? movement.mrr_delta_mxn.slice(1) : movement.mrr_delta_mxn,
                 )}`}
-                tone={negative ? 'negative' : 'positive'}
+                tone={negative ? 'danger' : 'success'}
               />
             </div>
             <p className="mt-2 text-slate-500 dark:text-slate-400">
-              {movement.cliente_nombre} · {movement.segmento}
+              {movement.client_name} · {movement.segment}
             </p>
-            <p className="mt-0.5">{movement.descripcion}</p>
+            <p className="mt-0.5">{movement.description}</p>
           </li>
         )
       })}
@@ -157,7 +158,7 @@ export function MrrBridgeChart({
   const chartFontFamily = '"Ubuntu", "DM Sans", system-ui, sans-serif'
 
   function handleBarClick(category: MrrCategory) {
-    if (category === 'inicio' || category === 'fin') {
+    if (category === 'start' || category === 'end') {
       setSelectedCategory(category)
       onCategorySelect?.(null)
       return
@@ -167,7 +168,7 @@ export function MrrBridgeChart({
   }
 
   return (
-    <section className="glass-panel p-4 md:p-5">
+    <AppCard className="p-4 md:p-5">
       <header className="mb-4">
         <h2 className="text-base font-semibold md:text-lg">Puente de MRR del mes</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -237,7 +238,7 @@ export function MrrBridgeChart({
         </ResponsiveContainer>
       </div>
 
-      <Dialog
+      <AppModal
         open={selectedCategory != null}
         onOpenChange={(open) => {
           if (!open) {
@@ -246,26 +247,26 @@ export function MrrBridgeChart({
           }
         }}
       >
-        <DialogContent className="rounded-2xl border-slate-200/80 bg-white shadow-2xl backdrop-blur-2xl dark:border-white/[0.09] dark:bg-[#111113]/75 dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_12px_32px_rgba(0,0,0,0.6)]">
-          <DialogHeader>
-            <DialogTitle>
+        <AppModalContent>
+          <AppModalHeader>
+            <AppModalTitle>
               {selectedStep?.label ?? 'Categoría'} — movimientos
-            </DialogTitle>
-            <DialogDescription>
+            </AppModalTitle>
+            <AppModalDescription>
               RF-3.7: detalle de la bitácora que compone esta cifra del puente.
-            </DialogDescription>
-          </DialogHeader>
-          {selectedCategory === 'inicio' || selectedCategory === 'fin' ? (
+            </AppModalDescription>
+          </AppModalHeader>
+          {selectedCategory === 'start' || selectedCategory === 'end' ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              {selectedCategory === 'inicio'
+              {selectedCategory === 'start'
                 ? `MRR de apertura del periodo: ${formatCurrencyMx(selectedStep?.size ?? 0)}.`
                 : `MRR de cierre del periodo: ${formatCurrencyMx(selectedStep?.size ?? 0)}.`}
             </p>
           ) : (
             <MovementList movements={detailMovements} />
           )}
-        </DialogContent>
-      </Dialog>
-    </section>
+        </AppModalContent>
+      </AppModal>
+    </AppCard>
   )
 }

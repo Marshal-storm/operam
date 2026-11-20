@@ -1,41 +1,50 @@
-import { useEffect, useMemo, useState } from 'react'
-import { usePermissions } from '@/hooks/usePermissions'
-import type { AllowedSegment } from '@/types/auth'
+import { useEffect, useState } from 'react'
+import { useSegments } from '@/hooks/useSegments'
 
-const ALL_SEGMENTS: AllowedSegment[] = ['Todos', 'Operam', 'Construsync']
+export type SegmentFilterValue = string
 
 /**
- * Fija el filtro de segmento cuando isSegmentLocked y limita las píldoras visibles.
+ * Filtro de segmento dinámico (MySQL `segments`) + bloqueo de alcance JWT.
+ * Sustituye el arreglo quemado Operam/Construsync.
  */
-export function useSegmentLock(initial: AllowedSegment = 'Todos') {
-  const { allowedSegment, isSegmentLocked, lockedSegmentId } = usePermissions()
-  const [segmento, setSegmento] = useState<AllowedSegment>(
+export function useSegmentLock(initial: SegmentFilterValue = 'Todos') {
+  const {
+    filterOptions,
+    segments,
+    segmentsMap,
+    resolveName,
+    isLoading,
+    isSegmentLocked,
+    lockedSegmentId,
+    allowedSegment,
+  } = useSegments()
+
+  const [segment, setSegmentState] = useState<SegmentFilterValue>(
     isSegmentLocked ? allowedSegment : initial,
   )
 
   useEffect(() => {
     if (isSegmentLocked) {
-      setSegmento(allowedSegment)
+      setSegmentState(allowedSegment)
     }
   }, [isSegmentLocked, allowedSegment])
 
-  const segmentOptions = useMemo(
-    () => (isSegmentLocked ? [allowedSegment] : ALL_SEGMENTS),
-    [isSegmentLocked, allowedSegment],
-  )
-
   return {
-    segmento,
-    setSegmento: (next: AllowedSegment | string) => {
+    segment,
+    setSegment: (next: SegmentFilterValue) => {
       if (isSegmentLocked) {
-        setSegmento(allowedSegment)
+        setSegmentState(allowedSegment)
         return
       }
-      if (next === 'Operam' || next === 'Construsync' || next === 'Todos') {
-        setSegmento(next)
-      }
+      setSegmentState(next)
     },
-    segmentOptions,
+    /** Alias: opciones dinámicas para píldoras / AppSelect. */
+    segmentOptions: filterOptions,
+    filterOptions,
+    segments,
+    segmentsMap,
+    resolveName,
+    isLoading,
     isSegmentLocked,
     lockedSegmentId,
     allowedSegment,

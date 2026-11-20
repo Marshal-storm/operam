@@ -6,38 +6,38 @@ namespace System\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-/** Promociones y códigos de descuento (`promocion`). */
+/** Promociones y códigos de descuento (`promotions`). */
 final class PromotionsModel extends Model
 {
-    protected $table = 'promocion';
+    protected $table = 'promotions';
 
     /** Alias obligatorio del framework operam/servicios. */
     public $alias = 'prm';
 
     /** @var list<string> */
     protected $fillable = [
-        'codigo',
-        'nombre',
-        'segmento_id',
-        'tipo_descuento',
-        'valor_descuento',
-        'aplica_a',
-        'vigente_desde',
-        'vigente_hasta',
-        'usos_maximos',
-        'usos_actuales',
-        'activa',
+        'code',
+        'name',
+        'segment_id',
+        'discount_type',
+        'discount_value',
+        'applies_to',
+        'valid_from',
+        'valid_until',
+        'max_uses',
+        'current_uses',
+        'is_active',
     ];
 
     /** @var array<string, string> */
     protected $casts = [
-        'segmento_id' => 'integer',
-        'valor_descuento' => 'decimal:2',
-        'vigente_desde' => 'date',
-        'vigente_hasta' => 'date',
-        'usos_maximos' => 'integer',
-        'usos_actuales' => 'integer',
-        'activa' => 'boolean',
+        'segment_id' => 'integer',
+        'discount_value' => 'decimal:2',
+        'valid_from' => 'date',
+        'valid_until' => 'date',
+        'max_uses' => 'integer',
+        'current_uses' => 'integer',
+        'is_active' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

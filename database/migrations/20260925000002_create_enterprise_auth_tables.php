@@ -5,30 +5,28 @@ declare(strict_types=1);
 use Phinx\Migration\AbstractMigration;
 
 /**
- * Módulo Auth empresarial — usuario, sesion_activa, auth_intento.
- * Vincula movimiento.usuario_id → usuario.id.
+ * Auth empresarial — users, active_sessions, auth_attempts (esquema 100% inglés).
+ * Vincula movements.user_id → users.id.
  */
 final class CreateEnterpriseAuthTables extends AbstractMigration
 {
     public function change(): void
     {
-        $this->table('usuario', [
+        $this->table('users', [
             'id' => false,
             'primary_key' => ['id'],
             'engine' => 'InnoDB',
             'collation' => 'utf8mb4_unicode_ci',
+            'comment' => 'Usuarios internos del sistema',
         ])
             ->addColumn('id', 'integer', ['identity' => true, 'signed' => false])
             ->addColumn('email', 'string', ['limit' => 150, 'null' => false])
-            ->addColumn('nombre', 'string', ['limit' => 120, 'null' => false])
+            ->addColumn('name', 'string', ['limit' => 120, 'null' => false])
             ->addColumn('password_hash', 'string', ['limit' => 255, 'null' => false])
-            ->addColumn('rol', 'enum', [
-                'values' => ['admin', 'operador', 'lectura'],
-                'null' => false,
-            ])
-            ->addColumn('segmento_id', 'integer', ['signed' => false, 'null' => true])
-            ->addColumn('activo', 'boolean', ['default' => true, 'null' => false])
-            ->addColumn('ultimo_acceso', 'timestamp', ['null' => true, 'comment' => 'UTC (RNF-11)'])
+            ->addColumn('role_id', 'integer', ['signed' => false, 'null' => true])
+            ->addColumn('segment_id', 'integer', ['signed' => false, 'null' => true])
+            ->addColumn('is_active', 'boolean', ['default' => true, 'null' => false])
+            ->addColumn('last_login_at', 'timestamp', ['null' => true, 'comment' => 'UTC (RNF-11)'])
             ->addColumn('created_at', 'timestamp', [
                 'default' => 'CURRENT_TIMESTAMP',
                 'null' => false,
@@ -40,16 +38,17 @@ final class CreateEnterpriseAuthTables extends AbstractMigration
                 'null' => false,
                 'comment' => 'UTC (RNF-11)',
             ])
-            ->addIndex(['email'], ['unique' => true, 'name' => 'uk_usuario_email'])
-            ->addIndex(['segmento_id'], ['name' => 'idx_usuario_segmento'])
-            ->addForeignKey('segmento_id', 'segmento', 'id', [
+            ->addIndex(['email'], ['unique' => true, 'name' => 'uk_users_email'])
+            ->addIndex(['segment_id'], ['name' => 'idx_users_segment'])
+            ->addIndex(['role_id'], ['name' => 'idx_users_role'])
+            ->addForeignKey('segment_id', 'segments', 'id', [
                 'delete' => 'SET_NULL',
                 'update' => 'CASCADE',
-                'constraint' => 'fk_usuario_segmento',
+                'constraint' => 'fk_users_segment',
             ])
             ->create();
 
-        $this->table('sesion_activa', [
+        $this->table('active_sessions', [
             'id' => false,
             'primary_key' => ['id'],
             'engine' => 'InnoDB',
@@ -58,27 +57,27 @@ final class CreateEnterpriseAuthTables extends AbstractMigration
         ])
             ->addColumn('id', 'biginteger', ['identity' => true, 'signed' => false])
             ->addColumn('session_uid', 'char', ['limit' => 36, 'null' => false])
-            ->addColumn('usuario_id', 'integer', ['signed' => false, 'null' => false])
+            ->addColumn('user_id', 'integer', ['signed' => false, 'null' => false])
             ->addColumn('ip_address', 'string', ['limit' => 45, 'null' => true])
             ->addColumn('user_agent', 'string', ['limit' => 255, 'null' => true])
-            ->addColumn('expira_en', 'timestamp', ['null' => false, 'comment' => 'UTC (RNF-11)'])
-            ->addColumn('revocada', 'boolean', ['default' => false, 'null' => false])
+            ->addColumn('expires_at', 'timestamp', ['null' => false, 'comment' => 'UTC (RNF-11)'])
+            ->addColumn('is_revoked', 'boolean', ['default' => false, 'null' => false])
             ->addColumn('created_at', 'timestamp', [
                 'default' => 'CURRENT_TIMESTAMP',
                 'null' => false,
                 'comment' => 'UTC (RNF-11)',
             ])
-            ->addIndex(['session_uid'], ['unique' => true, 'name' => 'uk_sesion_session_uid'])
-            ->addIndex(['usuario_id'], ['name' => 'idx_sesion_usuario'])
-            ->addIndex(['expira_en', 'revocada'], ['name' => 'idx_sesion_expira_revocada'])
-            ->addForeignKey('usuario_id', 'usuario', 'id', [
+            ->addIndex(['session_uid'], ['unique' => true, 'name' => 'uk_active_sessions_uid'])
+            ->addIndex(['user_id'], ['name' => 'idx_active_sessions_user'])
+            ->addIndex(['expires_at', 'is_revoked'], ['name' => 'idx_active_sessions_expires_revoked'])
+            ->addForeignKey('user_id', 'users', 'id', [
                 'delete' => 'CASCADE',
                 'update' => 'CASCADE',
-                'constraint' => 'fk_sesion_usuario',
+                'constraint' => 'fk_active_sessions_user',
             ])
             ->create();
 
-        $this->table('auth_intento', [
+        $this->table('auth_attempts', [
             'id' => false,
             'primary_key' => ['id'],
             'engine' => 'InnoDB',
@@ -88,23 +87,23 @@ final class CreateEnterpriseAuthTables extends AbstractMigration
             ->addColumn('id', 'biginteger', ['identity' => true, 'signed' => false])
             ->addColumn('email', 'string', ['limit' => 150, 'null' => false])
             ->addColumn('ip_address', 'string', ['limit' => 45, 'null' => true])
-            ->addColumn('exitoso', 'boolean', ['default' => false, 'null' => false])
+            ->addColumn('is_successful', 'boolean', ['default' => false, 'null' => false])
             ->addColumn('created_at', 'timestamp', [
                 'default' => 'CURRENT_TIMESTAMP',
                 'null' => false,
                 'comment' => 'UTC (RNF-11)',
             ])
-            ->addIndex(['email'], ['name' => 'idx_auth_intento_email'])
-            ->addIndex(['ip_address'], ['name' => 'idx_auth_intento_ip'])
-            ->addIndex(['created_at'], ['name' => 'idx_auth_intento_created'])
+            ->addIndex(['email'], ['name' => 'idx_auth_attempts_email'])
+            ->addIndex(['ip_address'], ['name' => 'idx_auth_attempts_ip'])
+            ->addIndex(['created_at'], ['name' => 'idx_auth_attempts_created'])
             ->create();
 
         // Vincula bitácora MRR con el usuario autenticado.
-        $this->table('movimiento')
-            ->addForeignKey('usuario_id', 'usuario', 'id', [
+        $this->table('movements')
+            ->addForeignKey('user_id', 'users', 'id', [
                 'delete' => 'SET_NULL',
                 'update' => 'CASCADE',
-                'constraint' => 'fk_movimiento_usuario',
+                'constraint' => 'fk_movements_user',
             ])
             ->update();
     }

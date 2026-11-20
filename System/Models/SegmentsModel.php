@@ -7,27 +7,27 @@ namespace System\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Segmento de producto (`segmento`) — RF-1.
- * `dias_credito_default` se hereda al alta de clientes/contratos.
+ * Segmento de producto (`segments`) — RF-1.
+ * `default_credit_days` se hereda al alta de clientes y contratos.
  */
 final class SegmentsModel extends Model
 {
-    protected $table = 'segmento';
+    protected $table = 'segments';
 
     /** Alias obligatorio del framework operam/servicios. */
     public $alias = 'seg';
 
     /** @var list<string> */
     protected $fillable = [
-        'nombre',
-        'dias_credito_default',
-        'tipo_cambio_usd',
+        'name',
+        'default_credit_days',
+        'usd_exchange_rate',
     ];
 
     /** @var array<string, string> */
     protected $casts = [
-        'dias_credito_default' => 'integer',
-        'tipo_cambio_usd' => 'decimal:4',
+        'default_credit_days' => 'integer',
+        'usd_exchange_rate' => 'decimal:4',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

@@ -6,22 +6,25 @@ import {
 } from '@tanstack/react-table'
 
 const issuersTableFeatures = tableFeatures({})
-import { Building2, Pencil, Plus, Search } from 'lucide-react'
+import { Building2, Pencil, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { Button } from '@/components/ui/button'
+import { AppBadge } from '@/components/ui/AppBadge'
+import { AppFilterField } from '@/components/ui/AppFilterField'
+import { AppButton } from '@/components/ui/AppButton'
+import { AppCard } from '@/components/ui/AppCard'
+import { AppInput, AppSearchInput } from '@/components/ui/AppInput'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { IosSwitch } from '@/components/ui/IosSwitch'
+  AppModal,
+  AppModalContent,
+  AppModalDescription,
+  AppModalHeader,
+  AppModalTitle,
+} from '@/components/ui/AppModal'
+import { AppSwitch } from '@/components/ui/AppSwitch'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
-import { StatusPill } from '@/components/ui/StatusPill'
 import { useScreenPreferences } from '@/context/ScreenPreferencesContext'
 import { useToast } from '@/context/ToastContext'
 import { useIssuersConfig } from '@/hooks/useConfigCatalog'
@@ -30,7 +33,7 @@ import { cn } from '@/lib/utils'
 import type { Issuer } from '@/types/catalog'
 
 const issuerFormSchema = z.object({
-  nombre: z.string().min(3, 'Indica el nombre comercial o razón social').max(120),
+  name: z.string().min(3, 'Indica el nombre comercial o razón social').max(120),
   rfc: z
     .string()
     .trim()
@@ -43,7 +46,7 @@ const issuerFormSchema = z.object({
           'RFC inválido (12 o 13 caracteres, formato SAT)',
         ),
     ),
-  activo: z.boolean(),
+  is_active: z.boolean(),
   api_url: z.string().max(255).optional(),
   secret_ref: z.string().max(255).optional(),
   integropay_merchant_token_ref: z.string().max(255).optional(),
@@ -52,21 +55,13 @@ const issuerFormSchema = z.object({
 
 type IssuerFormValues = z.infer<typeof issuerFormSchema>
 
-const inputClass =
-  'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0066FF]/30 dark:border-white/[0.08] dark:bg-white/[0.05]'
-
 function RefBadge({ label, configured }: { label: string; configured: boolean }) {
   return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium',
-        configured
-          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-          : 'border-slate-300/70 bg-slate-100 text-slate-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-400',
-      )}
-    >
-      {label}
-    </span>
+    <AppBadge
+      label={label}
+      tone={configured ? 'success' : 'neutral'}
+      className="px-2 py-0.5 text-[10px]"
+    />
   )
 }
 
@@ -91,8 +86,8 @@ export function IssuersPage() {
       page,
       per_page: pageSize,
       search: search.trim() || undefined,
-      estado:
-        estado === 'Activos' ? 'activos' : estado === 'Inactivos' ? 'inactivos' : undefined,
+      status:
+        estado === 'Activos' ? 'active' : estado === 'Inactivos' ? 'inactive' : undefined,
     }),
     [page, pageSize, search, estado],
   )
@@ -115,9 +110,9 @@ export function IssuersPage() {
   const form = useForm<IssuerFormValues>({
     resolver: zodResolver(issuerFormSchema),
     defaultValues: {
-      nombre: '',
+      name: '',
       rfc: '',
-      activo: true,
+      is_active: true,
       api_url: '',
       secret_ref: '',
       integropay_merchant_token_ref: '',
@@ -128,13 +123,13 @@ export function IssuersPage() {
   const columns = useMemo<Array<ColumnDef<typeof issuersTableFeatures, Issuer>>>(
     () => [
       {
-        accessorKey: 'nombre',
+        accessorKey: 'name',
         header: 'Emisor',
         cell: ({ row }) => (
           <div className="flex min-w-0 items-center gap-2">
             <Building2 className="h-4 w-4 shrink-0 text-[#0066FF] dark:text-[#0A84FF]" />
-            <span className="truncate font-medium" title={row.original.nombre}>
-              {row.original.nombre}
+            <span className="truncate font-medium" title={row.original.name}>
+              {row.original.name}
             </span>
           </div>
         ),
@@ -174,17 +169,17 @@ export function IssuersPage() {
         header: 'Instancias',
         cell: ({ row }) => (
           <span className="font-mono text-xs tabular-nums">
-            {row.original.instancias_vinculadas ?? 0}
+            {row.original.linked_instances_count ?? 0}
           </span>
         ),
       },
       {
-        accessorKey: 'activo',
+        accessorKey: 'is_active',
         header: 'Estado',
         cell: ({ row }) => (
-          <StatusPill
-            label={row.original.activo ? 'Activo' : 'Inactivo'}
-            tone={row.original.activo ? 'positive' : 'negative'}
+          <AppBadge
+            label={row.original.is_active ? 'Activo' : 'Inactivo'}
+            tone={row.original.is_active ? 'success' : 'danger'}
           />
         ),
       },
@@ -192,9 +187,9 @@ export function IssuersPage() {
         id: 'actions',
         header: 'Acciones',
         cell: ({ row }) =>
-          canEdit('config_emisores') ? (
+          canEdit('config_issuers') ? (
             <div className="flex items-center gap-2">
-              <Button
+              <AppButton
                 type="button"
                 variant="outline"
                 size="sm"
@@ -202,11 +197,11 @@ export function IssuersPage() {
                 onClick={() => openEdit(row.original)}
               >
                 <Pencil className="mr-1 h-3.5 w-3.5" /> Editar
-              </Button>
-              <IosSwitch
-                checked={row.original.activo}
+              </AppButton>
+              <AppSwitch
+                checked={row.original.is_active}
                 onCheckedChange={(next) => void onToggle(row.original, next)}
-                label={row.original.activo ? 'Desactivar emisor' : 'Activar emisor'}
+                label={row.original.is_active ? 'Desactivar emisor' : 'Activar emisor'}
               />
             </div>
           ) : null,
@@ -225,9 +220,9 @@ export function IssuersPage() {
   function openCreate() {
     setEditing(null)
     form.reset({
-      nombre: '',
+      name: '',
       rfc: '',
-      activo: true,
+      is_active: true,
       api_url: '',
       secret_ref: '',
       integropay_merchant_token_ref: '',
@@ -241,9 +236,9 @@ export function IssuersPage() {
     const unmask = (value: string | null): string =>
       !value || value === '••••••••' ? '' : value
     form.reset({
-      nombre: issuer.nombre,
+      name: issuer.name,
       rfc: issuer.rfc,
-      activo: issuer.activo,
+      is_active: issuer.is_active,
       api_url: issuer.api_url ?? '',
       secret_ref: unmask(issuer.secret_ref),
       integropay_merchant_token_ref: unmask(issuer.integropay_merchant_token_ref),
@@ -254,10 +249,10 @@ export function IssuersPage() {
 
   async function onToggle(issuer: Issuer, next: boolean) {
     try {
-      await toggleIssuer({ id: issuer.id, activo: next })
+      await toggleIssuer({ id: issuer.id, is_active: next })
       toast.success(
         next ? 'Emisor activado' : 'Emisor desactivado',
-        issuer.nombre,
+        issuer.name,
       )
     } catch (error) {
       toast.apiError(error)
@@ -266,9 +261,9 @@ export function IssuersPage() {
 
   async function onSubmit(values: IssuerFormValues) {
     const payload = {
-      nombre: values.nombre.trim(),
+      name: values.name.trim(),
       rfc: values.rfc.trim().toUpperCase(),
-      activo: values.activo,
+      is_active: values.is_active,
       api_url: values.api_url?.trim() || null,
       secret_ref: values.secret_ref?.trim() || null,
       integropay_merchant_token_ref: values.integropay_merchant_token_ref?.trim() || null,
@@ -277,10 +272,10 @@ export function IssuersPage() {
     try {
       if (editing) {
         await updateIssuer({ id: editing.id, data: payload })
-        toast.success('Emisor actualizado', `${payload.nombre} guardado correctamente.`)
+        toast.success('Emisor actualizado', `${payload.name} guardado correctamente.`)
       } else {
         await createIssuer(payload)
-        toast.success('Emisor creado', `${payload.nombre} quedó registrado.`)
+        toast.success('Emisor creado', `${payload.name} quedó registrado.`)
       }
       setModalOpen(false)
     } catch (error) {
@@ -290,13 +285,13 @@ export function IssuersPage() {
 
   if (isApiError && !items.length) {
     return (
-      <section className="glass-panel border-red-500/30 p-5">
+      <AppCard className="border-red-500/30 p-5">
         <h2 className="font-heading font-semibold text-red-500">Error</h2>
         <p className="text-sm text-slate-500">{errorMessage}</p>
-        <Button className="mt-4 rounded-xl" onClick={() => void refetch()}>
+        <AppButton className="mt-4" onClick={() => void refetch()}>
           Reintentar
-        </Button>
-      </section>
+        </AppButton>
+      </AppCard>
     )
   }
 
@@ -309,50 +304,55 @@ export function IssuersPage() {
             Datos fiscales, conexión ERP e IntegroPAY (solo referencias del cofre)
           </p>
         </div>
-        {canCreate('config_emisores') && (
-          <Button className="rounded-xl" onClick={openCreate}>
+        {canCreate('config_issuers') && (
+          <AppButton className="rounded-xl" onClick={openCreate}>
             <Plus className="mr-1 h-4 w-4" /> Nuevo emisor
-          </Button>
+          </AppButton>
         )}
       </header>
 
-      <div className="glass-panel space-y-3 p-4">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setPage(1)
-            }}
-            placeholder="Buscar por nombre o RFC…"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
-          />
-        </div>
-        <div className="ios-pill-track">
-          {['Todos', 'Activos', 'Inactivos'].map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => {
-                setEstado(opt)
-                setPage(1)
-              }}
-              className={cn(
-                'rounded-xl px-2.5 py-1 text-xs',
-                estado === opt ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
-              )}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
-      </div>
+      <AppCard className="space-y-3 p-4">
+        <AppSearchInput
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setPage(1)
+          }}
+          onClear={() => {
+            setSearch('')
+            setPage(1)
+          }}
+          placeholder="Buscar por nombre o RFC…"
+          aria-label="Buscar emisores"
+        />
+        <AppFilterField label="Estado">
+          <div className="ios-pill-track" role="group" aria-label="Estado">
+            {['Todos', 'Activos', 'Inactivos'].map((opt) => (
+              <AppButton
+                key={opt}
+                type="button"
+                variant={estado === opt ? 'primary' : 'ghost'}
+                size="sm"
+                onClick={() => {
+                  setEstado(opt)
+                  setPage(1)
+                }}
+                className={cn(
+                  'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
+                  estado === opt ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
+                )}
+              >
+                {opt}
+              </AppButton>
+            ))}
+          </div>
+        </AppFilterField>
+      </AppCard>
 
       {isLoading ? (
         <Skeleton className="h-64 w-full rounded-2xl" />
       ) : (
-        <section className="glass-panel overflow-hidden p-0">
+        <AppCard className="overflow-hidden p-0">
           <div className="hidden overflow-x-auto lg:block">
             <table className="w-full text-sm">
               <thead>
@@ -388,18 +388,15 @@ export function IssuersPage() {
 
           <div className="space-y-3 p-4 lg:hidden">
             {items.map((em) => (
-              <article
-                key={em.id}
-                className="rounded-2xl border border-slate-200/80 p-4 dark:border-white/[0.08]"
-              >
+              <AppCard key={em.id} className="p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-heading truncate font-semibold">{em.nombre}</p>
+                    <p className="font-heading truncate font-semibold">{em.name}</p>
                     <p className="font-mono text-xs text-slate-500">{em.rfc}</p>
                   </div>
-                  <StatusPill
-                    label={em.activo ? 'Activo' : 'Inactivo'}
-                    tone={em.activo ? 'positive' : 'negative'}
+                  <AppBadge
+                    label={em.is_active ? 'Activo' : 'Inactivo'}
+                    tone={em.is_active ? 'success' : 'danger'}
                   />
                 </div>
                 <p className="mt-2 line-clamp-1 font-mono text-[11px] text-slate-500">
@@ -411,11 +408,11 @@ export function IssuersPage() {
                   <RefBadge label="Device" configured={em.has_device_token} />
                 </div>
                 <p className="mt-2 text-xs text-slate-500">
-                  {em.instancias_vinculadas ?? 0} instancias vinculadas
+                  {em.linked_instances_count ?? 0} instancias vinculadas
                 </p>
-                {canEdit('config_emisores') && (
+                {canEdit('config_issuers') && (
                   <div className="mt-3 flex items-center gap-2">
-                    <Button
+                    <AppButton
                       type="button"
                       variant="outline"
                       size="sm"
@@ -423,15 +420,15 @@ export function IssuersPage() {
                       onClick={() => openEdit(em)}
                     >
                       <Pencil className="mr-1 h-3.5 w-3.5" /> Editar
-                    </Button>
-                    <IosSwitch
-                      checked={em.activo}
+                    </AppButton>
+                    <AppSwitch
+                      checked={em.is_active}
                       onCheckedChange={(next) => void onToggle(em, next)}
-                      label={em.activo ? 'Desactivar' : 'Activar'}
+                      label={em.is_active ? 'Desactivar' : 'Activar'}
                     />
                   </div>
                 )}
-              </article>
+              </AppCard>
             ))}
           </div>
 
@@ -452,33 +449,35 @@ export function IssuersPage() {
               }}
             />
           </div>
-        </section>
+        </AppCard>
       )}
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Editar emisor' : 'Nuevo emisor'}</DialogTitle>
-            <DialogDescription>
+      <AppModal open={modalOpen} onOpenChange={setModalOpen}>
+        <AppModalContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <AppModalHeader>
+            <AppModalTitle>{editing ? 'Editar emisor' : 'Nuevo emisor'}</AppModalTitle>
+            <AppModalDescription>
               Datos fiscales y referencias de conexión al ERP / IntegroPAY.
-            </DialogDescription>
-          </DialogHeader>
+            </AppModalDescription>
+          </AppModalHeader>
           <form className="space-y-5" onSubmit={form.handleSubmit(onSubmit)}>
-            <fieldset className="space-y-3 rounded-2xl border border-slate-200/80 p-4 dark:border-white/[0.08]">
-              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <AppCard className="space-y-3 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Datos fiscales y estado
-              </legend>
+              </p>
               <label className="block text-sm">
                 Nombre comercial / Razón social
-                <input className={inputClass} {...form.register('nombre')} />
+                <AppInput withLabelSpacing {...form.register('name')} />
               </label>
-              {form.formState.errors.nombre && (
-                <p className="text-xs text-red-500">{form.formState.errors.nombre.message}</p>
+              {form.formState.errors.name && (
+                <p className="text-xs text-red-500">{form.formState.errors.name.message}</p>
               )}
               <label className="block text-sm">
                 RFC
-                <input
-                  className={cn(inputClass, 'font-mono uppercase tracking-wide')}
+                <AppInput
+                  withLabelSpacing
+                  mono
+                  className="uppercase tracking-wide"
                   maxLength={13}
                   autoCapitalize="characters"
                   {...form.register('rfc', {
@@ -500,9 +499,9 @@ export function IssuersPage() {
                 </div>
                 <Controller
                   control={form.control}
-                  name="activo"
+                  name="is_active"
                   render={({ field }) => (
-                    <IosSwitch
+                    <AppSwitch
                       checked={field.value}
                       onCheckedChange={field.onChange}
                       label="Emisor activo"
@@ -510,56 +509,64 @@ export function IssuersPage() {
                   )}
                 />
               </div>
-            </fieldset>
+            </AppCard>
 
-            <fieldset className="space-y-3 rounded-2xl border border-slate-200/80 p-4 dark:border-white/[0.08]">
-              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <AppCard className="space-y-3 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Conexión ERP e IntegroPAY
-              </legend>
+              </p>
               <p className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
                 Por seguridad bancaria, aquí solo se guarda el nombre de la variable o referencia
                 del cofre de secretos, nunca la llave en texto plano.
               </p>
               <label className="block text-sm">
                 URL de API del ERP (api_url)
-                <input
-                  className={cn(inputClass, 'font-mono text-xs')}
+                <AppInput
+                  withLabelSpacing
+                  mono
+                  className="text-xs"
                   placeholder="https://erp.ejemplo.com/api"
                   {...form.register('api_url')}
                 />
               </label>
               <label className="block text-sm">
                 Referencia Secret ERP (secret_ref)
-                <input
-                  className={cn(inputClass, 'font-mono text-xs')}
+                <AppInput
+                  withLabelSpacing
+                  mono
+                  className="text-xs"
                   placeholder="ERP_SECRET_ACME"
                   {...form.register('secret_ref')}
                 />
               </label>
               <label className="block text-sm">
                 Referencia Merchant Token IntegroPAY
-                <input
-                  className={cn(inputClass, 'font-mono text-xs')}
+                <AppInput
+                  withLabelSpacing
+                  mono
+                  className="text-xs"
                   placeholder="INTEGROPAY_MERCHANT_ACME"
                   {...form.register('integropay_merchant_token_ref')}
                 />
               </label>
               <label className="block text-sm">
                 Referencia Device Token IntegroPAY
-                <input
-                  className={cn(inputClass, 'font-mono text-xs')}
+                <AppInput
+                  withLabelSpacing
+                  mono
+                  className="text-xs"
                   placeholder="INTEGROPAY_DEVICE_ACME"
                   {...form.register('integropay_device_token_ref')}
                 />
               </label>
-            </fieldset>
+            </AppCard>
 
-            <Button type="submit" className="w-full rounded-xl">
+            <AppButton type="submit" className="w-full rounded-xl">
               {editing ? 'Guardar emisor' : 'Registrar emisor'}
-            </Button>
+            </AppButton>
           </form>
-        </DialogContent>
-      </Dialog>
+        </AppModalContent>
+      </AppModal>
     </div>
   )
 }

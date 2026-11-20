@@ -7,13 +7,13 @@ namespace Operam\Models;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Estado de cobranza por contrato. Tabla física: `cobranza_estado`.
+ * Estado de cobranza por contrato. Tabla física: `collection_statuses`.
  */
 final class CollectionStatus extends BaseModel
 {
-    protected $table = 'cobranza_estado';
+    protected $table = 'collection_statuses';
 
-    protected $primaryKey = 'contrato_id';
+    protected $primaryKey = 'contract_id';
 
     public $incrementing = false;
 
@@ -21,26 +21,26 @@ final class CollectionStatus extends BaseModel
 
     /** @var list<string> */
     protected $fillable = [
-        'contrato_id',
-        'saldo_vencido',
-        'dias_vencido',
-        'nivel_aviso',
-        'suspendido',
-        'actualizado',
+        'contract_id',
+        'overdue_balance',
+        'overdue_days',
+        'notice_level',
+        'is_suspended',
+        'updated_at',
     ];
 
     /** @var array<string, string> */
     protected $casts = [
-        'contrato_id' => 'integer',
-        'saldo_vencido' => 'decimal:2',
-        'dias_vencido' => 'integer',
-        'nivel_aviso' => 'integer',
-        'suspendido' => 'boolean',
-        'actualizado' => 'datetime',
+        'contract_id' => 'integer',
+        'overdue_balance' => 'decimal:2',
+        'overdue_days' => 'integer',
+        'notice_level' => 'integer',
+        'is_suspended' => 'boolean',
+        'updated_at' => 'datetime',
     ];
 
     public function contract(): BelongsTo
     {
-        return $this->belongsTo(Contract::class, 'contrato_id');
+        return $this->belongsTo(Contract::class, 'contract_id');
     }
 }

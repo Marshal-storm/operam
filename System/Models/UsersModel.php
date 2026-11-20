@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 
 final class UsersModel extends Model
 {
-    protected $table = 'usuario';
+    protected $table = 'users';
 
     /** Alias obligatorio del framework operam/servicios. */
     public $alias = 'usr';
@@ -16,21 +16,20 @@ final class UsersModel extends Model
     /** @var list<string> */
     protected $fillable = [
         'email',
-        'nombre',
+        'name',
         'password_hash',
-        'rol',
-        'rol_id',
-        'segmento_id',
-        'activo',
-        'ultimo_acceso',
+        'role_id',
+        'segment_id',
+        'is_active',
+        'last_login_at',
     ];
 
     /** @var array<string, string> */
     protected $casts = [
-        'rol_id' => 'integer',
-        'segmento_id' => 'integer',
-        'activo' => 'boolean',
-        'ultimo_acceso' => 'datetime',
+        'role_id' => 'integer',
+        'segment_id' => 'integer',
+        'is_active' => 'boolean',
+        'last_login_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

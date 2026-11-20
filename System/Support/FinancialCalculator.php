@@ -15,15 +15,15 @@ final class FinancialCalculator
 {
     private const SCALE = 2;
 
-    /** Categorías del Puente de MRR (excluye transferencia, cuyo delta es siempre 0.00). */
+    /** Categorías del Puente de MRR (excluye transfer, cuyo delta es siempre 0.00). */
     public const MRR_BRIDGE_CATEGORIES = [
-        'nuevo',
+        'new',
         'expansion',
-        'ajuste_precio',
-        'cambio_frecuencia',
-        'contraccion',
+        'price_adjustment',
+        'frequency_change',
+        'contraction',
         'churn',
-        'reactivacion',
+        'reactivation',
     ];
 
     /**
@@ -74,9 +74,9 @@ final class FinancialCalculator
 
     /**
      * Puente de MRR: Inicio + sum(deltas por categoría) = Fin (RNF-1).
-     * Ignora `transferencia` (delta contable '0.00').
+     * Ignora `transfer` (delta contable '0.00').
      *
-     * @param list<array{categoria_mrr?: string, mrr_delta_mxn?: string|int|float}> $movements
+     * @param list<array{mrr_category?: string, mrr_delta_mxn?: string|int|float}> $movements
      * @return array{
      *     mrrEnd: string,
      *     netChange: string,
@@ -93,8 +93,8 @@ final class FinancialCalculator
         }
 
         foreach ($movements as $movement) {
-            $category = (string) ($movement['categoria_mrr'] ?? '');
-            if ($category === 'transferencia' || $category === '') {
+            $category = (string) ($movement['mrr_category'] ?? '');
+            if ($category === 'transfer' || $category === '') {
                 continue;
             }
             if (!in_array($category, self::MRR_BRIDGE_CATEGORIES, true)) {
@@ -132,43 +132,43 @@ final class FinancialCalculator
         string $reason,
     ): array {
         if ($userId < 1) {
-            throw new InvalidArgumentException('usuario_id debe ser positivo.');
+            throw new InvalidArgumentException('El identificador de usuario debe ser positivo.');
         }
 
         // Blindaje: prohibido señalizar mutación in-place de la fila original.
         if (!empty($originalMovement['_inplace_update']) || !empty($originalMovement['_mutate'])) {
             throw new RuntimeException(
-                'RNF-3: la bitácora movimiento es inmutable. No se permite mutación in-place; emita una reversión contable (INSERT).',
+                'RNF-3: la bitácora de movimientos es inmutable. No se permite mutación in-place; emita una reversión contable (INSERT).',
             );
         }
 
         $delta = self::normalizeMoney((string) ($originalMovement['mrr_delta_mxn'] ?? '0.00'));
-        $mrrAntes = self::normalizeMoney((string) ($originalMovement['mrr_antes'] ?? '0.00'));
-        $mrrDespues = self::normalizeMoney((string) ($originalMovement['mrr_despues'] ?? '0.00'));
+        $mrrBefore = self::normalizeMoney((string) ($originalMovement['mrr_before'] ?? '0.00'));
+        $mrrAfter = self::normalizeMoney((string) ($originalMovement['mrr_after'] ?? '0.00'));
 
         $invertedDelta = bcmul($delta, '-1', self::SCALE);
 
         $payload = [
-            'tipo' => 'reversión',
-            'categoria_mrr' => (string) ($originalMovement['categoria_mrr'] ?? ''),
-            'mrr_antes' => $mrrDespues,
-            'mrr_despues' => $mrrAntes,
+            'movement_type' => 'reversal',
+            'mrr_category' => (string) ($originalMovement['mrr_category'] ?? ''),
+            'mrr_before' => $mrrAfter,
+            'mrr_after' => $mrrBefore,
             'mrr_delta_mxn' => $invertedDelta,
-            'cantidad_antes' => isset($originalMovement['cantidad_despues'])
-                ? self::normalizeMoney((string) $originalMovement['cantidad_despues'])
+            'quantity_before' => isset($originalMovement['quantity_after'])
+                ? self::normalizeMoney((string) $originalMovement['quantity_after'])
                 : null,
-            'cantidad_despues' => isset($originalMovement['cantidad_antes'])
-                ? self::normalizeMoney((string) $originalMovement['cantidad_antes'])
+            'quantity_after' => isset($originalMovement['quantity_before'])
+                ? self::normalizeMoney((string) $originalMovement['quantity_before'])
                 : null,
-            'usuario_id' => $userId,
-            'motivo' => mb_substr(trim($reason) !== '' ? trim($reason) : 'Reversión contable', 0, 255),
-            'movimiento_revertido_id' => isset($originalMovement['id'])
+            'user_id' => $userId,
+            'reason' => mb_substr(trim($reason) !== '' ? trim($reason) : 'Reversión contable', 0, 255),
+            'reversed_movement_id' => isset($originalMovement['id'])
                 ? (int) $originalMovement['id']
                 : null,
         ];
 
-        // Verificación aritmética: mrr_despues - mrr_antes == delta invertido.
-        $check = bcsub($payload['mrr_despues'], $payload['mrr_antes'], self::SCALE);
+        // Verificación aritmética: mrr_after - mrr_before == delta invertido.
+        $check = bcsub($payload['mrr_after'], $payload['mrr_before'], self::SCALE);
         if (bccomp($check, $invertedDelta, self::SCALE) !== 0) {
             throw new RuntimeException('Inconsistencia aritmética al construir la reversión (RNF-3).');
         }
@@ -183,28 +183,28 @@ final class FinancialCalculator
     }
 
     /**
-     * RF-10 / RNF-1: acumula un delta sobre el monto de `mrr_mensual` con bcadd (escala 2).
+     * RF-10 / RNF-1: acumula un delta sobre el monto de `monthly_mrr` con bcadd (escala 2).
      * Jamás usa float.
      */
-    public static function accumulateMrrMensualAmount(string $currentMonto, string $delta): string
+    public static function accumulateMonthlyMrrAmount(string $currentAmount, string $delta): string
     {
         return bcadd(
-            self::normalizeMoney($currentMonto),
+            self::normalizeMoney($currentAmount),
             self::normalizeMoney($delta),
             self::SCALE,
         );
     }
 
     /**
-     * Deriva la llave de mes `YYYY-MM` a partir de `fecha_efectiva`
+     * Deriva la llave de mes `YYYY-MM` a partir de `effective_date`
      * (equivalente conceptual al corte `YYYY-MM-01` del documento de diseño).
-     * La columna `mrr_mensual.mes` es CHAR(7).
+     * La columna `monthly_mrr.month` es CHAR(7).
      */
-    public static function monthKeyFromEffectiveDate(string $fechaEfectiva): string
+    public static function monthKeyFromEffectiveDate(string $effectiveDate): string
     {
-        $trimmed = trim($fechaEfectiva);
+        $trimmed = trim($effectiveDate);
         if (preg_match('/^(\d{4}-\d{2})(-\d{2})?/', $trimmed, $matches) !== 1) {
-            throw new InvalidArgumentException("fecha_efectiva inválida: {$fechaEfectiva}");
+            throw new InvalidArgumentException("Fecha efectiva inválida: {$effectiveDate}");
         }
 
         return $matches[1];

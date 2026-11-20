@@ -1,6 +1,6 @@
 <?php
 /**
- * Migración Módulo 1 — tablas del Dashboard / Puente de MRR.
+ * Migración Módulo 1 — tablas del Dashboard / Puente de MRR (esquema 100% inglés).
  * Reversible vía change() (Phinx). Montos DECIMAL(14,2) — RNF-1.
  * Timestamps en UTC — RNF-11. Fechas de corte interpretadas en America/Mexico_City.
  */
@@ -14,7 +14,7 @@ final class CreateDashboardMrrTables extends AbstractMigration
 {
     public function change(): void
     {
-        $this->table('segmento', [
+        $this->table('segments', [
             'id' => false,
             'primary_key' => ['id'],
             'engine' => 'InnoDB',
@@ -22,13 +22,20 @@ final class CreateDashboardMrrTables extends AbstractMigration
             'comment' => 'Segmentos de producto (Operam, Construsync, etc.)',
         ])
             ->addColumn('id', 'integer', ['identity' => true, 'signed' => false])
-            ->addColumn('nombre', 'string', ['limit' => 80, 'null' => false])
-            ->addColumn('dias_credito_default', 'integer', [
+            ->addColumn('name', 'string', ['limit' => 80, 'null' => false])
+            ->addColumn('default_credit_days', 'integer', [
                 'limit' => MysqlAdapter::INT_SMALL,
                 'signed' => false,
                 'default' => 30,
                 'null' => false,
             ])
+            ->addColumn('usd_exchange_rate', 'decimal', [
+                'precision' => 10,
+                'scale' => 4,
+                'default' => '19.5000',
+                'null' => false,
+                'comment' => 'RF-1: tipo de cambio USD→MXN de referencia del segmento',
+            ])
             ->addColumn('created_at', 'timestamp', [
                 'default' => 'CURRENT_TIMESTAMP',
                 'null' => false,
@@ -40,20 +47,36 @@ final class CreateDashboardMrrTables extends AbstractMigration
                 'null' => false,
                 'comment' => 'UTC (RNF-11)',
             ])
-            ->addIndex(['nombre'], ['unique' => true, 'name' => 'uk_segmento_nombre'])
+            ->addIndex(['name'], ['unique' => true, 'name' => 'uk_segments_name'])
             ->create();
 
-        $this->table('emisor', [
+        $this->table('issuers', [
             'id' => false,
             'primary_key' => ['id'],
             'engine' => 'InnoDB',
             'collation' => 'utf8mb4_unicode_ci',
+            'comment' => 'Emisores fiscales / legales',
         ])
             ->addColumn('id', 'integer', ['identity' => true, 'signed' => false])
-            ->addColumn('nombre', 'string', ['limit' => 120, 'null' => false])
+            ->addColumn('name', 'string', ['limit' => 120, 'null' => false])
             ->addColumn('rfc', 'string', ['limit' => 13, 'null' => false])
             ->addColumn('api_url', 'string', ['limit' => 255, 'null' => true])
-            ->addColumn('activo', 'boolean', ['default' => true, 'null' => false])
+            ->addColumn('secret_ref', 'string', [
+                'limit' => 255,
+                'null' => true,
+                'comment' => 'Referencia al secreto ERP (cofre), no la llave',
+            ])
+            ->addColumn('integropay_merchant_token_ref', 'string', [
+                'limit' => 255,
+                'null' => true,
+                'comment' => 'Ref merchant token IntegroPAY',
+            ])
+            ->addColumn('integropay_device_token_ref', 'string', [
+                'limit' => 255,
+                'null' => true,
+                'comment' => 'Ref device token IntegroPAY',
+            ])
+            ->addColumn('is_active', 'boolean', ['default' => true, 'null' => false])
             ->addColumn('created_at', 'timestamp', [
                 'default' => 'CURRENT_TIMESTAMP',
                 'null' => false,
@@ -65,28 +88,29 @@ final class CreateDashboardMrrTables extends AbstractMigration
                 'null' => false,
                 'comment' => 'UTC (RNF-11)',
             ])
-            ->addIndex(['rfc'], ['unique' => true, 'name' => 'uk_emisor_rfc'])
+            ->addIndex(['rfc'], ['unique' => true, 'name' => 'uk_issuers_rfc'])
             ->create();
 
-        $this->table('cliente', [
+        $this->table('clients', [
             'id' => false,
             'primary_key' => ['id'],
             'engine' => 'InnoDB',
             'collation' => 'utf8mb4_unicode_ci',
+            'comment' => 'Clientes / cuentas de facturación',
         ])
             ->addColumn('id', 'integer', ['identity' => true, 'signed' => false])
-            ->addColumn('emisor_id', 'integer', ['signed' => false, 'null' => false])
-            ->addColumn('erp_cliente_id', 'string', ['limit' => 64, 'null' => true])
-            ->addColumn('nombre', 'string', ['limit' => 160, 'null' => false])
+            ->addColumn('issuer_id', 'integer', ['signed' => false, 'null' => false])
+            ->addColumn('erp_client_id', 'string', ['limit' => 64, 'null' => true])
+            ->addColumn('name', 'string', ['limit' => 160, 'null' => false])
             ->addColumn('rfc', 'string', ['limit' => 13, 'null' => true])
-            ->addColumn('razon_social', 'string', ['limit' => 255, 'null' => true])
-            ->addColumn('dias_credito', 'integer', [
+            ->addColumn('legal_name', 'string', ['limit' => 255, 'null' => true])
+            ->addColumn('credit_days', 'integer', [
                 'limit' => MysqlAdapter::INT_SMALL,
                 'signed' => false,
                 'null' => true,
             ])
-            ->addColumn('timbrar_al_emitir', 'boolean', ['default' => true, 'null' => false])
-            ->addColumn('excluir_suspension', 'boolean', ['default' => false, 'null' => false])
+            ->addColumn('stamp_on_issue', 'boolean', ['default' => true, 'null' => false])
+            ->addColumn('exclude_suspension', 'boolean', ['default' => false, 'null' => false])
             ->addColumn('created_at', 'timestamp', [
                 'default' => 'CURRENT_TIMESTAMP',
                 'null' => false,
@@ -98,51 +122,58 @@ final class CreateDashboardMrrTables extends AbstractMigration
                 'null' => false,
                 'comment' => 'UTC (RNF-11)',
             ])
-            ->addIndex(['emisor_id'], ['name' => 'idx_cliente_emisor'])
-            ->addIndex(['erp_cliente_id'], ['name' => 'idx_cliente_erp'])
-            ->addForeignKey('emisor_id', 'emisor', 'id', [
+            ->addIndex(['issuer_id'], ['name' => 'idx_clients_issuer'])
+            ->addIndex(['erp_client_id'], ['name' => 'idx_clients_erp'])
+            ->addForeignKey('issuer_id', 'issuers', 'id', [
                 'delete' => 'RESTRICT',
                 'update' => 'CASCADE',
-                'constraint' => 'fk_cliente_emisor',
+                'constraint' => 'fk_clients_issuer',
             ])
             ->create();
 
-        $this->table('contrato', [
+        $this->table('contracts', [
             'id' => false,
             'primary_key' => ['id'],
             'engine' => 'InnoDB',
             'collation' => 'utf8mb4_unicode_ci',
+            'comment' => 'Contratos / suscripciones',
         ])
             ->addColumn('id', 'integer', ['identity' => true, 'signed' => false])
             ->addColumn('folio', 'string', ['limit' => 32, 'null' => false])
-            ->addColumn('cliente_id', 'integer', ['signed' => false, 'null' => false])
-            ->addColumn('segmento_id', 'integer', ['signed' => false, 'null' => false])
-            ->addColumn('frecuencia', 'enum', [
-                'values' => ['mensual', 'trimestral', 'semestral', 'anual'],
-                'default' => 'mensual',
+            ->addColumn('client_id', 'integer', ['signed' => false, 'null' => false])
+            ->addColumn('segment_id', 'integer', ['signed' => false, 'null' => false])
+            ->addColumn('frequency', 'enum', [
+                'values' => ['monthly', 'annual', 'single'],
+                'default' => 'monthly',
                 'null' => false,
             ])
-            ->addColumn('fecha_aniversario', 'date', [
+            ->addColumn('anniversary_date', 'date', [
                 'null' => false,
                 'comment' => 'Fecha de corte en calendario America/Mexico_City',
             ])
-            ->addColumn('moneda', 'char', ['limit' => 3, 'default' => 'MXN', 'null' => false])
-            ->addColumn('dias_credito', 'integer', [
+            ->addColumn('currency', 'char', ['limit' => 3, 'default' => 'MXN', 'null' => false])
+            ->addColumn('credit_days', 'integer', [
                 'limit' => MysqlAdapter::INT_SMALL,
                 'signed' => false,
                 'default' => 30,
                 'null' => false,
             ])
-            ->addColumn('timbrar_al_emitir', 'boolean', ['default' => true, 'null' => false])
-            ->addColumn('estado', 'enum', [
-                'values' => ['activo', 'suspendido', 'cancelado', 'borrador'],
-                'default' => 'activo',
+            ->addColumn('stamp_on_issue', 'boolean', ['default' => true, 'null' => false])
+            ->addColumn('status', 'enum', [
+                'values' => ['active', 'suspended', 'cancelled', 'draft'],
+                'default' => 'active',
                 'null' => false,
             ])
-            ->addColumn('proximo_corte', 'date', [
+            ->addColumn('next_cutoff_date', 'date', [
                 'null' => true,
                 'comment' => 'Próximo corte America/Mexico_City',
             ])
+            ->addColumn('origin_contract_id', 'integer', [
+                'signed' => false,
+                'null' => true,
+                'comment' => 'Contrato origen en transferencias / renuevos',
+            ])
+            ->addColumn('termination_reason', 'string', ['limit' => 255, 'null' => true])
             ->addColumn('created_at', 'timestamp', [
                 'default' => 'CURRENT_TIMESTAMP',
                 'null' => false,
@@ -154,25 +185,25 @@ final class CreateDashboardMrrTables extends AbstractMigration
                 'null' => false,
                 'comment' => 'UTC (RNF-11)',
             ])
-            ->addIndex(['folio'], ['unique' => true, 'name' => 'uk_contrato_folio'])
-            ->addIndex(['cliente_id'], ['name' => 'idx_contrato_cliente'])
-            ->addIndex(['segmento_id'], ['name' => 'idx_contrato_segmento'])
-            ->addIndex(['estado'], ['name' => 'idx_contrato_estado'])
-            ->addIndex(['segmento_id', 'estado'], ['name' => 'idx_contrato_segmento_estado'])
-            ->addForeignKey('cliente_id', 'cliente', 'id', [
+            ->addIndex(['folio'], ['unique' => true, 'name' => 'uk_contracts_folio'])
+            ->addIndex(['client_id'], ['name' => 'idx_contracts_client'])
+            ->addIndex(['segment_id'], ['name' => 'idx_contracts_segment'])
+            ->addIndex(['status'], ['name' => 'idx_contracts_status'])
+            ->addIndex(['segment_id', 'status'], ['name' => 'idx_contracts_segment_status'])
+            ->addForeignKey('client_id', 'clients', 'id', [
                 'delete' => 'RESTRICT',
                 'update' => 'CASCADE',
-                'constraint' => 'fk_contrato_cliente',
+                'constraint' => 'fk_contracts_client',
             ])
-            ->addForeignKey('segmento_id', 'segmento', 'id', [
+            ->addForeignKey('segment_id', 'segments', 'id', [
                 'delete' => 'RESTRICT',
                 'update' => 'CASCADE',
-                'constraint' => 'fk_contrato_segmento',
+                'constraint' => 'fk_contracts_segment',
             ])
             ->create();
 
         // Bitácora inmutable (RNF-3): solo INSERT desde la aplicación.
-        $this->table('movimiento', [
+        $this->table('movements', [
             'id' => false,
             'primary_key' => ['id'],
             'engine' => 'InnoDB',
@@ -180,45 +211,46 @@ final class CreateDashboardMrrTables extends AbstractMigration
             'comment' => 'Bitácora inmutable de MRR (RNF-3)',
         ])
             ->addColumn('id', 'biginteger', ['identity' => true, 'signed' => false])
-            ->addColumn('contrato_id', 'integer', ['signed' => false, 'null' => false])
-            ->addColumn('contrato_linea_id', 'biginteger', ['signed' => false, 'null' => true])
-            ->addColumn('servicio_id', 'integer', ['signed' => false, 'null' => true])
-            ->addColumn('tipo', 'string', ['limit' => 40, 'null' => false])
-            ->addColumn('categoria_mrr', 'enum', [
+            ->addColumn('contract_id', 'integer', ['signed' => false, 'null' => false])
+            ->addColumn('contract_line_id', 'biginteger', ['signed' => false, 'null' => true])
+            ->addColumn('service_id', 'integer', ['signed' => false, 'null' => true])
+            ->addColumn('movement_type', 'string', ['limit' => 40, 'null' => false])
+            ->addColumn('mrr_category', 'enum', [
                 'values' => [
-                    'nuevo',
+                    'new',
                     'expansion',
-                    'ajuste_precio',
-                    'cambio_frecuencia',
-                    'contraccion',
+                    'price_adjustment',
+                    'frequency_change',
+                    'contraction',
                     'churn',
-                    'reactivacion',
+                    'reactivation',
+                    'transfer',
                 ],
                 'null' => false,
             ])
-            ->addColumn('fecha_efectiva', 'date', [
+            ->addColumn('effective_date', 'date', [
                 'null' => false,
                 'comment' => 'Efectividad en calendario America/Mexico_City',
             ])
-            ->addColumn('cantidad_antes', 'decimal', [
+            ->addColumn('quantity_before', 'decimal', [
                 'precision' => 14,
                 'scale' => 2,
                 'default' => '0.00',
                 'null' => false,
             ])
-            ->addColumn('cantidad_despues', 'decimal', [
+            ->addColumn('quantity_after', 'decimal', [
                 'precision' => 14,
                 'scale' => 2,
                 'default' => '0.00',
                 'null' => false,
             ])
-            ->addColumn('mrr_antes', 'decimal', [
+            ->addColumn('mrr_before', 'decimal', [
                 'precision' => 14,
                 'scale' => 2,
                 'default' => '0.00',
                 'null' => false,
             ])
-            ->addColumn('mrr_despues', 'decimal', [
+            ->addColumn('mrr_after', 'decimal', [
                 'precision' => 14,
                 'scale' => 2,
                 'default' => '0.00',
@@ -230,67 +262,75 @@ final class CreateDashboardMrrTables extends AbstractMigration
                 'default' => '0.00',
                 'null' => false,
             ])
-            ->addColumn('tipo_cambio', 'decimal', [
+            ->addColumn('exchange_rate', 'decimal', [
                 'precision' => 14,
                 'scale' => 6,
                 'default' => '1.000000',
                 'null' => false,
             ])
-            ->addColumn('usuario_id', 'integer', ['signed' => false, 'null' => true])
-            ->addColumn('solicitud_id', 'integer', ['signed' => false, 'null' => true])
-            ->addColumn('motivo', 'string', ['limit' => 255, 'null' => true])
-            ->addColumn('con_excepcion', 'boolean', ['default' => false, 'null' => false])
+            ->addColumn('user_id', 'integer', ['signed' => false, 'null' => true])
+            ->addColumn('request_id', 'integer', ['signed' => false, 'null' => true])
+            ->addColumn('reason', 'string', ['limit' => 255, 'null' => true])
+            ->addColumn('has_exception', 'boolean', ['default' => false, 'null' => false])
+            ->addColumn('excepted_policy', 'string', ['limit' => 80, 'null' => true])
+            ->addColumn('reversed_movement_id', 'biginteger', [
+                'signed' => false,
+                'null' => true,
+                'comment' => 'FK lógica al movimiento original cuando este registro es una reversión',
+            ])
             ->addColumn('created_at', 'timestamp', [
                 'default' => 'CURRENT_TIMESTAMP',
                 'null' => false,
                 'comment' => 'UTC (RNF-11)',
             ])
-            ->addIndex(['contrato_id'], ['name' => 'idx_movimiento_contrato'])
-            ->addIndex(['fecha_efectiva'], ['name' => 'idx_movimiento_fecha'])
-            ->addIndex(['categoria_mrr'], ['name' => 'idx_movimiento_categoria'])
-            ->addIndex(['fecha_efectiva', 'categoria_mrr'], ['name' => 'idx_movimiento_fecha_categoria'])
-            ->addForeignKey('contrato_id', 'contrato', 'id', [
+            ->addIndex(['contract_id'], ['name' => 'idx_movements_contract'])
+            ->addIndex(['effective_date'], ['name' => 'idx_movements_effective_date'])
+            ->addIndex(['mrr_category'], ['name' => 'idx_movements_mrr_category'])
+            ->addIndex(['effective_date', 'mrr_category'], ['name' => 'idx_movements_date_category'])
+            ->addIndex(['reversed_movement_id'], ['name' => 'idx_movements_reversed'])
+            ->addForeignKey('contract_id', 'contracts', 'id', [
                 'delete' => 'RESTRICT',
                 'update' => 'CASCADE',
-                'constraint' => 'fk_movimiento_contrato',
+                'constraint' => 'fk_movements_contract',
             ])
             ->create();
 
-        $this->table('cobranza_estado', [
+        $this->table('collection_statuses', [
             'id' => false,
-            'primary_key' => ['contrato_id'],
+            'primary_key' => ['contract_id'],
             'engine' => 'InnoDB',
             'collation' => 'utf8mb4_unicode_ci',
+            'comment' => 'Estado de cobranza por contrato',
         ])
-            ->addColumn('contrato_id', 'integer', ['signed' => false, 'null' => false])
-            ->addColumn('saldo_vencido', 'decimal', [
+            ->addColumn('contract_id', 'integer', ['signed' => false, 'null' => false])
+            ->addColumn('overdue_balance', 'decimal', [
                 'precision' => 14,
                 'scale' => 2,
                 'default' => '0.00',
                 'null' => false,
             ])
-            ->addColumn('dias_vencido', 'integer', ['default' => 0, 'null' => false])
-            ->addColumn('nivel_aviso', 'integer', [
+            ->addColumn('overdue_days', 'integer', ['default' => 0, 'null' => false])
+            ->addColumn('notice_level', 'integer', [
                 'limit' => MysqlAdapter::INT_TINY,
                 'signed' => false,
                 'default' => 0,
                 'null' => false,
             ])
-            ->addColumn('suspendido', 'boolean', ['default' => false, 'null' => false])
-            ->addColumn('actualizado', 'timestamp', [
+            ->addColumn('is_suspended', 'boolean', ['default' => false, 'null' => false])
+            ->addColumn('updated_at', 'timestamp', [
                 'default' => 'CURRENT_TIMESTAMP',
                 'update' => 'CURRENT_TIMESTAMP',
                 'null' => false,
                 'comment' => 'UTC (RNF-11)',
             ])
-            ->addForeignKey('contrato_id', 'contrato', 'id', [
+            ->addForeignKey('contract_id', 'contracts', 'id', [
                 'delete' => 'CASCADE',
                 'update' => 'CASCADE',
-                'constraint' => 'fk_cobranza_contrato',
+                'constraint' => 'fk_collection_statuses_contract',
             ])
             ->create();
 
-        $this->table('mrr_mensual', [
+        $this->table('monthly_mrr', [
             'id' => false,
             'primary_key' => ['id'],
             'engine' => 'InnoDB',
@@ -298,25 +338,25 @@ final class CreateDashboardMrrTables extends AbstractMigration
             'comment' => 'Agregado mensual del Puente de MRR',
         ])
             ->addColumn('id', 'biginteger', ['identity' => true, 'signed' => false])
-            ->addColumn('mes', 'char', ['limit' => 7, 'null' => false, 'comment' => 'YYYY-MM'])
-            ->addColumn('segmento_id', 'integer', ['signed' => false, 'null' => true])
-            ->addColumn('emisor_id', 'integer', ['signed' => false, 'null' => true])
-            ->addColumn('servicio_id', 'integer', ['signed' => false, 'null' => true])
-            ->addColumn('categoria', 'enum', [
+            ->addColumn('month', 'char', ['limit' => 7, 'null' => false, 'comment' => 'YYYY-MM'])
+            ->addColumn('segment_id', 'integer', ['signed' => false, 'null' => true])
+            ->addColumn('issuer_id', 'integer', ['signed' => false, 'null' => true])
+            ->addColumn('service_id', 'integer', ['signed' => false, 'null' => true])
+            ->addColumn('category', 'enum', [
                 'values' => [
-                    'inicio',
-                    'nuevo',
+                    'start',
+                    'new',
                     'expansion',
-                    'ajuste_precio',
-                    'cambio_frecuencia',
-                    'contraccion',
+                    'price_adjustment',
+                    'frequency_change',
+                    'contraction',
                     'churn',
-                    'reactivacion',
-                    'fin',
+                    'reactivation',
+                    'end',
                 ],
                 'null' => false,
             ])
-            ->addColumn('monto', 'decimal', [
+            ->addColumn('amount', 'decimal', [
                 'precision' => 14,
                 'scale' => 2,
                 'default' => '0.00',
@@ -334,21 +374,21 @@ final class CreateDashboardMrrTables extends AbstractMigration
                 'comment' => 'UTC (RNF-11)',
             ])
             ->addIndex(
-                ['mes', 'categoria', 'segmento_id', 'emisor_id', 'servicio_id'],
-                ['unique' => true, 'name' => 'uk_mrr_mensual_dim']
+                ['month', 'category', 'segment_id', 'issuer_id', 'service_id'],
+                ['unique' => true, 'name' => 'uk_monthly_mrr_dim']
             )
-            ->addIndex(['mes', 'segmento_id'], ['name' => 'idx_mrr_mensual_mes_segmento'])
-            ->addIndex(['segmento_id'], ['name' => 'idx_mrr_mensual_segmento'])
-            ->addIndex(['emisor_id'], ['name' => 'idx_mrr_mensual_emisor'])
-            ->addForeignKey('segmento_id', 'segmento', 'id', [
+            ->addIndex(['month', 'segment_id'], ['name' => 'idx_monthly_mrr_month_segment'])
+            ->addIndex(['segment_id'], ['name' => 'idx_monthly_mrr_segment'])
+            ->addIndex(['issuer_id'], ['name' => 'idx_monthly_mrr_issuer'])
+            ->addForeignKey('segment_id', 'segments', 'id', [
                 'delete' => 'SET_NULL',
                 'update' => 'CASCADE',
-                'constraint' => 'fk_mrr_mensual_segmento',
+                'constraint' => 'fk_monthly_mrr_segment',
             ])
-            ->addForeignKey('emisor_id', 'emisor', 'id', [
+            ->addForeignKey('issuer_id', 'issuers', 'id', [
                 'delete' => 'SET_NULL',
                 'update' => 'CASCADE',
-                'constraint' => 'fk_mrr_mensual_emisor',
+                'constraint' => 'fk_monthly_mrr_issuer',
             ])
             ->create();
     }

@@ -7,6 +7,9 @@ use Phinx\Seed\AbstractSeed;
 /**
  * Usuarios iniciales empresariales (idempotente).
  * Hash: ARGON2ID con fallback BCRYPT.
+ *
+ * `users` no tiene columna `rol`. role_id queda NULL aquí y lo asigna
+ * RbacRolesAndPermissionsSeeder. Nombres visibles permanecen en español.
  */
 final class EnterpriseUsersSeeder extends AbstractSeed
 {
@@ -26,32 +29,29 @@ final class EnterpriseUsersSeeder extends AbstractSeed
         $users = [
             [
                 'email' => 'admin@operam.mx',
-                'nombre' => 'Admin General',
+                'name' => 'Admin General',
                 'password' => 'Operam2026*',
-                'rol' => 'admin',
-                'segmento_id' => null,
+                'segment_id' => null,
             ],
             [
                 'email' => 'operador@operam.mx',
-                'nombre' => 'Operador Operam',
+                'name' => 'Operador Operam',
                 'password' => 'Operam2026*',
-                'rol' => 'operador',
-                'segmento_id' => $operamId,
+                'segment_id' => $operamId,
             ],
             [
                 'email' => 'supervisor@construsync.mx',
-                'nombre' => 'Supervisor Construsync',
+                'name' => 'Supervisor Construsync',
                 'password' => 'Constru2026*',
-                'rol' => 'operador',
-                'segmento_id' => $construId,
+                'segment_id' => $construId,
             ],
         ];
 
-        $table = $this->table('usuario');
+        $table = $this->table('users');
 
         foreach ($users as $user) {
             $existing = $this->fetchRow(sprintf(
-                "SELECT id FROM usuario WHERE email = '%s'",
+                "SELECT id FROM users WHERE email = '%s'",
                 $this->quote($user['email'])
             ));
 
@@ -61,12 +61,11 @@ final class EnterpriseUsersSeeder extends AbstractSeed
 
             $table->insert([
                 'email' => $user['email'],
-                'nombre' => $user['nombre'],
+                'name' => $user['name'],
                 'password_hash' => $this->hashPassword($user['password']),
-                'rol' => $user['rol'],
-                'segmento_id' => $user['segmento_id'],
-                'activo' => 1,
-                'ultimo_acceso' => null,
+                'segment_id' => $user['segment_id'],
+                'is_active' => 1,
+                'last_login_at' => null,
                 'created_at' => $nowUtc,
                 'updated_at' => $nowUtc,
             ])->saveData();
@@ -82,11 +81,11 @@ final class EnterpriseUsersSeeder extends AbstractSeed
         return password_hash($plain, PASSWORD_BCRYPT);
     }
 
-    private function segmentIdByName(string $nombre): ?int
+    private function segmentIdByName(string $name): ?int
     {
         $row = $this->fetchRow(sprintf(
-            "SELECT id FROM segmento WHERE nombre = '%s'",
-            $this->quote($nombre)
+            "SELECT id FROM segments WHERE name = '%s'",
+            $this->quote($name)
         ));
 
         return $row ? (int) $row['id'] : null;

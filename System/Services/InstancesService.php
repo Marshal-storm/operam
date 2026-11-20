@@ -23,13 +23,13 @@ final class InstancesService extends ModelService
     protected function configureFields(): void
     {
         $this->validator
-            ->setField('codigo', DataTypes::String, true)
-            ->setField('nombre', DataTypes::String, true)
-            ->setField('emisor_id', DataTypes::Integer, true)
-            ->setField('segmento_id', DataTypes::Integer, true)
-            ->setField('url_acceso', DataTypes::String, false)
-            ->setField('ip_servidor', DataTypes::String, false)
-            ->setField('estado', DataTypes::String, true);
+            ->setField('code', DataTypes::String, true)
+            ->setField('name', DataTypes::String, true)
+            ->setField('issuer_id', DataTypes::Integer, true)
+            ->setField('segment_id', DataTypes::Integer, true)
+            ->setField('access_url', DataTypes::String, false)
+            ->setField('server_ip', DataTypes::String, false)
+            ->setField('status', DataTypes::String, true);
     }
 
     public function handle(Context $context): Result
@@ -47,8 +47,8 @@ final class InstancesService extends ModelService
             if ($denied !== null) {
                 return Result::fail($denied, 403);
             }
-            if (($auth['segmento_id'] ?? null) !== null) {
-                $request['segmento_id'] = (int) $auth['segmento_id'];
+            if (($auth['segment_id'] ?? null) !== null) {
+                $request['segment_id'] = (int) $auth['segment_id'];
             }
 
             return $this->create($request, $context);
@@ -63,8 +63,8 @@ final class InstancesService extends ModelService
             if ($denied !== null) {
                 return Result::fail($denied, 403);
             }
-            if (($auth['segmento_id'] ?? null) !== null) {
-                $request['segmento_id'] = (int) $auth['segmento_id'];
+            if (($auth['segment_id'] ?? null) !== null) {
+                $request['segment_id'] = (int) $auth['segment_id'];
             }
 
             return $this->update($instanceId, $request, $context);
@@ -73,7 +73,7 @@ final class InstancesService extends ModelService
             return $this->patch($instanceId, $request, $context);
         }
         if ($method === 'DELETE') {
-            return $this->patch($instanceId, ['estado' => 'baja'], $context);
+            return $this->patch($instanceId, ['status' => 'decommissioned'], $context);
         }
 
         return Result::fail('Método no soportado.', 405);
@@ -87,7 +87,7 @@ final class InstancesService extends ModelService
      *   page:int,
      *   per_page:int,
      *   total_pages:int,
-     *   by_emitter:list<array<string,mixed>>
+     *   by_issuer:list<array<string,mixed>>
      * }
      */
     private function listPaginated(array $query): array
@@ -104,25 +104,25 @@ final class InstancesService extends ModelService
         if ($search !== '') {
             $like = '%' . $search . '%';
             $builder->where(static function (Builder $q) use ($like): void {
-                $q->where('i.nombre', 'like', $like)
-                    ->orWhere('i.codigo', 'like', $like)
-                    ->orWhere('i.ip_servidor', 'like', $like)
-                    ->orWhere('i.url_acceso', 'like', $like);
+                $q->where('i.name', 'like', $like)
+                    ->orWhere('i.code', 'like', $like)
+                    ->orWhere('i.server_ip', 'like', $like)
+                    ->orWhere('i.access_url', 'like', $like);
             });
         }
 
-        if (!empty($query['emisor_id'])) {
-            $builder->where('i.emisor_id', (int) $query['emisor_id']);
+        if (!empty($query['issuer_id'])) {
+            $builder->where('i.issuer_id', (int) $query['issuer_id']);
         }
 
-        $segmento = trim((string) ($query['segmento'] ?? ''));
-        if ($segmento !== '' && strtolower($segmento) !== 'todos') {
-            $builder->where('seg.nombre', $segmento);
+        $segment = trim((string) ($query['segment'] ?? ''));
+        if ($segment !== '' && strtolower($segment) !== 'all' && strtolower($segment) !== 'todos') {
+            $builder->where('seg.name', $segment);
         }
 
-        $estado = trim((string) ($query['estado'] ?? ''));
-        if ($estado !== '' && strtolower($estado) !== 'todos') {
-            $builder->where('i.estado', $estado);
+        $status = trim((string) ($query['status'] ?? ''));
+        if ($status !== '' && strtolower($status) !== 'all' && strtolower($status) !== 'todos') {
+            $builder->where('i.status', $status);
         }
 
         $total = (clone $builder)->count();
@@ -131,29 +131,29 @@ final class InstancesService extends ModelService
             ->forPage($page, $perPage)
             ->get([
                 'i.id',
-                'i.codigo',
-                'i.nombre',
-                'i.emisor_id',
-                'e.nombre as emisor',
-                'i.segmento_id',
-                'seg.nombre as segmento',
-                'i.url_acceso',
-                'i.ip_servidor',
-                'i.estado',
+                'i.code',
+                'i.name',
+                'i.issuer_id',
+                'e.name as issuer_name',
+                'i.segment_id',
+                'seg.name as segment_name',
+                'i.access_url',
+                'i.server_ip',
+                'i.status',
             ]);
 
         $items = $rows->map(static function (object $row): array {
             return [
                 'id' => (int) $row->id,
-                'codigo' => (string) $row->codigo,
-                'nombre' => (string) $row->nombre,
-                'emisor' => (string) ($row->emisor ?? ''),
-                'emisor_id' => (int) $row->emisor_id,
-                'segmento' => (string) ($row->segmento ?? ''),
-                'segmento_id' => (int) $row->segmento_id,
-                'url_acceso' => $row->url_acceso !== null ? (string) $row->url_acceso : null,
-                'ip_servidor' => $row->ip_servidor !== null ? (string) $row->ip_servidor : null,
-                'estado' => (string) $row->estado,
+                'code' => (string) $row->code,
+                'name' => (string) $row->name,
+                'issuer_name' => (string) ($row->issuer_name ?? ''),
+                'issuer_id' => (int) $row->issuer_id,
+                'segment_name' => (string) ($row->segment_name ?? ''),
+                'segment_id' => (int) $row->segment_id,
+                'access_url' => $row->access_url !== null ? (string) $row->access_url : null,
+                'server_ip' => $row->server_ip !== null ? (string) $row->server_ip : null,
+                'status' => (string) $row->status,
             ];
         })->all();
 
@@ -163,7 +163,7 @@ final class InstancesService extends ModelService
             'page' => $page,
             'per_page' => $perPage,
             'total_pages' => max(1, (int) ceil($total / $perPage)),
-            'by_emitter' => $this->emitterSummary(),
+            'by_issuer' => $this->issuerSummary(),
         ];
     }
 
@@ -172,38 +172,38 @@ final class InstancesService extends ModelService
      *
      * @return list<array<string, mixed>>
      */
-    private function emitterSummary(): array
+    private function issuerSummary(): array
     {
         // Incluye emisores inactivos para que las tarjetas informativas tengan conteos reales.
-        $rows = Capsule::table('emisor as e')
-            ->leftJoin('instancia as i', 'i.emisor_id', '=', 'e.id')
+        $rows = Capsule::table('issuers as e')
+            ->leftJoin('instances as i', 'i.issuer_id', '=', 'e.id')
             ->selectRaw(
-                'e.id as emisor_id, e.nombre as emisor, ' .
+                'e.id as issuer_id, e.name as issuer_name, ' .
                 'COUNT(i.id) as total, ' .
-                'SUM(CASE WHEN i.estado = \'operativa\' THEN 1 ELSE 0 END) as operativas, ' .
-                'SUM(CASE WHEN i.estado = \'mantenimiento\' THEN 1 ELSE 0 END) as mantenimiento, ' .
-                'SUM(CASE WHEN i.estado = \'suspendida\' THEN 1 ELSE 0 END) as suspendidas'
+                "SUM(CASE WHEN i.status = 'operational' THEN 1 ELSE 0 END) as operational, " .
+                "SUM(CASE WHEN i.status = 'maintenance' THEN 1 ELSE 0 END) as maintenance, " .
+                "SUM(CASE WHEN i.status = 'suspended' THEN 1 ELSE 0 END) as suspended"
             )
-            ->groupBy('e.id', 'e.nombre')
-            ->orderBy('e.nombre')
+            ->groupBy('e.id', 'e.name')
+            ->orderBy('e.name')
             ->get();
 
         return $rows->map(static function (object $row): array {
             return [
-                'emisor_id' => (int) $row->emisor_id,
-                'emisor' => (string) ($row->emisor ?? 'Sin emisor'),
+                'issuer_id' => (int) $row->issuer_id,
+                'issuer_name' => (string) ($row->issuer_name ?? 'Sin emisor'),
                 'total' => (int) $row->total,
-                'operativas' => (int) $row->operativas,
-                'mantenimiento' => (int) $row->mantenimiento,
-                'suspendidas' => (int) $row->suspendidas,
+                'operational' => (int) $row->operational,
+                'maintenance' => (int) $row->maintenance,
+                'suspended' => (int) $row->suspended,
             ];
         })->all();
     }
 
     private function baseQuery(): Builder
     {
-        return Capsule::table('instancia as i')
-            ->leftJoin('segmento as seg', 'seg.id', '=', 'i.segmento_id')
-            ->leftJoin('emisor as e', 'e.id', '=', 'i.emisor_id');
+        return Capsule::table('instances as i')
+            ->leftJoin('segments as seg', 'seg.id', '=', 'i.segment_id')
+            ->leftJoin('issuers as e', 'e.id', '=', 'i.issuer_id');
     }
 }

@@ -38,11 +38,11 @@ export function configureCatalogAuth(tokenGetter: TokenGetter): void {
 
 export type SegmentOption = {
   id: number
-  nombre: string
+  name: string
   /** Días de crédito por defecto del segmento (RF-1). */
-  dias_credito_default: number
+  default_credit_days: number
   /** Tipo de cambio USD→MXN de referencia (4 decimales). */
-  tipo_cambio_usd: string
+  usd_exchange_rate: string
 }
 /** Alias histórico; preferir `Issuer` completo del catálogo. */
 export type EmitterOption = Issuer
@@ -98,12 +98,12 @@ export type PaginatedResult<T> = {
 }
 
 export type EmitterSummary = {
-  emisor_id: number
-  emisor: string
+  issuer_id: number
+  issuer: string
   total: number
-  operativas: number
-  mantenimiento: number
-  suspendidas: number
+  operational: number
+  maintenance: number
+  suspended: number
 }
 
 export type InstancesPaginatedResult = PaginatedResult<CatalogInstance> & {
@@ -140,15 +140,47 @@ function normalizePaginated<T>(raw: unknown): PaginatedResult<T> {
   }
 }
 
+/**
+ * Normaliza filas de catálogo para que `segment_name` siempre exista.
+ * Acepta el alias legado `segment` por si alguna respuesta antigua no trae el JOIN.
+ */
+function mapCatalogSegment<T extends { segment_name: string; segment_id: number }>(
+  raw: unknown,
+): T {
+  const row = (
+    raw && typeof raw === 'object' ? { ...(raw as Record<string, unknown>) } : {}
+  ) as Record<string, unknown>
+  const legacyName = row.segment
+  delete row.segment
+  const segmentId = Number(row.segment_id)
+  row.segment_name = String(row.segment_name ?? legacyName ?? '')
+  row.segment_id = Number.isFinite(segmentId) ? segmentId : 0
+  return row as T
+}
+
+/** Promoción sin segmento (null) aplica a todos los segmentos. */
+function mapPromotionSegment(raw: unknown): Promotion {
+  const row = (
+    raw && typeof raw === 'object' ? { ...(raw as Record<string, unknown>) } : {}
+  ) as Record<string, unknown>
+  const legacyName = row.segment
+  delete row.segment
+  const name = String(row.segment_name ?? legacyName ?? '')
+  const segmentId = Number(row.segment_id)
+  row.segment_name = name === '' ? null : name
+  row.segment_id = Number.isFinite(segmentId) && segmentId > 0 ? segmentId : null
+  return row as Promotion
+}
+
 /* ── Lecturas ─────────────────────────────────────────────── */
 
 export type ServicesQueryParams = {
   page?: number
   per_page?: number
   search?: string
-  segmento?: string
-  tipo?: string
-  estado?: string
+  segment?: string
+  service_type?: string
+  status?: string
 }
 
 export async function fetchServices(
@@ -159,29 +191,35 @@ export async function fetchServices(
       page: params.page,
       per_page: params.per_page,
       search: params.search,
-      segmento: params.segmento,
-      tipo: params.tipo,
-      estado: params.estado,
+      segment: params.segment,
+      service_type: params.service_type,
+      status: params.status,
     })}`,
   )
-  return normalizePaginated<CatalogService>(raw)
+  const page = normalizePaginated<CatalogService>(raw)
+  return {
+    ...page,
+    items: page.items.map((row) => mapCatalogSegment<CatalogService>(row)),
+  }
 }
 
 export async function fetchPriceLists(): Promise<PriceList[]> {
-  return asArray(await apiRequest<PriceList[]>('price-lists'))
+  const raw = await apiRequest<unknown>('price-lists')
+  return asArray(raw).map((row) => mapCatalogSegment<PriceList>(row))
 }
 
 export async function fetchPromotions(): Promise<Promotion[]> {
-  return asArray(await apiRequest<Promotion[]>('promotions'))
+  const raw = await apiRequest<unknown>('promotions')
+  return asArray(raw).map((row) => mapPromotionSegment(row))
 }
 
 export type InstancesQueryParams = {
   page?: number
   per_page?: number
   search?: string
-  emisor_id?: number | null
-  segmento?: string
-  estado?: string
+  issuer_id?: number | null
+  segment?: string
+  status?: string
 }
 
 export async function fetchInstances(
@@ -192,28 +230,32 @@ export async function fetchInstances(
       page: params.page,
       per_page: params.per_page,
       search: params.search,
-      emisor_id: params.emisor_id ?? undefined,
-      segmento: params.segmento,
-      estado: params.estado,
+      issuer_id: params.issuer_id ?? undefined,
+      segment: params.segment,
+      status: params.status,
     })}`,
   )
   const base = normalizePaginated<CatalogInstance>(raw)
   const byEmitter = Array.isArray((raw as { by_emitter?: EmitterSummary[] })?.by_emitter)
     ? (raw as { by_emitter: EmitterSummary[] }).by_emitter
     : []
-  return { ...base, by_emitter: byEmitter }
+  return {
+    ...base,
+    items: base.items.map((row) => mapCatalogSegment<CatalogInstance>(row)),
+    by_emitter: byEmitter,
+  }
 }
 
 function mapSegmentOption(raw: unknown): SegmentOption {
   const row = (raw ?? {}) as Record<string, unknown>
-  const fxRaw = String(row.tipo_cambio_usd ?? '19.5000')
+  const fxRaw = String(row.usd_exchange_rate ?? '19.5000')
   const fxNum = Number(fxRaw)
   const fx = Number.isFinite(fxNum) ? fxNum.toFixed(4) : '19.5000'
   return {
     id: Number(row.id),
-    nombre: String(row.nombre ?? ''),
-    dias_credito_default: Math.max(0, Number(row.dias_credito_default ?? 0)),
-    tipo_cambio_usd: fx,
+    name: String(row.name ?? ''),
+    default_credit_days: Math.max(0, Number(row.default_credit_days ?? 0)),
+    usd_exchange_rate: fx,
   }
 }
 
@@ -224,7 +266,7 @@ export async function fetchSegments(): Promise<SegmentOption[]> {
 /** Actualiza parámetros comerciales RF-1 de un segmento. */
 export async function updateSegmentCommercialParams(
   id: number,
-  input: { dias_credito_default?: number; tipo_cambio_usd?: string },
+  input: { default_credit_days?: number; usd_exchange_rate?: string },
 ): Promise<SegmentOption> {
   const raw = await apiRequest<unknown>(`segments/${id}`, {
     method: 'PATCH',
@@ -239,7 +281,7 @@ export async function updateSegmentCreditDays(
   diasCreditoDefault: number,
 ): Promise<SegmentOption> {
   return updateSegmentCommercialParams(id, {
-    dias_credito_default: diasCreditoDefault,
+    default_credit_days: diasCreditoDefault,
   })
 }
 
@@ -262,7 +304,7 @@ function coerceIssuer(raw: unknown): Issuer | null {
 
   return {
     id,
-    nombre: String(row.nombre ?? ''),
+    name: String(row.name ?? ''),
     rfc: String(row.rfc ?? ''),
     api_url: row.api_url != null && row.api_url !== '' ? String(row.api_url) : null,
     has_erp_secret:
@@ -281,9 +323,9 @@ function coerceIssuer(raw: unknown): Issuer | null {
     integropay_merchant_token_ref: merchantRef,
     integropay_device_token_ref: deviceRef,
     // MySQL tinyint 0/1 — nunca comparar === true estricto sin coerción.
-    activo: Boolean(Number(row.activo)),
-    instancias_vinculadas:
-      row.instancias_vinculadas != null ? Number(row.instancias_vinculadas) : undefined,
+    is_active: Boolean(Number(row.is_active)),
+    linked_instances_count:
+      row.linked_instances_count != null ? Number(row.linked_instances_count) : undefined,
   }
 }
 
@@ -308,7 +350,7 @@ export type IssuersQueryParams = {
   page?: number
   per_page?: number
   search?: string
-  estado?: string
+  status?: string
 }
 
 export async function fetchIssuersPaginated(
@@ -319,7 +361,7 @@ export async function fetchIssuersPaginated(
       page: params.page ?? 1,
       per_page: params.per_page ?? 25,
       search: params.search,
-      estado: params.estado,
+      status: params.status,
     })}`,
   )
   // Si el backend devolvió lista plana por error, normalizar a paginado.
@@ -341,13 +383,13 @@ export async function fetchIssuersPaginated(
 }
 
 export type IssuerWriteInput = {
-  nombre: string
+  name: string
   rfc: string
   api_url?: string | null
   secret_ref?: string | null
   integropay_merchant_token_ref?: string | null
   integropay_device_token_ref?: string | null
-  activo?: boolean
+  is_active?: boolean
 }
 
 export async function createIssuer(input: IssuerWriteInput): Promise<Issuer> {
@@ -369,25 +411,25 @@ export async function updateIssuer(
 
 export async function toggleIssuerActive(
   id: number,
-  activo: boolean,
+  isActive: boolean,
 ): Promise<Issuer> {
-  return updateIssuer(id, { activo })
+  return updateIssuer(id, { is_active: isActive })
 }
 
 /* ── Servicios ────────────────────────────────────────────── */
 
 export type ServiceWriteInput = {
-  segmento_id: number
-  codigo: string
-  nombre: string
-  descripcion?: string | null
-  tipo: ServiceType
-  unidad_medida: ServiceUnit
-  permite_conversion_paquete?: boolean
-  servicio_paquete_id?: number | null
-  factor_paquete?: number
-  activo?: boolean
-  emisor_default_id?: number | null
+  segment_id: number
+  code: string
+  name: string
+  description?: string | null
+  service_type: ServiceType
+  unit_of_measure: ServiceUnit
+  allow_package_conversion?: boolean
+  package_service_id?: number | null
+  package_factor?: number
+  is_active?: boolean
+  default_issuer_id?: number | null
 }
 
 export async function createService(input: ServiceWriteInput): Promise<void> {
@@ -406,21 +448,21 @@ export async function updateService(
 
 export async function toggleServiceActive(
   id: number,
-  activo: boolean,
+  isActive: boolean,
 ): Promise<void> {
-  await updateService(id, { activo })
+  await updateService(id, { is_active: isActive })
 }
 
 /* ── Listas de precios ────────────────────────────────────── */
 
 export type PriceListWriteInput = {
-  segmento_id: number
-  nombre: string
-  moneda: 'MXN' | 'USD'
-  es_default?: boolean
-  vigente_desde: string
-  vigente_hasta?: string | null
-  activa?: boolean
+  segment_id: number
+  name: string
+  currency: 'MXN' | 'USD'
+  is_default?: boolean
+  valid_from: string
+  valid_until?: string | null
+  is_active?: boolean
 }
 
 export async function createPriceList(input: PriceListWriteInput): Promise<void> {
@@ -438,12 +480,12 @@ export async function updatePriceList(
 }
 
 export type PriceListItemWriteInput = {
-  lista_precio_id: number
-  servicio_id: number
-  frecuencia: BillingFrequency
-  cantidad_min?: number
-  cantidad_max?: number | null
-  precio_unitario: string
+  price_list_id: number
+  service_id: number
+  frequency: BillingFrequency
+  min_quantity?: number
+  max_quantity?: number | null
+  unit_price: string
 }
 
 export async function createPriceListItem(
@@ -457,7 +499,7 @@ export async function createPriceListItem(
 
 export async function updatePriceListItem(
   id: number,
-  input: Partial<Pick<PriceListItem, 'precio_unitario' | 'frecuencia' | 'cantidad_min' | 'cantidad_max'>>,
+  input: Partial<Pick<PriceListItem, 'unit_price' | 'frequency' | 'min_quantity' | 'max_quantity'>>,
 ): Promise<void> {
   await apiRequest(`price-list-items/${id}`, {
     method: 'PATCH',
@@ -474,8 +516,8 @@ export async function deletePriceListItem(id: number): Promise<void> {
  * Los contratos activos conservan el precio ya pactado.
  */
 export async function removeProductFromPriceList(input: {
-  lista_precio_id: number
-  servicio_id: number
+  price_list_id: number
+  service_id: number
 }): Promise<void> {
   await apiRequest('price-list-items', {
     method: 'DELETE',
@@ -485,10 +527,10 @@ export async function removeProductFromPriceList(input: {
 
 /** Guarda varios precios en secuencia (matriz mensual/anual). */
 export async function savePriceEdits(
-  edits: Array<{ id: number; precio_unitario: string }>,
+  edits: Array<{ id: number; unit_price: string }>,
 ): Promise<void> {
   for (const edit of edits) {
-    await updatePriceListItem(edit.id, { precio_unitario: edit.precio_unitario })
+    await updatePriceListItem(edit.id, { unit_price: edit.unit_price })
   }
 }
 
@@ -496,9 +538,9 @@ export async function savePriceEdits(
 export type VolumeMatrixSavePlan = {
   updates: Array<{
     id: number
-    precio_unitario?: string
-    cantidad_min?: number
-    cantidad_max?: number | null
+    unit_price?: string
+    min_quantity?: number
+    max_quantity?: number | null
   }>
   creates: PriceListItemWriteInput[]
   deletes: number[]
@@ -521,17 +563,17 @@ export async function saveVolumeMatrix(plan: VolumeMatrixSavePlan): Promise<void
 /* ── Promociones ──────────────────────────────────────────── */
 
 export type PromotionWriteInput = {
-  codigo: string
-  nombre: string
-  segmento_id?: number | null
-  tipo_descuento: DiscountType
-  valor_descuento: string
-  aplica_a?: 'recurrente' | 'unico' | 'ambos'
-  vigente_desde: string
-  vigente_hasta?: string | null
-  usos_maximos?: number | null
-  usos_actuales?: number
-  activa?: boolean
+  code: string
+  name: string
+  segment_id?: number | null
+  discount_type: DiscountType
+  discount_value: string
+  applies_to?: 'recurring' | 'single' | 'both'
+  valid_from: string
+  valid_until?: string | null
+  max_uses?: number | null
+  current_uses?: number
+  is_active?: boolean
 }
 
 export async function createPromotion(input: PromotionWriteInput): Promise<void> {
@@ -550,21 +592,21 @@ export async function updatePromotion(
 
 export async function togglePromotionActive(
   id: number,
-  activa: boolean,
+  isActive: boolean,
 ): Promise<void> {
-  await updatePromotion(id, { activa })
+  await updatePromotion(id, { is_active: isActive })
 }
 
 /* ── Instancias ───────────────────────────────────────────── */
 
 export type InstanceWriteInput = {
-  codigo: string
-  nombre: string
-  emisor_id: number
-  segmento_id: number
-  url_acceso?: string | null
-  ip_servidor?: string | null
-  estado: InstanceStatus
+  code: string
+  name: string
+  issuer_id: number
+  segment_id: number
+  access_url?: string | null
+  server_ip?: string | null
+  status: InstanceStatus
 }
 
 export async function createInstance(input: InstanceWriteInput): Promise<void> {

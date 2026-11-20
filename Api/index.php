@@ -116,7 +116,7 @@ if ($uri === 'login' && $method === 'POST') {
         $result = match ($resource) {
             'me' => $method === 'GET'
                 ? (static function (Context $context): Result {
-                    // Perfil fresco desde MySQL (incluye módulos nuevos como config_emisores).
+                    // Perfil fresco desde MySQL (incluye módulos como config_issuers).
                     $auth = $context->getData('auth', []);
                     $userId = (int) ($auth['user_id'] ?? 0);
                     /** @var UsersModel|null $user */
@@ -130,14 +130,13 @@ if ($uri === 'login' && $method === 'POST') {
                         'user' => [
                             'id' => (int) $user->id,
                             'email' => (string) $user->email,
-                            'nombre' => (string) $user->nombre,
-                            'rol' => (string) $user->rol,
-                            'rol_id' => $rbac['rol_id'],
-                            'rol_nombre' => $rbac['rol_nombre'],
-                            'rol_codigo' => $rbac['rol_codigo'],
-                            'segmento_id' => $rbac['segmento_id'],
-                            'segmento_nombre' => $rbac['segmento_nombre'],
-                            'permisos' => $rbac['permisos'],
+                            'name' => (string) $user->name,
+                            'role_id' => $rbac['role_id'],
+                            'role_name' => $rbac['role_name'],
+                            'role_code' => $rbac['role_code'],
+                            'segment_id' => $rbac['segment_id'],
+                            'segment_name' => $rbac['segment_name'],
+                            'permissions' => $rbac['permissions'],
                             'scope' => 'enterprise',
                         ],
                     ], 'Sesión activa');

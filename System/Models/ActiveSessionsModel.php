@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 
 final class ActiveSessionsModel extends Model
 {
-    protected $table = 'sesion_activa';
+    protected $table = 'active_sessions';
 
     /** Alias obligatorio del framework operam/servicios. */
     public $alias = 'ses';
@@ -18,19 +18,19 @@ final class ActiveSessionsModel extends Model
     /** @var list<string> */
     protected $fillable = [
         'session_uid',
-        'usuario_id',
+        'user_id',
         'ip_address',
         'user_agent',
-        'expira_en',
-        'revocada',
+        'expires_at',
+        'is_revoked',
         'created_at',
     ];
 
     /** @var array<string, string> */
     protected $casts = [
-        'usuario_id' => 'integer',
-        'revocada' => 'boolean',
-        'expira_en' => 'datetime',
+        'user_id' => 'integer',
+        'is_revoked' => 'boolean',
+        'expires_at' => 'datetime',
         'created_at' => 'datetime',
     ];
 }

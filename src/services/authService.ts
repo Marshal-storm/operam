@@ -33,7 +33,7 @@ type ApiLoginResponse = {
     user: Partial<AuthUser> & {
       id: number
       email: string
-      nombre: string
+      name: string
     }
   }
 }
@@ -46,14 +46,13 @@ function normalizeUser(raw: ApiLoginResponse['data'] extends infer D
   return {
     id: Number(raw.id),
     email: String(raw.email),
-    nombre: String(raw.nombre),
-    rol: (raw.rol as AuthUser['rol']) ?? 'operador',
-    rol_id: raw.rol_id ?? null,
-    rol_nombre: raw.rol_nombre ?? null,
-    rol_codigo: raw.rol_codigo ?? null,
-    segmento_id: raw.segmento_id ?? null,
-    segmento_nombre: raw.segmento_nombre ?? 'Todos',
-    permisos: (raw.permisos as PermissionsMap) ?? {},
+    name: String(raw.name ?? ''),
+    role_id: raw.role_id ?? null,
+    role_name: raw.role_name ?? null,
+    role_code: raw.role_code ?? null,
+    segment_id: raw.segment_id ?? null,
+    segment_name: raw.segment_name ?? 'Todos',
+    permissions: (raw.permissions as PermissionsMap) ?? {},
     scope: 'enterprise',
   }
 }

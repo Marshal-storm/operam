@@ -13,7 +13,9 @@ use System\Models\RolesModel;
 use System\Models\SystemModulesModel;
 
 /**
- * CRUD de roles + matriz viva rol_permiso.
+ * CRUD de roles + matriz viva `role_permissions`.
+ * Claves de módulo en inglés (contracts, clients, config_catalog, config_issuers…).
+ * Acciones de permiso: view, create, edit, delete.
  */
 final class RolesService extends ModelService
 {
@@ -25,17 +27,17 @@ final class RolesService extends ModelService
     protected function configureFields(): void
     {
         $this->validator
-            ->setField('codigo', DataTypes::String, true)
-            ->setField('nombre', DataTypes::String, true)
-            ->setField('descripcion', DataTypes::String, false)
-            ->setField('es_sistema', DataTypes::Boolean, false, false)
-            ->setField('activo', DataTypes::Boolean, false, true);
+            ->setField('code', DataTypes::String, true)
+            ->setField('name', DataTypes::String, true)
+            ->setField('description', DataTypes::String, false)
+            ->setField('is_system', DataTypes::Boolean, false, false)
+            ->setField('is_active', DataTypes::Boolean, false, true);
     }
 
     public function handle(Context $context): Result
     {
         $auth = $context->getData('auth', []);
-        if (!RbacAuthHelper::can($auth, 'config_roles', 'ver')) {
+        if (!RbacAuthHelper::can($auth, 'config_roles', 'view')) {
             return Result::fail('Sin permiso para administrar roles.', 403);
         }
 
@@ -55,7 +57,7 @@ final class RolesService extends ModelService
             && ($parts[2] ?? '') === 'permissions'
             && ($method === 'PUT' || $method === 'PATCH')
         ) {
-            if (!RbacAuthHelper::can($auth, 'config_roles', 'editar')) {
+            if (!RbacAuthHelper::can($auth, 'config_roles', 'edit')) {
                 return Result::fail('Sin permiso para editar permisos.', 403);
             }
 
@@ -67,7 +69,7 @@ final class RolesService extends ModelService
         }
 
         if ($method === 'POST' && $id === null) {
-            if (!RbacAuthHelper::can($auth, 'config_roles', 'crear')) {
+            if (!RbacAuthHelper::can($auth, 'config_roles', 'create')) {
                 return Result::fail('Sin permiso para crear roles.', 403);
             }
 
@@ -89,7 +91,7 @@ final class RolesService extends ModelService
         }
 
         if ($method === 'PUT' || $method === 'PATCH') {
-            if (!RbacAuthHelper::can($auth, 'config_roles', 'editar')) {
+            if (!RbacAuthHelper::can($auth, 'config_roles', 'edit')) {
                 return Result::fail('Sin permiso para editar roles.', 403);
             }
 
@@ -107,14 +109,14 @@ final class RolesService extends ModelService
     private function listModules(): array
     {
         return SystemModulesModel::query()
-            ->orderBy('orden')
+            ->orderBy('sort_order')
             ->get()
-            ->map(static fn (SystemModulesModel $m): array => [
-                'id' => (int) $m->id,
-                'clave' => (string) $m->clave,
-                'nombre' => (string) $m->nombre,
-                'grupo' => (string) $m->grupo,
-                'orden' => (int) $m->orden,
+            ->map(static fn (SystemModulesModel $module): array => [
+                'id' => (int) $module->id,
+                'module_key' => (string) $module->module_key,
+                'name' => (string) $module->name,
+                'group_key' => (string) $module->group_key,
+                'sort_order' => (int) $module->sort_order,
             ])
             ->all();
     }
@@ -148,83 +150,83 @@ final class RolesService extends ModelService
         }
 
         $perms = RolePermissionsModel::query()
-            ->where('rol_id', $roleId)
+            ->where('role_id', $roleId)
             ->get()
-            ->keyBy('modulo_clave');
+            ->keyBy('module_key');
 
-        $modules = SystemModulesModel::query()->orderBy('orden')->get();
-        $permisos = [];
+        $modules = SystemModulesModel::query()->orderBy('sort_order')->get();
+        $permissions = [];
         foreach ($modules as $module) {
-            $clave = (string) $module->clave;
+            $moduleKey = (string) $module->module_key;
             /** @var RolePermissionsModel|null $row */
-            $row = $perms->get($clave);
-            $permisos[$clave] = [
-                'ver' => $row ? (bool) $row->puede_ver : false,
-                'crear' => $row ? (bool) $row->puede_crear : false,
-                'editar' => $row ? (bool) $row->puede_editar : false,
-                'eliminar' => $row ? (bool) $row->puede_eliminar : false,
+            $row = $perms->get($moduleKey);
+            $permissions[$moduleKey] = [
+                'view' => $row ? (bool) $row->can_view : false,
+                'create' => $row ? (bool) $row->can_create : false,
+                'edit' => $row ? (bool) $row->can_edit : false,
+                'delete' => $row ? (bool) $row->can_delete : false,
             ];
         }
 
         return [
             'id' => (int) $role->id,
-            'codigo' => (string) $role->codigo,
-            'nombre' => (string) $role->nombre,
-            'descripcion' => $role->descripcion !== null ? (string) $role->descripcion : null,
-            'es_sistema' => (bool) $role->es_sistema,
-            'activo' => (bool) $role->activo,
-            'permisos' => $permisos,
+            'code' => (string) $role->code,
+            'name' => (string) $role->name,
+            'description' => $role->description !== null ? (string) $role->description : null,
+            'is_system' => (bool) $role->is_system,
+            'is_active' => (bool) $role->is_active,
+            'permissions' => $permissions,
         ];
     }
 
     private function createRole(Context $context): Result
     {
         $request = $context->getRequest();
-        $codigo = strtolower(trim((string) ($request['codigo'] ?? '')));
-        $nombre = trim((string) ($request['nombre'] ?? ''));
-        if ($codigo === '' || $nombre === '') {
-            return Result::fail('codigo y nombre son obligatorios.', 422);
+        $code = strtolower(trim((string) ($request['code'] ?? '')));
+        $name = trim((string) ($request['name'] ?? ''));
+        if ($code === '' || $name === '') {
+            return Result::fail('code y name son obligatorios.', 422);
         }
 
-        if (!preg_match('/^[a-z0-9_]{3,40}$/', $codigo)) {
-            return Result::fail('codigo inválido (solo a-z, 0-9 y guion bajo).', 422);
+        if (!preg_match('/^[a-z0-9_]{3,40}$/', $code)) {
+            return Result::fail('code inválido (solo a-z, 0-9 y guion bajo).', 422);
         }
 
-        if (RolesModel::query()->where('codigo', $codigo)->exists()) {
+        if (RolesModel::query()->where('code', $code)->exists()) {
             return Result::fail('Ya existe un rol con ese código.', 422);
         }
 
         $nowUtc = gmdate('Y-m-d H:i:s');
-        $roleId = (int) Capsule::table('rol')->insertGetId([
-            'codigo' => $codigo,
-            'nombre' => $nombre,
-            'descripcion' => isset($request['descripcion'])
-                ? (string) $request['descripcion']
+        $roleId = (int) Capsule::table('roles')->insertGetId([
+            'code' => $code,
+            'name' => $name,
+            'description' => isset($request['description'])
+                ? (string) $request['description']
                 : null,
-            'es_sistema' => false,
-            'activo' => true,
+            'is_system' => false,
+            'is_active' => true,
             'created_at' => $nowUtc,
             'updated_at' => $nowUtc,
         ]);
 
-        $modules = SystemModulesModel::query()->pluck('clave');
-        foreach ($modules as $clave) {
-            Capsule::table('rol_permiso')->insert([
-                'rol_id' => $roleId,
-                'modulo_clave' => (string) $clave,
-                'puede_ver' => false,
-                'puede_crear' => false,
-                'puede_editar' => false,
-                'puede_eliminar' => false,
+        $modules = SystemModulesModel::query()->pluck('module_key');
+        foreach ($modules as $moduleKey) {
+            Capsule::table('role_permissions')->insert([
+                'role_id' => $roleId,
+                'module_key' => (string) $moduleKey,
+                'can_view' => false,
+                'can_create' => false,
+                'can_edit' => false,
+                'can_delete' => false,
                 'created_at' => $nowUtc,
                 'updated_at' => $nowUtc,
             ]);
         }
 
-        /** @var array<string, mixed>|null $permisosInput */
-        $permisosInput = $request['permisos'] ?? null;
-        if (is_array($permisosInput)) {
-            $this->upsertPermissions($roleId, $permisosInput, $nowUtc);
+        /** @var array<string, mixed>|null $permissionsInput */
+        $permissionsInput = $request['permissions'] ?? null;
+        if (is_array($permissionsInput)) {
+            $this->upsertPermissions($roleId, $permissionsInput, $nowUtc);
         }
 
         $payload = $this->findRolePayload($roleId);
@@ -241,16 +243,16 @@ final class RolesService extends ModelService
             return Result::fail('Rol no encontrado.', 404);
         }
 
-        /** @var array<string, mixed>|null $permisos */
-        $permisos = $request['permisos'] ?? null;
-        if (!is_array($permisos) || $permisos === []) {
-            return Result::fail('Se requiere el mapa permisos.', 422);
+        /** @var array<string, mixed>|null $permissions */
+        $permissions = $request['permissions'] ?? null;
+        if (!is_array($permissions) || $permissions === []) {
+            return Result::fail('Se requiere el mapa de permisos.', 422);
         }
 
         $nowUtc = gmdate('Y-m-d H:i:s');
-        $this->upsertPermissions($roleId, $permisos, $nowUtc);
+        $this->upsertPermissions($roleId, $permissions, $nowUtc);
 
-        Capsule::table('rol')->where('id', $roleId)->update(['updated_at' => $nowUtc]);
+        Capsule::table('roles')->where('id', $roleId)->update(['updated_at' => $nowUtc]);
 
         // Cambio crítico: invalida JWT de todos los usuarios con este rol.
         $revoked = RbacAuthHelper::revokeSessionsForRole($roleId);
@@ -263,37 +265,37 @@ final class RolesService extends ModelService
     }
 
     /**
-     * @param array<string, mixed> $permisos
+     * @param array<string, mixed> $permissions
      */
-    private function upsertPermissions(int $roleId, array $permisos, string $nowUtc): void
+    private function upsertPermissions(int $roleId, array $permissions, string $nowUtc): void
     {
-        $validKeys = SystemModulesModel::query()->pluck('clave')->all();
+        $validKeys = SystemModulesModel::query()->pluck('module_key')->all();
         $validSet = array_fill_keys(array_map('strval', $validKeys), true);
 
-        foreach ($permisos as $clave => $flags) {
-            $clave = (string) $clave;
-            if (!isset($validSet[$clave]) || !is_array($flags)) {
+        foreach ($permissions as $moduleKey => $flags) {
+            $moduleKey = (string) $moduleKey;
+            if (!isset($validSet[$moduleKey]) || !is_array($flags)) {
                 continue;
             }
             $payload = [
-                'puede_ver' => (bool) ($flags['ver'] ?? $flags['puede_ver'] ?? false),
-                'puede_crear' => (bool) ($flags['crear'] ?? $flags['puede_crear'] ?? false),
-                'puede_editar' => (bool) ($flags['editar'] ?? $flags['puede_editar'] ?? false),
-                'puede_eliminar' => (bool) ($flags['eliminar'] ?? $flags['puede_eliminar'] ?? false),
+                'can_view' => (bool) ($flags['view'] ?? $flags['can_view'] ?? false),
+                'can_create' => (bool) ($flags['create'] ?? $flags['can_create'] ?? false),
+                'can_edit' => (bool) ($flags['edit'] ?? $flags['can_edit'] ?? false),
+                'can_delete' => (bool) ($flags['delete'] ?? $flags['can_delete'] ?? false),
                 'updated_at' => $nowUtc,
             ];
 
-            $existing = Capsule::table('rol_permiso')
-                ->where('rol_id', $roleId)
-                ->where('modulo_clave', $clave)
+            $existing = Capsule::table('role_permissions')
+                ->where('role_id', $roleId)
+                ->where('module_key', $moduleKey)
                 ->first();
 
             if ($existing) {
-                Capsule::table('rol_permiso')->where('id', $existing->id)->update($payload);
+                Capsule::table('role_permissions')->where('id', $existing->id)->update($payload);
             } else {
-                Capsule::table('rol_permiso')->insert(array_merge($payload, [
-                    'rol_id' => $roleId,
-                    'modulo_clave' => $clave,
+                Capsule::table('role_permissions')->insert(array_merge($payload, [
+                    'role_id' => $roleId,
+                    'module_key' => $moduleKey,
                     'created_at' => $nowUtc,
                 ]));
             }

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 
 final class AuthAttemptModel extends Model
 {
-    protected $table = 'auth_intento';
+    protected $table = 'auth_attempts';
 
     public $alias = 'att';
 
@@ -18,13 +18,13 @@ final class AuthAttemptModel extends Model
     protected $fillable = [
         'email',
         'ip_address',
-        'exitoso',
+        'is_successful',
         'created_at',
     ];
 
     /** @var array<string, string> */
     protected $casts = [
-        'exitoso' => 'boolean',
+        'is_successful' => 'boolean',
         'created_at' => 'datetime',
     ];
 }

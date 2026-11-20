@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 
 /**
- * Vista elegante cuando el rol no tiene puede_ver en el módulo.
+ * Vista elegante cuando el rol no tiene view en el módulo.
  */
 export function AccessRestrictedView() {
   const navigate = useNavigate()

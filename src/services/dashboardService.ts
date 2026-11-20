@@ -24,7 +24,7 @@ export type DashboardQueryParams = {
 type ApiDashboardResponse = {
   periodLabel?: string
   kpis?: Partial<DashboardKpis> & { mrrMxn?: number }
-  mrrInicio?: number
+  mrrStart?: number
   deltasByCategory?: Record<string, number>
   aging?: AgingBucket[]
   recentMovements?: MrrMovement[]
@@ -101,7 +101,7 @@ export function mapApiDashboardToSnapshot(
   }
 
   const hasBridge =
-    typeof payload.mrrInicio === 'number' && payload.deltasByCategory != null
+    typeof payload.mrrStart === 'number' && payload.deltasByCategory != null
   const hasKpis = payload.kpis != null && typeof payload.kpis.mrrMxn === 'number'
   const hasAging = Array.isArray(payload.aging) && payload.aging.length > 0
   const movements = payload.allMovements ?? payload.recentMovements ?? []
@@ -115,11 +115,11 @@ export function mapApiDashboardToSnapshot(
     deltas[category] = payload.deltasByCategory?.[category] ?? 0
   }
 
-  const bridge = buildMrrBridgeSteps(payload.mrrInicio ?? 0, deltas)
-  const finStep = bridge.find((step) => step.category === 'fin')
+  const bridge = buildMrrBridgeSteps(payload.mrrStart ?? 0, deltas)
+  const endStep = bridge.find((step) => step.category === 'end')
 
   const kpis: DashboardKpis = {
-    mrrMxn: payload.kpis?.mrrMxn ?? finStep?.accumulated ?? 0,
+    mrrMxn: payload.kpis?.mrrMxn ?? endStep?.accumulated ?? 0,
     mrrDeltaVsPrevPercent: payload.kpis?.mrrDeltaVsPrevPercent ?? '—',
     activeContracts: payload.kpis?.activeContracts ?? 0,
     newContracts: payload.kpis?.newContracts ?? 0,
@@ -212,7 +212,7 @@ export function filterSnapshotMovements(
   category: MrrCategory | null,
   mode: DataSourceMode,
 ): MrrMovement[] {
-  if (!category || category === 'inicio' || category === 'fin') {
+  if (!category || category === 'start' || category === 'end') {
     return snapshot.recentMovements
   }
 
@@ -221,7 +221,7 @@ export function filterSnapshotMovements(
   }
 
   return snapshot.allMovements.filter(
-    (movement) => movement.categoria_mrr === category,
+    (movement) => movement.mrr_category === category,
   )
 }
 

@@ -11,13 +11,13 @@ use System\Core\Result;
 use System\Models\SegmentsModel;
 
 /**
- * Lectura/actualización de segmentos — RF-1 (`dias_credito_default`, `tipo_cambio_usd`).
+ * Lectura/actualización de segmentos — RF-1 (`default_credit_days`, `usd_exchange_rate`).
  * Endpoints: GET /api/segments · PUT/PATCH /api/segments/{id}.
  */
 final class SegmentsService extends ModelService
 {
-    /** Módulo RBAC que autoriza editar parámetros comerciales. */
-    private const EDIT_MODULE = 'config_preferencias';
+    /** Módulo RBAC que autoriza editar parámetros comerciales (Empresa). */
+    private const EDIT_MODULE = 'config_company';
 
     protected function modelClass(): string
     {
@@ -27,9 +27,9 @@ final class SegmentsService extends ModelService
     protected function configureFields(): void
     {
         $this->validator
-            ->setField('nombre', DataTypes::String, false)
-            ->setField('dias_credito_default', DataTypes::Integer, false)
-            ->setField('tipo_cambio_usd', DataTypes::String, false);
+            ->setField('name', DataTypes::String, false)
+            ->setField('default_credit_days', DataTypes::Integer, false)
+            ->setField('usd_exchange_rate', DataTypes::String, false);
     }
 
     public function handle(Context $context): Result
@@ -63,12 +63,12 @@ final class SegmentsService extends ModelService
             return Result::fail('Método no soportado.', 405);
         }
 
-        if (!RbacAuthHelper::can($auth, self::EDIT_MODULE, 'editar')) {
-            return Result::fail('No tienes permiso para editar parámetros comerciales (config_preferencias).', 403);
+        if (!RbacAuthHelper::can($auth, self::EDIT_MODULE, 'edit')) {
+            return Result::fail('No tienes permiso para editar parámetros comerciales (config_company).', 403);
         }
 
         $segmentId = (int) $id;
-        $existing = Capsule::table('segmento')->where('id', $segmentId)->first();
+        $existing = Capsule::table('segments')->where('id', $segmentId)->first();
         if ($existing === null) {
             return Result::fail('Segmento no encontrado.', 404);
         }
@@ -76,63 +76,63 @@ final class SegmentsService extends ModelService
             return Result::fail('No puedes editar un segmento fuera de tu alcance.', 403);
         }
 
-        $hasDays = array_key_exists('dias_credito_default', $request);
-        $hasFx = array_key_exists('tipo_cambio_usd', $request);
+        $hasDays = array_key_exists('default_credit_days', $request);
+        $hasFx = array_key_exists('usd_exchange_rate', $request);
         if (!$hasDays && !$hasFx) {
-            return Result::fail('Envía dias_credito_default y/o tipo_cambio_usd.', 422);
+            return Result::fail('Envía default_credit_days y/o usd_exchange_rate.', 422);
         }
 
         $payload = ['updated_at' => gmdate('Y-m-d H:i:s')];
 
         if ($hasDays) {
-            $days = filter_var($request['dias_credito_default'], FILTER_VALIDATE_INT);
+            $days = filter_var($request['default_credit_days'], FILTER_VALIDATE_INT);
             if ($days === false || $days < 0) {
-                return Result::fail('dias_credito_default debe ser un entero >= 0.', 422);
+                return Result::fail('default_credit_days debe ser un entero >= 0.', 422);
             }
-            $payload['dias_credito_default'] = $days;
+            $payload['default_credit_days'] = $days;
         }
 
         if ($hasFx) {
-            $fx = $this->normalizeFx((string) $request['tipo_cambio_usd']);
+            $fx = $this->normalizeFx((string) $request['usd_exchange_rate']);
             if ($fx === null) {
-                return Result::fail('tipo_cambio_usd debe ser un decimal >= 0 con hasta 4 decimales.', 422);
+                return Result::fail('usd_exchange_rate debe ser un decimal >= 0 con hasta 4 decimales.', 422);
             }
-            $payload['tipo_cambio_usd'] = $fx;
+            $payload['usd_exchange_rate'] = $fx;
         }
 
-        Capsule::table('segmento')->where('id', $segmentId)->update($payload);
+        Capsule::table('segments')->where('id', $segmentId)->update($payload);
 
         return Result::ok($this->findMapped($segmentId), 'Parámetros comerciales actualizados');
     }
 
     /**
      * @param array<string, mixed> $auth
-     * @return list<array{id:int,nombre:string,dias_credito_default:int,tipo_cambio_usd:string}>
+     * @return list<array{id:int,name:string,default_credit_days:int,usd_exchange_rate:string}>
      */
     private function listSegments(array $auth): array
     {
-        $builder = Capsule::table('segmento')->orderBy('id');
-        $lockedId = $auth['segmento_id'] ?? null;
+        $builder = Capsule::table('segments')->orderBy('id');
+        $lockedId = $auth['segment_id'] ?? null;
         if ($lockedId !== null) {
             $builder->where('id', (int) $lockedId);
         }
 
         return $builder
-            ->get(['id', 'nombre', 'dias_credito_default', 'tipo_cambio_usd'])
+            ->get(['id', 'name', 'default_credit_days', 'usd_exchange_rate'])
             ->map(fn (object $row): array => $this->mapRow($row))
             ->all();
     }
 
     /**
-     * @return array{id:int,nombre:string,dias_credito_default:int,tipo_cambio_usd:string}|null
+     * @return array{id:int,name:string,default_credit_days:int,usd_exchange_rate:string}|null
      */
     private function findMapped(int $id): ?array
     {
-        $row = Capsule::table('segmento')->where('id', $id)->first([
+        $row = Capsule::table('segments')->where('id', $id)->first([
             'id',
-            'nombre',
-            'dias_credito_default',
-            'tipo_cambio_usd',
+            'name',
+            'default_credit_days',
+            'usd_exchange_rate',
         ]);
         if ($row === null) {
             return null;
@@ -142,20 +142,20 @@ final class SegmentsService extends ModelService
     }
 
     /**
-     * @return array{id:int,nombre:string,dias_credito_default:int,tipo_cambio_usd:string}
+     * @return array{id:int,name:string,default_credit_days:int,usd_exchange_rate:string}
      */
     private function mapRow(object $row): array
     {
-        $fx = isset($row->tipo_cambio_usd) ? (string) $row->tipo_cambio_usd : '19.5000';
+        $fx = isset($row->usd_exchange_rate) ? (string) $row->usd_exchange_rate : '19.5000';
         if (!str_contains($fx, '.')) {
             $fx .= '.0000';
         }
 
         return [
             'id' => (int) $row->id,
-            'nombre' => (string) $row->nombre,
-            'dias_credito_default' => (int) $row->dias_credito_default,
-            'tipo_cambio_usd' => $this->normalizeFx($fx) ?? '19.5000',
+            'name' => (string) $row->name,
+            'default_credit_days' => (int) $row->default_credit_days,
+            'usd_exchange_rate' => $this->normalizeFx($fx) ?? '19.5000',
         ];
     }
 
@@ -178,7 +178,7 @@ final class SegmentsService extends ModelService
      */
     private function isSegmentInScope(array $auth, int $segmentId): bool
     {
-        $lockedId = $auth['segmento_id'] ?? null;
+        $lockedId = $auth['segment_id'] ?? null;
         if ($lockedId === null) {
             return true;
         }

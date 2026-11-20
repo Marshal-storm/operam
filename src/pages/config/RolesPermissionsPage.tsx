@@ -2,15 +2,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Save, Shield } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
+import { AppButton } from '@/components/ui/AppButton'
+import { AppCard } from '@/components/ui/AppCard'
+import { AppInput } from '@/components/ui/AppInput'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { IosSwitch } from '@/components/ui/IosSwitch'
+  AppModal,
+  AppModalContent,
+  AppModalDescription,
+  AppModalHeader,
+  AppModalTitle,
+} from '@/components/ui/AppModal'
+import { AppSwitch } from '@/components/ui/AppSwitch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/context/ToastContext'
@@ -26,23 +28,23 @@ import {
 import type { ModulePermission, PermissionsMap } from '@/types/auth'
 
 const EMPTY_PERM: ModulePermission = {
-  ver: false,
-  crear: false,
-  editar: false,
-  eliminar: false,
+  view: false,
+  create: false,
+  edit: false,
+  delete: false,
 }
 
 const CRUD_KEYS: Array<{ key: keyof ModulePermission; label: string }> = [
-  { key: 'ver', label: 'Ver' },
-  { key: 'crear', label: 'Crear' },
-  { key: 'editar', label: 'Editar' },
-  { key: 'eliminar', label: 'Eliminar' },
+  { key: 'view', label: 'Ver' },
+  { key: 'create', label: 'Crear' },
+  { key: 'edit', label: 'Editar' },
+  { key: 'delete', label: 'Eliminar' },
 ]
 
 function clonePerms(source: PermissionsMap): Record<string, ModulePermission> {
   const out: Record<string, ModulePermission> = {}
-  for (const [clave, flags] of Object.entries(source ?? {})) {
-    out[clave] = { ...(flags ?? EMPTY_PERM) }
+  for (const [moduleKey, flags] of Object.entries(source ?? {})) {
+    out[moduleKey] = { ...(flags ?? EMPTY_PERM) }
   }
   return out
 }
@@ -56,10 +58,10 @@ function permsEqual(
     const left = a[key] ?? EMPTY_PERM
     const right = b[key] ?? EMPTY_PERM
     if (
-      left.ver !== right.ver ||
-      left.crear !== right.crear ||
-      left.editar !== right.editar ||
-      left.eliminar !== right.eliminar
+      left.view !== right.view ||
+      left.create !== right.create ||
+      left.edit !== right.edit ||
+      left.delete !== right.delete
     ) {
       return false
     }
@@ -75,7 +77,7 @@ export function RolesPermissionsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { logout } = useAuth()
-  const { canCreate, canEdit, rolId } = usePermissions()
+  const { canCreate, canEdit, roleId } = usePermissions()
 
   /** REGLA UX: siempre inicia en null (cero preselección). */
   const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null)
@@ -98,17 +100,17 @@ export function RolesPermissionsPage() {
 
   useEffect(() => {
     if (selectedRole) {
-      setDraftPerms(clonePerms(selectedRole.permisos))
+      setDraftPerms(clonePerms(selectedRole.permissions))
     } else {
       setDraftPerms({})
     }
   }, [selectedRole])
 
   const isDirty =
-    selectedRole != null && !permsEqual(draftPerms, clonePerms(selectedRole.permisos))
+    selectedRole != null && !permsEqual(draftPerms, clonePerms(selectedRole.permissions))
 
-  const principalModules = (modulesQuery.data ?? []).filter((m) => m.grupo === 'principal')
-  const configModules = (modulesQuery.data ?? []).filter((m) => m.grupo === 'configuracion')
+  const principalModules = (modulesQuery.data ?? []).filter((m) => m.group_key === 'principal')
+  const configModules = (modulesQuery.data ?? []).filter((m) => m.group_key === 'configuration')
 
   const savePermsMutation = useMutation({
     mutationFn: () => {
@@ -116,10 +118,10 @@ export function RolesPermissionsPage() {
       return saveRolePermissions(selectedRole.id, draftPerms)
     },
     onSuccess: async (saved) => {
-      toast.success('Permisos guardados', selectedRole?.nombre ?? '')
+      toast.success('Permisos guardados', selectedRole?.name ?? '')
       await queryClient.invalidateQueries({ queryKey: ['rbac', 'roles'] })
 
-      const isOwnRole = rolId != null && selectedRole != null && selectedRole.id === rolId
+      const isOwnRole = roleId != null && selectedRole != null && selectedRole.id === roleId
       if (isOwnRole) {
         scheduleCriticalRelogin({
           warning: toast.warning,
@@ -139,12 +141,12 @@ export function RolesPermissionsPage() {
   const createRoleMutation = useMutation({
     mutationFn: () =>
       createRole({
-        codigo: newRoleCodigo.trim().toLowerCase().replace(/\s+/g, '_'),
-        nombre: newRoleNombre.trim(),
-        descripcion: newRoleDesc.trim() || undefined,
+        code: newRoleCodigo.trim().toLowerCase().replace(/\s+/g, '_'),
+        name: newRoleNombre.trim(),
+        description: newRoleDesc.trim() || undefined,
       }),
     onSuccess: async (role) => {
-      toast.success('Rol creado', role.nombre)
+      toast.success('Rol creado', role.name)
       setNewRoleOpen(false)
       setNewRoleCodigo('')
       setNewRoleNombre('')
@@ -156,28 +158,28 @@ export function RolesPermissionsPage() {
   })
 
   function renderModuleRows(
-    modules: Array<{ clave: string; nombre: string }>,
+    modules: Array<{ module_key: string; name: string }>,
   ): React.ReactNode {
     return modules.map((mod) => {
-      const flags = draftPerms[mod.clave] ?? EMPTY_PERM
+      const flags = draftPerms[mod.module_key] ?? EMPTY_PERM
       return (
-        <tr key={mod.clave} className="border-b border-slate-100 dark:border-white/[0.04]">
+        <tr key={mod.module_key} className="border-b border-slate-100 dark:border-white/[0.04]">
           <td className="px-4 py-3">
-            <p className="font-medium">{mod.nombre}</p>
-            <p className="font-mono text-[11px] text-slate-400">{mod.clave}</p>
+            <p className="font-medium">{mod.name}</p>
+            <p className="font-mono text-[11px] text-slate-400">{mod.module_key}</p>
           </td>
           {CRUD_KEYS.map((col) => (
             <td key={col.key} className="px-3 py-3 text-center">
               <div className="inline-flex justify-center">
-                <IosSwitch
+                <AppSwitch
                   checked={flags[col.key]}
                   disabled={!canEdit('config_roles')}
-                  label={`${col.label} ${mod.nombre}`}
+                  label={`${col.label} ${mod.name}`}
                   onCheckedChange={(next) => {
                     setDraftPerms((prev) => ({
                       ...prev,
-                      [mod.clave]: {
-                        ...(prev[mod.clave] ?? EMPTY_PERM),
+                      [mod.module_key]: {
+                        ...(prev[mod.module_key] ?? EMPTY_PERM),
                         [col.key]: next,
                       },
                     }))
@@ -214,36 +216,37 @@ export function RolesPermissionsPage() {
           </div>
         </div>
         {canCreate('config_roles') && (
-          <Button className="rounded-xl" onClick={() => setNewRoleOpen(true)}>
-            <Plus className="mr-1 h-4 w-4" /> Nuevo rol
-          </Button>
+          <AppButton onClick={() => setNewRoleOpen(true)}>
+            <Plus className="h-4 w-4" /> Nuevo rol
+          </AppButton>
         )}
       </header>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[16rem_minmax(0,1fr)]">
-        <aside className="glass-panel space-y-2 p-3">
+        <AppCard className="space-y-2 p-3">
           <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
             Roles
           </p>
           {roles.map((role) => (
-            <button
+            <AppButton
               key={role.id}
               type="button"
+              variant="ghost"
               onClick={() => setSelectedRoleId(role.id)}
               className={cn(
-                'w-full rounded-xl px-3 py-2.5 text-left text-sm transition',
+                'h-auto w-full flex-col items-start rounded-xl px-3 py-2.5 text-left text-sm font-normal',
                 selectedRoleId === role.id
-                  ? 'border border-blue-500/25 bg-blue-50 text-blue-700 dark:bg-[#0A84FF]/15 dark:text-[#0A84FF]'
+                  ? 'border border-blue-500/25 bg-blue-50 text-blue-700 hover:bg-blue-50 dark:bg-[#0A84FF]/15 dark:text-[#0A84FF] dark:hover:bg-[#0A84FF]/15'
                   : 'hover:bg-slate-100 dark:hover:bg-white/[0.05]',
               )}
             >
-              <p className="font-medium">{role.nombre}</p>
-              <p className="font-mono text-[11px] text-slate-400">{role.codigo}</p>
-            </button>
+              <span className="font-medium">{role.name}</span>
+              <span className="font-mono text-[11px] text-slate-400">{role.code}</span>
+            </AppButton>
           ))}
-        </aside>
+        </AppCard>
 
-        <section className="glass-panel flex min-h-[28rem] flex-col overflow-hidden p-0">
+        <AppCard className="flex min-h-[28rem] flex-col overflow-hidden p-0">
           {selectedRoleId == null || !selectedRole ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
               <Shield className="h-10 w-10 text-slate-300 dark:text-zinc-600" />
@@ -255,9 +258,9 @@ export function RolesPermissionsPage() {
           ) : (
             <>
               <div className="border-b border-slate-200/80 px-4 py-3 dark:border-white/[0.07]">
-                <h2 className="font-heading text-lg font-semibold">{selectedRole.nombre}</h2>
+                <h2 className="font-heading text-lg font-semibold">{selectedRole.name}</h2>
                 <p className="text-sm text-slate-500">
-                  {selectedRole.descripcion ?? 'Sin descripción'}
+                  {selectedRole.description ?? 'Sin descripción'}
                 </p>
               </div>
 
@@ -301,40 +304,36 @@ export function RolesPermissionsPage() {
                   {isDirty ? 'Hay cambios sin guardar' : 'Sin cambios pendientes'}
                 </p>
                 {canEdit('config_roles') && (
-                  <Button
+                  <AppButton
                     type="button"
-                    disabled={!isDirty || savePermsMutation.isPending}
-                    className={cn(
-                      'rounded-xl',
-                      isDirty
-                        ? 'bg-[#0066FF] text-white dark:bg-[#0A84FF]'
-                        : 'cursor-not-allowed bg-slate-200 text-slate-500 opacity-60',
-                    )}
+                    disabled={!isDirty}
+                    isLoading={savePermsMutation.isPending}
                     onClick={() => savePermsMutation.mutate()}
                   >
-                    <Save className="mr-1 h-4 w-4" />
-                    {savePermsMutation.isPending ? 'Guardando…' : 'Guardar permisos'}
-                  </Button>
+                    <Save className="h-4 w-4" />
+                    Guardar permisos
+                  </AppButton>
                 )}
               </footer>
             </>
           )}
-        </section>
+        </AppCard>
       </div>
 
-      <Dialog open={newRoleOpen} onOpenChange={setNewRoleOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nuevo rol</DialogTitle>
-            <DialogDescription>
+      <AppModal open={newRoleOpen} onOpenChange={setNewRoleOpen}>
+        <AppModalContent>
+          <AppModalHeader>
+            <AppModalTitle>Nuevo rol</AppModalTitle>
+            <AppModalDescription>
               Se crea con permisos apagados; luego configuras la matriz multinivel.
-            </DialogDescription>
-          </DialogHeader>
+            </AppModalDescription>
+          </AppModalHeader>
           <div className="space-y-3">
             <label className="block text-sm">
               Código
-              <input
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
+              <AppInput
+                withLabelSpacing
+                mono
                 value={newRoleCodigo}
                 onChange={(e) => setNewRoleCodigo(e.target.value)}
                 placeholder="ej. gestor_promociones"
@@ -342,30 +341,30 @@ export function RolesPermissionsPage() {
             </label>
             <label className="block text-sm">
               Nombre
-              <input
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
+              <AppInput
+                withLabelSpacing
                 value={newRoleNombre}
                 onChange={(e) => setNewRoleNombre(e.target.value)}
               />
             </label>
             <label className="block text-sm">
               Descripción
-              <input
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
+              <AppInput
+                withLabelSpacing
                 value={newRoleDesc}
                 onChange={(e) => setNewRoleDesc(e.target.value)}
               />
             </label>
-            <Button
-              className="w-full rounded-xl"
-              disabled={createRoleMutation.isPending}
+            <AppButton
+              className="w-full"
+              isLoading={createRoleMutation.isPending}
               onClick={() => createRoleMutation.mutate()}
             >
-              {createRoleMutation.isPending ? 'Creando…' : 'Crear rol'}
-            </Button>
+              Crear rol
+            </AppButton>
           </div>
-        </DialogContent>
-      </Dialog>
+        </AppModalContent>
+      </AppModal>
     </div>
   )
 }

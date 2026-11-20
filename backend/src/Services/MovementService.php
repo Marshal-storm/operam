@@ -24,10 +24,10 @@ final class MovementService extends ModelService
      */
     public function create(array $attributes): Movement
     {
-        if (isset($attributes['mrr_antes'], $attributes['mrr_despues']) && !isset($attributes['mrr_delta_mxn'])) {
-            $antes = Money::of((string) $attributes['mrr_antes']);
-            $despues = Money::of((string) $attributes['mrr_despues']);
-            $attributes['mrr_delta_mxn'] = $despues->minus($antes)->toDecimalString();
+        if (isset($attributes['mrr_before'], $attributes['mrr_after']) && !isset($attributes['mrr_delta_mxn'])) {
+            $before = Money::of((string) $attributes['mrr_before']);
+            $after = Money::of((string) $attributes['mrr_after']);
+            $attributes['mrr_delta_mxn'] = $after->minus($before)->toDecimalString();
         }
 
         if (!isset($attributes['created_at'])) {
@@ -42,11 +42,11 @@ final class MovementService extends ModelService
 
     public function update(\Illuminate\Database\Eloquent\Model $model, array $attributes): Movement
     {
-        throw new RuntimeException('movimiento es inmutable (RNF-3): no se permite update.');
+        throw new RuntimeException('La bitácora de movimientos es inmutable (RNF-3): no se permite update.');
     }
 
     public function delete(\Illuminate\Database\Eloquent\Model $model): bool
     {
-        throw new RuntimeException('movimiento es inmutable (RNF-3): no se permite delete.');
+        throw new RuntimeException('La bitácora de movimientos es inmutable (RNF-3): no se permite delete.');
     }
 }

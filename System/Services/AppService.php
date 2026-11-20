@@ -12,7 +12,7 @@ use System\Models\ActiveSessionsModel;
 use Throwable;
 
 /**
- * AppService: protege rutas en before_get con JWT HS256 + sesion_activa.
+ * AppService: protege rutas en before_get con JWT HS256 + active_sessions.
  */
 final class AppService extends CustomService
 {
@@ -87,8 +87,8 @@ final class AppService extends CustomService
         $nowUtc = gmdate('Y-m-d H:i:s');
         $session = ActiveSessionsModel::query()
             ->where('session_uid', $sessionUid)
-            ->where('revocada', false)
-            ->where('expira_en', '>', $nowUtc)
+            ->where('is_revoked', false)
+            ->where('expires_at', '>', $nowUtc)
             ->first();
 
         if (!$session) {
@@ -97,46 +97,36 @@ final class AppService extends CustomService
             return;
         }
 
-        /** @var array<string, array{ver: bool, crear: bool, editar: bool, eliminar: bool}> $permisos */
-        $permisos = [];
-        if (isset($jti->permisos) && is_object($jti->permisos)) {
-            foreach ((array) $jti->permisos as $clave => $flags) {
+        /** @var array<string, array{view: bool, create: bool, edit: bool, delete: bool}> $permissions */
+        $permissions = [];
+        $rawPermissions = $jti->permissions ?? null;
+        if (is_object($rawPermissions) || is_array($rawPermissions)) {
+            foreach ((array) $rawPermissions as $moduleKey => $flags) {
                 $flagsArr = is_object($flags) ? (array) $flags : (array) $flags;
-                $permisos[(string) $clave] = [
-                    'ver' => (bool) ($flagsArr['ver'] ?? false),
-                    'crear' => (bool) ($flagsArr['crear'] ?? false),
-                    'editar' => (bool) ($flagsArr['editar'] ?? false),
-                    'eliminar' => (bool) ($flagsArr['eliminar'] ?? false),
-                ];
-            }
-        } elseif (isset($jti->permisos) && is_array($jti->permisos)) {
-            foreach ($jti->permisos as $clave => $flags) {
-                $flagsArr = is_object($flags) ? (array) $flags : (array) $flags;
-                $permisos[(string) $clave] = [
-                    'ver' => (bool) ($flagsArr['ver'] ?? false),
-                    'crear' => (bool) ($flagsArr['crear'] ?? false),
-                    'editar' => (bool) ($flagsArr['editar'] ?? false),
-                    'eliminar' => (bool) ($flagsArr['eliminar'] ?? false),
+                $permissions[(string) $moduleKey] = [
+                    'view' => (bool) ($flagsArr['view'] ?? false),
+                    'create' => (bool) ($flagsArr['create'] ?? false),
+                    'edit' => (bool) ($flagsArr['edit'] ?? false),
+                    'delete' => (bool) ($flagsArr['delete'] ?? false),
                 ];
             }
         }
 
-        $segmentoId = isset($jti->segmento_id) && $jti->segmento_id !== null
-            ? (int) $jti->segmento_id
+        $segmentId = isset($jti->segment_id) && $jti->segment_id !== null
+            ? (int) $jti->segment_id
             : null;
 
         $context->setData('auth', [
             'session_uid' => $sessionUid,
             'user_id' => (int) ($jti->user_id ?? 0),
             'email' => (string) ($jti->email ?? ''),
-            'nombre' => (string) ($jti->nombre ?? ''),
-            'rol' => (string) ($jti->rol ?? ''),
-            'rol_id' => isset($jti->rol_id) && $jti->rol_id !== null ? (int) $jti->rol_id : null,
-            'rol_nombre' => isset($jti->rol_nombre) ? (string) $jti->rol_nombre : null,
-            'rol_codigo' => isset($jti->rol_codigo) ? (string) $jti->rol_codigo : null,
-            'segmento_id' => $segmentoId,
-            'segmento_nombre' => (string) ($jti->segmento_nombre ?? 'Todos'),
-            'permisos' => $permisos,
+            'name' => (string) ($jti->name ?? ''),
+            'role_id' => isset($jti->role_id) && $jti->role_id !== null ? (int) $jti->role_id : null,
+            'role_name' => isset($jti->role_name) ? (string) $jti->role_name : null,
+            'role_code' => isset($jti->role_code) ? (string) $jti->role_code : null,
+            'segment_id' => $segmentId,
+            'segment_name' => (string) ($jti->segment_name ?? 'Todos'),
+            'permissions' => $permissions,
             'scope' => 'enterprise',
         ]);
     }

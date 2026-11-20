@@ -81,7 +81,8 @@ export function useServicesConfig(params: ServicesQueryParams) {
     [KEYS.services],
   )
   const toggle = useLockedMutation(
-    ({ id, activo }: { id: number; activo: boolean }) => toggleServiceActive(id, activo),
+    ({ id, is_active }: { id: number; is_active: boolean }) =>
+      toggleServiceActive(id, is_active),
     [KEYS.services],
     'Actualizando disponibilidad...',
   )
@@ -152,7 +153,7 @@ export function usePriceListsConfig() {
     updatePriceList: (input: { id: number; data: Partial<PriceListWriteInput> }) =>
       updateList.mutateAsync(input),
     createPriceListItem: (input: PriceListItemWriteInput) => createItem.mutateAsync(input),
-    removeProductFromPriceList: (input: { lista_precio_id: number; servicio_id: number }) =>
+    removeProductFromPriceList: (input: { price_list_id: number; service_id: number }) =>
       removeProduct.mutateAsync(input),
     savePriceEdits: saveEdits.mutateAsync,
     saveVolumeMatrix: (plan: VolumeMatrixSavePlan) => saveVolume.mutateAsync(plan),
@@ -175,8 +176,8 @@ export function usePromotionsConfig() {
     [KEYS.promotions],
   )
   const toggle = useLockedMutation(
-    ({ id, activa }: { id: number; activa: boolean }) =>
-      togglePromotionActive(id, activa),
+    ({ id, is_active }: { id: number; is_active: boolean }) =>
+      togglePromotionActive(id, is_active),
     [KEYS.promotions],
     'Actualizando promoción...',
   )
@@ -214,7 +215,8 @@ export function useIssuersConfig(params: IssuersQueryParams) {
     'Actualizando emisor...',
   )
   const toggle = useLockedMutation(
-    ({ id, activo }: { id: number; activo: boolean }) => toggleIssuerActive(id, activo),
+    ({ id, is_active }: { id: number; is_active: boolean }) =>
+      toggleIssuerActive(id, is_active),
     [KEYS.emitters, KEYS.instances],
     'Actualizando estado del emisor...',
   )

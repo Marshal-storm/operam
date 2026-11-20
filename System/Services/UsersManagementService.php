@@ -12,7 +12,8 @@ use System\Core\Result;
 use System\Models\UsersModel;
 
 /**
- * Alta/edición de usuarios internos con Rol + Segmento (Todos|Operam|Construsync).
+ * Alta/edición de usuarios internos con rol y segmento (Todos, Operam o Construsync).
+ * La columna legacy `rol` no existe: el vínculo es solo `role_id`.
  */
 final class UsersManagementService extends ModelService
 {
@@ -27,19 +28,18 @@ final class UsersManagementService extends ModelService
     {
         $this->validator
             ->setField('email', DataTypes::Email, true)
-            ->setField('nombre', DataTypes::String, true)
+            ->setField('name', DataTypes::String, true)
             ->setField('password_hash', DataTypes::String, false, null, null, true)
-            ->setField('rol', DataTypes::String, false, 'operador')
-            ->setField('rol_id', DataTypes::Integer, false)
-            ->setField('segmento_id', DataTypes::Integer, false)
-            ->setField('activo', DataTypes::Boolean, false, true)
-            ->setField('ultimo_acceso', DataTypes::DateTime, false);
+            ->setField('role_id', DataTypes::Integer, false)
+            ->setField('segment_id', DataTypes::Integer, false)
+            ->setField('is_active', DataTypes::Boolean, false, true)
+            ->setField('last_login_at', DataTypes::DateTime, false);
     }
 
     public function handle(Context $context): Result
     {
         $auth = $context->getData('auth', []);
-        if (!RbacAuthHelper::can($auth, 'config_usuarios', 'ver')) {
+        if (!RbacAuthHelper::can($auth, 'config_users', 'view')) {
             return Result::fail('Sin permiso para administrar usuarios.', 403);
         }
 
@@ -51,7 +51,7 @@ final class UsersManagementService extends ModelService
         }
 
         if ($method === 'POST' && $id === null) {
-            if (!RbacAuthHelper::can($auth, 'config_usuarios', 'crear')) {
+            if (!RbacAuthHelper::can($auth, 'config_users', 'create')) {
                 return Result::fail('Sin permiso para crear usuarios.', 403);
             }
 
@@ -73,7 +73,7 @@ final class UsersManagementService extends ModelService
         }
 
         if ($method === 'PUT' || $method === 'PATCH') {
-            if (!RbacAuthHelper::can($auth, 'config_usuarios', 'editar')) {
+            if (!RbacAuthHelper::can($auth, 'config_users', 'edit')) {
                 return Result::fail('Sin permiso para editar usuarios.', 403);
             }
 
@@ -95,38 +95,39 @@ final class UsersManagementService extends ModelService
             $perPage = 25;
         }
 
-        $builder = Capsule::table('usuario as u')
-            ->leftJoin('rol as r', 'r.id', '=', 'u.rol_id')
-            ->leftJoin('segmento as s', 's.id', '=', 'u.segmento_id');
+        $builder = Capsule::table('users as u')
+            ->leftJoin('roles as r', 'r.id', '=', 'u.role_id')
+            ->leftJoin('segments as s', 's.id', '=', 'u.segment_id');
 
         $search = trim((string) ($query['search'] ?? ''));
         if ($search !== '') {
             $like = '%' . $search . '%';
             $builder->where(static function (Builder $q) use ($like): void {
                 $q->where('u.email', 'like', $like)
-                    ->orWhere('u.nombre', 'like', $like)
-                    ->orWhere('r.nombre', 'like', $like);
+                    ->orWhere('u.name', 'like', $like)
+                    ->orWhere('r.name', 'like', $like);
             });
         }
 
-        if (isset($query['rol_id']) && $query['rol_id'] !== '' && $query['rol_id'] !== null) {
-            $builder->where('u.rol_id', (int) $query['rol_id']);
+        if (isset($query['role_id']) && $query['role_id'] !== '' && $query['role_id'] !== null) {
+            $builder->where('u.role_id', (int) $query['role_id']);
         }
 
-        $segmento = trim((string) ($query['segmento'] ?? ''));
-        if ($segmento !== '' && strtolower($segmento) !== 'todos') {
-            if (strtolower($segmento) === 'sin_segmento' || strtolower($segmento) === 'all_null') {
-                $builder->whereNull('u.segmento_id');
+        $segment = trim((string) ($query['segment'] ?? ''));
+        $segmentKey = strtolower($segment);
+        if ($segment !== '' && $segmentKey !== 'all' && $segmentKey !== 'todos') {
+            if ($segmentKey === 'unassigned' || $segmentKey === 'none') {
+                $builder->whereNull('u.segment_id');
             } else {
-                $builder->where('s.nombre', $segmento);
+                $builder->where('s.name', $segment);
             }
         }
 
-        $estado = strtolower(trim((string) ($query['estado'] ?? '')));
-        if ($estado === 'activos' || $estado === 'activo') {
-            $builder->where('u.activo', true);
-        } elseif ($estado === 'inactivos' || $estado === 'inactivo') {
-            $builder->where('u.activo', false);
+        $status = strtolower(trim((string) ($query['status'] ?? '')));
+        if ($status === 'active') {
+            $builder->where('u.is_active', true);
+        } elseif ($status === 'inactive') {
+            $builder->where('u.is_active', false);
         }
 
         $total = (clone $builder)->count();
@@ -136,15 +137,14 @@ final class UsersManagementService extends ModelService
             ->get([
                 'u.id',
                 'u.email',
-                'u.nombre',
-                'u.rol',
-                'u.rol_id',
-                'r.nombre as rol_nombre',
-                'r.codigo as rol_codigo',
-                'u.segmento_id',
-                's.nombre as segmento_nombre',
-                'u.activo',
-                'u.ultimo_acceso',
+                'u.name',
+                'u.role_id',
+                'r.name as role_name',
+                'r.code as role_code',
+                'u.segment_id',
+                's.name as segment_name',
+                'u.is_active',
+                'u.last_login_at',
                 'u.created_at',
             ]);
 
@@ -168,40 +168,39 @@ final class UsersManagementService extends ModelService
     private function createUser(array $request): Result
     {
         $email = strtolower(trim((string) ($request['email'] ?? '')));
-        $nombre = trim((string) ($request['nombre'] ?? ''));
+        $name = trim((string) ($request['name'] ?? ''));
         $password = (string) ($request['password'] ?? '');
-        $rolId = isset($request['rol_id']) ? (int) $request['rol_id'] : null;
-        $segmentoId = array_key_exists('segmento_id', $request) && $request['segmento_id'] !== null && $request['segmento_id'] !== ''
-            ? (int) $request['segmento_id']
+        $roleId = isset($request['role_id']) ? (int) $request['role_id'] : null;
+        $segmentId = array_key_exists('segment_id', $request) && $request['segment_id'] !== null && $request['segment_id'] !== ''
+            ? (int) $request['segment_id']
             : null;
-        $activo = array_key_exists('activo', $request) ? (bool) $request['activo'] : true;
+        $isActive = array_key_exists('is_active', $request) ? (bool) $request['is_active'] : true;
 
-        if ($email === '' || $nombre === '' || $password === '' || $rolId === null) {
-            return Result::fail('email, nombre, password y rol_id son obligatorios.', 422);
+        if ($email === '' || $name === '' || $password === '' || $roleId === null) {
+            return Result::fail('email, name, password y role_id son obligatorios.', 422);
         }
 
         if (UsersModel::query()->where('email', $email)->exists()) {
             return Result::fail('Ya existe un usuario con ese correo.', 422);
         }
 
-        if (!Capsule::table('rol')->where('id', $rolId)->where('activo', true)->exists()) {
+        if (!Capsule::table('roles')->where('id', $roleId)->where('is_active', true)->exists()) {
             return Result::fail('Rol inválido.', 422);
         }
 
-        if ($segmentoId !== null && !Capsule::table('segmento')->where('id', $segmentoId)->exists()) {
+        if ($segmentId !== null && !Capsule::table('segments')->where('id', $segmentId)->exists()) {
             return Result::fail('Segmento inválido.', 422);
         }
 
         $nowUtc = gmdate('Y-m-d H:i:s');
-        $userId = (int) Capsule::table('usuario')->insertGetId([
+        $userId = (int) Capsule::table('users')->insertGetId([
             'email' => $email,
-            'nombre' => $nombre,
+            'name' => $name,
             'password_hash' => $this->hashPassword($password),
-            'rol' => $this->legacyRoleFromRolId($rolId),
-            'rol_id' => $rolId,
-            'segmento_id' => $segmentoId,
-            'activo' => $activo,
-            'ultimo_acceso' => null,
+            'role_id' => $roleId,
+            'segment_id' => $segmentId,
+            'is_active' => $isActive,
+            'last_login_at' => null,
             'created_at' => $nowUtc,
             'updated_at' => $nowUtc,
         ]);
@@ -220,13 +219,13 @@ final class UsersManagementService extends ModelService
             return Result::fail('Usuario no encontrado.', 404);
         }
 
-        $prevRolId = $user->rol_id !== null ? (int) $user->rol_id : null;
-        $prevSegmentoId = $user->segmento_id !== null ? (int) $user->segmento_id : null;
-        $prevActivo = (bool) $user->activo;
+        $prevRoleId = $user->role_id !== null ? (int) $user->role_id : null;
+        $prevSegmentId = $user->segment_id !== null ? (int) $user->segment_id : null;
+        $prevActive = (bool) $user->is_active;
 
         $updates = [];
-        if (isset($request['nombre'])) {
-            $updates['nombre'] = trim((string) $request['nombre']);
+        if (isset($request['name'])) {
+            $updates['name'] = trim((string) $request['name']);
         }
         if (isset($request['email'])) {
             $email = strtolower(trim((string) $request['email']));
@@ -239,27 +238,26 @@ final class UsersManagementService extends ModelService
             }
             $updates['email'] = $email;
         }
-        if (array_key_exists('rol_id', $request) && $request['rol_id'] !== null && $request['rol_id'] !== '') {
-            $rolId = (int) $request['rol_id'];
-            if (!Capsule::table('rol')->where('id', $rolId)->exists()) {
+        if (array_key_exists('role_id', $request) && $request['role_id'] !== null && $request['role_id'] !== '') {
+            $roleId = (int) $request['role_id'];
+            if (!Capsule::table('roles')->where('id', $roleId)->exists()) {
                 return Result::fail('Rol inválido.', 422);
             }
-            $updates['rol_id'] = $rolId;
-            $updates['rol'] = $this->legacyRoleFromRolId($rolId);
+            $updates['role_id'] = $roleId;
         }
-        if (array_key_exists('segmento_id', $request)) {
-            if ($request['segmento_id'] === null || $request['segmento_id'] === '') {
-                $updates['segmento_id'] = null;
+        if (array_key_exists('segment_id', $request)) {
+            if ($request['segment_id'] === null || $request['segment_id'] === '') {
+                $updates['segment_id'] = null;
             } else {
-                $segmentoId = (int) $request['segmento_id'];
-                if (!Capsule::table('segmento')->where('id', $segmentoId)->exists()) {
+                $segmentId = (int) $request['segment_id'];
+                if (!Capsule::table('segments')->where('id', $segmentId)->exists()) {
                     return Result::fail('Segmento inválido.', 422);
                 }
-                $updates['segmento_id'] = $segmentoId;
+                $updates['segment_id'] = $segmentId;
             }
         }
-        if (array_key_exists('activo', $request)) {
-            $updates['activo'] = (bool) $request['activo'];
+        if (array_key_exists('is_active', $request)) {
+            $updates['is_active'] = (bool) $request['is_active'];
         }
         if (!empty($request['password'])) {
             $updates['password_hash'] = $this->hashPassword((string) $request['password']);
@@ -270,22 +268,22 @@ final class UsersManagementService extends ModelService
         }
 
         $updates['updated_at'] = gmdate('Y-m-d H:i:s');
-        Capsule::table('usuario')->where('id', $userId)->update($updates);
+        Capsule::table('users')->where('id', $userId)->update($updates);
 
-        $newRolId = array_key_exists('rol_id', $updates)
-            ? (int) $updates['rol_id']
-            : $prevRolId;
-        $newSegmentoId = array_key_exists('segmento_id', $updates)
-            ? ($updates['segmento_id'] !== null ? (int) $updates['segmento_id'] : null)
-            : $prevSegmentoId;
-        $newActivo = array_key_exists('activo', $updates)
-            ? (bool) $updates['activo']
-            : $prevActivo;
+        $newRoleId = array_key_exists('role_id', $updates)
+            ? (int) $updates['role_id']
+            : $prevRoleId;
+        $newSegmentId = array_key_exists('segment_id', $updates)
+            ? ($updates['segment_id'] !== null ? (int) $updates['segment_id'] : null)
+            : $prevSegmentId;
+        $newActive = array_key_exists('is_active', $updates)
+            ? (bool) $updates['is_active']
+            : $prevActive;
 
         $critical =
-            $newRolId !== $prevRolId
-            || $newSegmentoId !== $prevSegmentoId
-            || ($prevActivo && !$newActivo);
+            $newRoleId !== $prevRoleId
+            || $newSegmentId !== $prevSegmentId
+            || ($prevActive && !$newActive);
 
         $revoked = 0;
         if ($critical) {
@@ -304,22 +302,21 @@ final class UsersManagementService extends ModelService
      */
     private function findUserPayload(int $userId): ?array
     {
-        $row = Capsule::table('usuario as u')
-            ->leftJoin('rol as r', 'r.id', '=', 'u.rol_id')
-            ->leftJoin('segmento as s', 's.id', '=', 'u.segmento_id')
+        $row = Capsule::table('users as u')
+            ->leftJoin('roles as r', 'r.id', '=', 'u.role_id')
+            ->leftJoin('segments as s', 's.id', '=', 'u.segment_id')
             ->where('u.id', $userId)
             ->first([
                 'u.id',
                 'u.email',
-                'u.nombre',
-                'u.rol',
-                'u.rol_id',
-                'r.nombre as rol_nombre',
-                'r.codigo as rol_codigo',
-                'u.segmento_id',
-                's.nombre as segmento_nombre',
-                'u.activo',
-                'u.ultimo_acceso',
+                'u.name',
+                'u.role_id',
+                'r.name as role_name',
+                'r.code as role_code',
+                'u.segment_id',
+                's.name as segment_name',
+                'u.is_active',
+                'u.last_login_at',
                 'u.created_at',
             ]);
 
@@ -327,7 +324,6 @@ final class UsersManagementService extends ModelService
     }
 
     /**
-     * @param object $row
      * @return array<string, mixed>
      */
     private function mapUserRow(object $row): array
@@ -335,15 +331,14 @@ final class UsersManagementService extends ModelService
         return [
             'id' => (int) $row->id,
             'email' => (string) $row->email,
-            'nombre' => (string) $row->nombre,
-            'rol' => (string) $row->rol,
-            'rol_id' => $row->rol_id !== null ? (int) $row->rol_id : null,
-            'rol_nombre' => $row->rol_nombre !== null ? (string) $row->rol_nombre : null,
-            'rol_codigo' => $row->rol_codigo !== null ? (string) $row->rol_codigo : null,
-            'segmento_id' => $row->segmento_id !== null ? (int) $row->segmento_id : null,
-            'segmento_nombre' => $row->segmento_nombre !== null ? (string) $row->segmento_nombre : 'Todos',
-            'activo' => (bool) $row->activo,
-            'ultimo_acceso' => $row->ultimo_acceso,
+            'name' => (string) $row->name,
+            'role_id' => $row->role_id !== null ? (int) $row->role_id : null,
+            'role_name' => $row->role_name !== null ? (string) $row->role_name : null,
+            'role_code' => $row->role_code !== null ? (string) $row->role_code : null,
+            'segment_id' => $row->segment_id !== null ? (int) $row->segment_id : null,
+            'segment_name' => $row->segment_name !== null ? (string) $row->segment_name : 'Todos',
+            'is_active' => (bool) $row->is_active,
+            'last_login_at' => $row->last_login_at,
             'created_at' => $row->created_at,
         ];
     }
@@ -355,18 +350,5 @@ final class UsersManagementService extends ModelService
         }
 
         return password_hash($plain, PASSWORD_BCRYPT);
-    }
-
-    private function legacyRoleFromRolId(int $rolId): string
-    {
-        $codigo = (string) (Capsule::table('rol')->where('id', $rolId)->value('codigo') ?? '');
-        if ($codigo === 'admin_general') {
-            return 'admin';
-        }
-        if ($codigo === 'ejecutivo_ventas') {
-            return 'lectura';
-        }
-
-        return 'operador';
     }
 }

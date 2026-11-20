@@ -1,6 +1,10 @@
-import { Check, Copy, Gift, Search } from 'lucide-react'
+import { Check, Copy, Gift } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { AppButton } from '@/components/ui/AppButton'
+import { AppFilterField } from '@/components/ui/AppFilterField'
+import { AppCard } from '@/components/ui/AppCard'
+import { AppSearchInput } from '@/components/ui/AppInput'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/context/ToastContext'
@@ -11,23 +15,23 @@ import { cn, formatCurrencyMx } from '@/lib/utils'
 import type { Promotion } from '@/types/catalog'
 
 function isActiveToday(promo: Promotion, today: string): boolean {
-  if (!promo.activa) return false
-  const from = promo.vigente_desde.slice(0, 10)
-  const to = promo.vigente_hasta?.slice(0, 10)
+  if (!promo.is_active) return false
+  const from = promo.valid_from.slice(0, 10)
+  const to = promo.valid_until?.slice(0, 10)
   if (from > today) return false
   if (to && to < today) return false
   return true
 }
 
 function benefitLabel(promo: Promotion): string {
-  if (promo.tipo_descuento === 'porcentaje') {
-    return `${promo.valor_descuento.replace(/\.00$/, '')}% de descuento`
+  if (promo.discount_type === 'percentage') {
+    return `${promo.discount_value.replace(/\.00$/, '')}% de descuento`
   }
-  if (promo.tipo_descuento === 'meses_gratis') {
-    const n = promo.valor_descuento.replace(/\.00$/, '')
+  if (promo.discount_type === 'free_months') {
+    const n = promo.discount_value.replace(/\.00$/, '')
     return `${n} mes${n === '1' ? '' : 'es'} gratis`
   }
-  return `${formatCurrencyMx(promo.valor_descuento)} de descuento`
+  return `${formatCurrencyMx(promo.discount_value)} de descuento`
 }
 
 /**
@@ -45,8 +49,8 @@ export function SalesPromotionsPage() {
   const { page, setPage, pageSize, setPageSize } = useClientTableState()
   const [search, setSearch] = useState('')
   const {
-    segmento,
-    setSegmento,
+    segment,
+    setSegment,
     segmentOptions,
     isSegmentLocked,
   } = useSegmentLock()
@@ -58,30 +62,27 @@ export function SalesPromotionsPage() {
     return list.filter((p) => {
       if (
         q &&
-        !p.codigo.toLowerCase().includes(q) &&
-        !p.nombre.toLowerCase().includes(q)
+        !p.code.toLowerCase().includes(q) &&
+        !p.name.toLowerCase().includes(q)
       ) {
         return false
       }
-      if (segmento !== 'Todos' && p.segmento !== segmento && p.segmento != null) {
+      // Sin segmento = promoción global; sigue visible en cualquier filtro.
+      if (segment !== 'Todos' && p.segment_name && p.segment_name !== segment) {
         return false
-      }
-      if (segmento !== 'Todos' && p.segmento == null) {
-        // promociones globales aplican a todos
-        return true
       }
       return true
     })
-  }, [data, today, search, segmento])
+  }, [data, today, search, segment])
 
   const pageRows = paginateRows(active, page, pageSize)
 
   async function copyCode(promo: Promotion) {
     try {
-      await navigator.clipboard.writeText(promo.codigo)
+      await navigator.clipboard.writeText(promo.code)
       setCopiedId(promo.id)
       window.setTimeout(() => setCopiedId(null), 2000)
-      toast.success('Código copiado', promo.codigo)
+      toast.success('Código copiado', promo.code)
     } catch (error) {
       toast.apiError(error, 'No se pudo copiar el código')
     }
@@ -90,14 +91,19 @@ export function SalesPromotionsPage() {
   if (isLoading) return <Skeleton className="h-48 w-full rounded-2xl" />
   if (isError) {
     return (
-      <section className="glass-panel border-red-500/30 p-5">
+      <AppCard className="border-red-500/30 p-5">
         <p className="text-sm text-red-500">
           {error instanceof Error ? error.message : 'Error al cargar'}
         </p>
-        <button type="button" className="mt-3 text-sm text-[#0066FF]" onClick={() => void refetch()}>
+        <AppButton
+          type="button"
+          variant="ghost"
+          className="mt-3 h-auto px-3 text-sm text-[#0066FF] hover:bg-slate-100 dark:text-[#0A84FF]"
+          onClick={() => void refetch()}
+        >
           Reintentar
-        </button>
-      </section>
+        </AppButton>
+      </AppCard>
     )
   }
 
@@ -119,64 +125,72 @@ export function SalesPromotionsPage() {
         </div>
       </header>
 
-      <div className="glass-panel space-y-3 p-4">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setPage(1)
-            }}
-            placeholder="Buscar código o beneficio…"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
-          />
-        </div>
-        <div className="ios-pill-track">
-          {segmentOptions.map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              disabled={isSegmentLocked}
-              onClick={() => {
-                if (isSegmentLocked) return
-                setSegmento(opt)
-                setPage(1)
-              }}
-              className={cn(
-                'rounded-xl px-2.5 py-1 text-xs',
-                segmento === opt ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
-                isSegmentLocked && 'cursor-not-allowed opacity-80',
-              )}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
-      </div>
+      <AppCard className="space-y-3 p-4">
+        <AppSearchInput
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value)
+            setPage(1)
+          }}
+          onClear={() => {
+            setSearch('')
+            setPage(1)
+          }}
+          placeholder="Buscar código o beneficio…"
+          aria-label="Buscar código o beneficio"
+        />
+        <AppFilterField label="Segmento">
+          <div className="ios-pill-track" role="group" aria-label="Segmento">
+            {segmentOptions.map((opt) => {
+              const active = segment === opt.value
+              return (
+                <AppButton
+                  key={opt.value}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={isSegmentLocked}
+                  onClick={() => {
+                    if (isSegmentLocked) return
+                    setSegment(opt.value)
+                    setPage(1)
+                  }}
+                  className={cn(
+                    'h-auto rounded-xl px-2.5 py-1 text-xs font-normal',
+                    active
+                      ? 'bg-[#0066FF] font-medium text-white shadow-[0_0_15px_rgba(0,102,255,0.4)] hover:bg-[#0055DD] hover:text-white dark:bg-[#0A84FF] dark:text-white dark:hover:bg-[#0A74E0]'
+                      : 'text-slate-600 dark:text-slate-300',
+                  )}
+                >
+                  {opt.label}
+                </AppButton>
+              )
+            })}
+          </div>
+        </AppFilterField>
+      </AppCard>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {pageRows.map((promo) => (
-          <article
+          <AppCard
             key={promo.id}
-            className="rounded-3xl border border-emerald-500/40 bg-emerald-50/40 p-5 dark:bg-emerald-950/20"
+            className="rounded-3xl border-emerald-500/40 bg-emerald-50/40 p-5 dark:bg-emerald-950/20"
           >
             <p className="font-mono text-2xl font-bold tracking-wide tabular-nums">
-              {promo.codigo}
+              {promo.code}
             </p>
             <p className="mt-2 text-sm font-medium">{benefitLabel(promo)}</p>
             <p className="mt-1 text-xs text-slate-500">
-              {promo.segmento ?? 'Todos los segmentos'} · vigente hasta{' '}
-              {promo.vigente_hasta?.slice(0, 10) ?? 'sin fecha fin'}
+              {promo.segment_name || 'Todos los segmentos'} · vigente hasta{' '}
+              {promo.valid_until?.slice(0, 10) ?? 'sin fecha fin'}
             </p>
-            <button
+            <AppButton
               type="button"
               onClick={() => void copyCode(promo)}
               className={cn(
-                'mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold transition',
-                copiedId === promo.id
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-[#0066FF] text-white hover:bg-[#0052CC] dark:bg-[#0A84FF]',
+                'mt-4 w-full rounded-2xl py-3',
+                copiedId === promo.id &&
+                  'bg-emerald-600 hover:bg-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-600',
               )}
             >
               {copiedId === promo.id ? (
@@ -188,8 +202,8 @@ export function SalesPromotionsPage() {
                   <Copy className="h-4 w-4" /> Copiar código
                 </>
               )}
-            </button>
-          </article>
+            </AppButton>
+          </AppCard>
         ))}
       </div>
 

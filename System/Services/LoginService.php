@@ -12,7 +12,7 @@ use System\Models\AuthAttemptModel;
 use System\Models\UsersModel;
 
 /**
- * Login empresarial: rate-limit, password_verify, sesion_activa y JWT HS256.
+ * Login empresarial: rate-limit, password_verify, active_sessions y JWT HS256.
  */
 final class LoginService extends CustomService
 {
@@ -62,14 +62,13 @@ final class LoginService extends CustomService
             'user' => [
                 'id' => $jti['user_id'] ?? null,
                 'email' => $jti['email'] ?? null,
-                'nombre' => $jti['nombre'] ?? null,
-                'rol' => $jti['rol'] ?? null,
-                'rol_id' => $jti['rol_id'] ?? null,
-                'rol_nombre' => $jti['rol_nombre'] ?? null,
-                'rol_codigo' => $jti['rol_codigo'] ?? null,
-                'segmento_id' => $jti['segmento_id'] ?? null,
-                'segmento_nombre' => $jti['segmento_nombre'] ?? 'Todos',
-                'permisos' => $jti['permisos'] ?? [],
+                'name' => $jti['name'] ?? null,
+                'role_id' => $jti['role_id'] ?? null,
+                'role_name' => $jti['role_name'] ?? null,
+                'role_code' => $jti['role_code'] ?? null,
+                'segment_id' => $jti['segment_id'] ?? null,
+                'segment_name' => $jti['segment_name'] ?? 'Todos',
+                'permissions' => $jti['permissions'] ?? [],
                 'scope' => $jti['scope'] ?? 'enterprise',
             ],
         ], 'Sesión iniciada');
@@ -107,7 +106,7 @@ final class LoginService extends CustomService
         $windowStart = gmdate('Y-m-d H:i:s', time() - (self::WINDOW_MINUTES * 60));
         $failures = AuthAttemptModel::query()
             ->where('email', $email)
-            ->where('exitoso', false)
+            ->where('is_successful', false)
             ->where('created_at', '>=', $windowStart)
             ->count();
 
@@ -123,14 +122,14 @@ final class LoginService extends CustomService
         /** @var UsersModel|null $user */
         $user = UsersModel::query()
             ->where('email', $email)
-            ->where('activo', true)
+            ->where('is_active', true)
             ->first();
 
         if (!$user || !password_verify($password, (string) $user->password_hash)) {
             AuthAttemptModel::query()->create([
                 'email' => $email,
                 'ip_address' => $ip,
-                'exitoso' => false,
+                'is_successful' => false,
                 'created_at' => $nowUtc,
             ]);
             $context->setResult(Result::fail('Credenciales inválidas.', 401));
@@ -141,7 +140,7 @@ final class LoginService extends CustomService
         AuthAttemptModel::query()->create([
             'email' => $email,
             'ip_address' => $ip,
-            'exitoso' => true,
+            'is_successful' => true,
             'created_at' => $nowUtc,
         ]);
 
@@ -155,15 +154,15 @@ final class LoginService extends CustomService
 
         ActiveSessionsModel::query()->create([
             'session_uid' => $sessionUid,
-            'usuario_id' => (int) $user->id,
+            'user_id' => (int) $user->id,
             'ip_address' => $ip,
             'user_agent' => $userAgent,
-            'expira_en' => $expiresAt,
-            'revocada' => false,
+            'expires_at' => $expiresAt,
+            'is_revoked' => false,
             'created_at' => $nowUtc,
         ]);
 
-        $user->ultimo_acceso = $nowUtc;
+        $user->last_login_at = $nowUtc;
         $user->save();
 
         $rbac = RbacAuthHelper::buildProfileForUser($user);
@@ -173,14 +172,13 @@ final class LoginService extends CustomService
             'session_uid' => $sessionUid,
             'user_id' => (int) $user->id,
             'email' => (string) $user->email,
-            'nombre' => (string) $user->nombre,
-            'rol' => (string) $user->rol,
-            'rol_id' => $rbac['rol_id'],
-            'rol_nombre' => $rbac['rol_nombre'],
-            'rol_codigo' => $rbac['rol_codigo'],
-            'segmento_id' => $rbac['segmento_id'],
-            'segmento_nombre' => $rbac['segmento_nombre'],
-            'permisos' => $rbac['permisos'],
+            'name' => (string) $user->name,
+            'role_id' => $rbac['role_id'],
+            'role_name' => $rbac['role_name'],
+            'role_code' => $rbac['role_code'],
+            'segment_id' => $rbac['segment_id'],
+            'segment_name' => $rbac['segment_name'],
+            'permissions' => $rbac['permissions'],
             'scope' => 'enterprise',
         ]);
     }

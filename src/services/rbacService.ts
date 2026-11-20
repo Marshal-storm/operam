@@ -64,34 +64,33 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type SystemModule = {
   id: number
-  clave: ModuleKey | string
-  nombre: string
-  grupo: string
-  orden: number
+  module_key: ModuleKey | string
+  name: string
+  group_key: string
+  sort_order: number
 }
 
 export type RoleRow = {
   id: number
-  codigo: string
-  nombre: string
-  descripcion: string | null
-  es_sistema: boolean
-  activo: boolean
-  permisos: PermissionsMap
+  code: string
+  name: string
+  description: string | null
+  is_system: boolean
+  is_active: boolean
+  permissions: PermissionsMap
 }
 
 export type ManagedUser = {
   id: number
   email: string
-  nombre: string
-  rol: string
-  rol_id: number | null
-  rol_nombre: string | null
-  rol_codigo: string | null
-  segmento_id: number | null
-  segmento_nombre: string
-  activo: boolean
-  ultimo_acceso: string | null
+  name: string
+  role_id: number | null
+  role_name: string | null
+  role_code: string | null
+  segment_id: number | null
+  segment_name: string
+  is_active: boolean
+  last_login_at: string | null
   created_at?: string
 }
 
@@ -112,10 +111,10 @@ export function fetchSystemModules(): Promise<SystemModule[]> {
 }
 
 export function createRole(input: {
-  codigo: string
-  nombre: string
-  descripcion?: string
-  permisos?: PermissionsMap
+  code: string
+  name: string
+  description?: string
+  permissions?: PermissionsMap
 }): Promise<RoleRow> {
   return apiFetch<RoleRow>('/roles', {
     method: 'POST',
@@ -125,11 +124,11 @@ export function createRole(input: {
 
 export function saveRolePermissions(
   roleId: number,
-  permisos: Record<string, ModulePermission>,
+  permissions: Record<string, ModulePermission>,
 ): Promise<RoleRow> {
   return apiFetch<RoleRow>(`/roles/${roleId}/permissions`, {
     method: 'PUT',
-    body: JSON.stringify({ permisos }),
+    body: JSON.stringify({ permissions }),
   })
 }
 
@@ -137,28 +136,28 @@ export function fetchManagedUsers(params: {
   page?: number
   per_page?: number
   search?: string
-  rol_id?: number | string
-  segmento?: string
-  estado?: string
+  role_id?: number | string
+  segment?: string
+  status?: string
 }): Promise<UsersPage> {
   const qs = new URLSearchParams()
   if (params.page) qs.set('page', String(params.page))
   if (params.per_page) qs.set('per_page', String(params.per_page))
   if (params.search) qs.set('search', params.search)
-  if (params.rol_id != null && params.rol_id !== '') qs.set('rol_id', String(params.rol_id))
-  if (params.segmento) qs.set('segmento', params.segmento)
-  if (params.estado) qs.set('estado', params.estado)
+  if (params.role_id != null && params.role_id !== '') qs.set('role_id', String(params.role_id))
+  if (params.segment) qs.set('segment', params.segment)
+  if (params.status) qs.set('status', params.status)
   const suffix = qs.toString() ? `?${qs}` : ''
   return apiFetch<UsersPage>(`/users${suffix}`)
 }
 
 export function createManagedUser(input: {
   email: string
-  nombre: string
+  name: string
   password: string
-  rol_id: number
-  segmento_id: number | null
-  activo?: boolean
+  role_id: number
+  segment_id: number | null
+  is_active?: boolean
 }): Promise<ManagedUser> {
   return apiFetch<ManagedUser>('/users', {
     method: 'POST',
@@ -170,11 +169,11 @@ export function updateManagedUser(
   id: number,
   input: Partial<{
     email: string
-    nombre: string
+    name: string
     password: string
-    rol_id: number
-    segmento_id: number | null
-    activo: boolean
+    role_id: number
+    segment_id: number | null
+    is_active: boolean
   }>,
 ): Promise<ManagedUser> {
   return apiFetch<ManagedUser>(`/users/${id}`, {

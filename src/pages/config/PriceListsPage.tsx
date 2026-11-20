@@ -1,19 +1,24 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { ArrowLeft, Check, Plus, Save, Search, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { Button } from '@/components/ui/button'
+import { AppBadge } from '@/components/ui/AppBadge'
+import { AppFilterField } from '@/components/ui/AppFilterField'
+import { AppButton } from '@/components/ui/AppButton'
+import { AppCard } from '@/components/ui/AppCard'
+import { AppCurrencyInput, AppInput, AppSearchInput } from '@/components/ui/AppInput'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  AppModal,
+  AppModalContent,
+  AppModalDescription,
+  AppModalHeader,
+  AppModalTitle,
+} from '@/components/ui/AppModal'
+import { AppSelect } from '@/components/ui/AppSelect'
+import { AppSwitch } from '@/components/ui/AppSwitch'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
-import { StatusPill } from '@/components/ui/StatusPill'
 import { useToast } from '@/context/ToastContext'
 import { usePriceListsConfig } from '@/hooks/useConfigCatalog'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -26,8 +31,8 @@ import type { PriceList, PriceListItem } from '@/types/catalog'
 /** Escalón editable (mensual + anual alineados por rango). */
 type ScaleTier = {
   localKey: string
-  cantidad_min: number
-  cantidad_max: number | null
+  min_quantity: number
+  max_quantity: number | null
   mensualId: number | null
   anualId: number | null
   unicoId: number | null
@@ -41,22 +46,22 @@ type ScaleTier = {
 
 type ProductGroup = {
   servicioId: number
-  codigo: string
-  nombre: string
+  code: string
+  name: string
   tiers: ScaleTier[]
   /** Forzar vista de escalones aunque solo haya un rango 1+. */
   forceVolumeUi: boolean
 }
 
 function countAssignedProducts(list: PriceList): number {
-  return new Set(list.items.map((item) => item.servicio_id)).size
+  return new Set(list.items.map((item) => item.service_id)).size
 }
 
 function isStandardSingleTier(tiers: ScaleTier[]): boolean {
   return (
     tiers.length === 1 &&
-    tiers[0].cantidad_min === 1 &&
-    tiers[0].cantidad_max === null
+    tiers[0].min_quantity === 1 &&
+    tiers[0].max_quantity === null
   )
 }
 
@@ -79,24 +84,24 @@ function rangesOverlap(
 
 function validateProductTiers(tiers: ScaleTier[]): string | null {
   for (const tier of tiers) {
-    if (!Number.isFinite(tier.cantidad_min) || tier.cantidad_min < 1) {
+    if (!Number.isFinite(tier.min_quantity) || tier.min_quantity < 1) {
       return 'Cada escalón debe iniciar en cantidad mínima ≥ 1.'
     }
-    if (tier.cantidad_max != null && tier.cantidad_max < tier.cantidad_min) {
-      return `Máximo (${tier.cantidad_max}) no puede ser menor que el mínimo (${tier.cantidad_min}).`
+    if (tier.max_quantity != null && tier.max_quantity < tier.min_quantity) {
+      return `Máximo (${tier.max_quantity}) no puede ser menor que el mínimo (${tier.min_quantity}).`
     }
   }
   for (let i = 0; i < tiers.length; i++) {
     for (let j = i + 1; j < tiers.length; j++) {
       if (
         rangesOverlap(
-          tiers[i].cantidad_min,
-          tiers[i].cantidad_max,
-          tiers[j].cantidad_min,
-          tiers[j].cantidad_max,
+          tiers[i].min_quantity,
+          tiers[i].max_quantity,
+          tiers[j].min_quantity,
+          tiers[j].max_quantity,
         )
       ) {
-        return `Los rangos ${formatRangeLabel(tiers[i].cantidad_min, tiers[i].cantidad_max)} y ${formatRangeLabel(tiers[j].cantidad_min, tiers[j].cantidad_max)} se traslapan.`
+        return `Los rangos ${formatRangeLabel(tiers[i].min_quantity, tiers[i].max_quantity)} y ${formatRangeLabel(tiers[j].min_quantity, tiers[j].max_quantity)} se traslapan.`
       }
     }
   }
@@ -108,29 +113,29 @@ function buildProductGroups(list: PriceList | undefined): ProductGroup[] {
   const byService = new Map<
     number,
     {
-      codigo: string
-      nombre: string
+      code: string
+      name: string
       byRange: Map<string, ScaleTier>
     }
   >()
 
   for (const item of list.items) {
-    let bucket = byService.get(item.servicio_id)
+    let bucket = byService.get(item.service_id)
     if (!bucket) {
       bucket = {
-        codigo: item.servicio_codigo,
-        nombre: item.servicio_nombre,
+        code: item.service_code,
+        name: item.service_name,
         byRange: new Map<string, ScaleTier>(),
       }
-      byService.set(item.servicio_id, bucket)
+      byService.set(item.service_id, bucket)
     }
-    const rangeKey = `${item.cantidad_min}:${item.cantidad_max ?? '∞'}`
+    const rangeKey = `${item.min_quantity}:${item.max_quantity ?? '∞'}`
     let tier = bucket.byRange.get(rangeKey)
     if (!tier) {
       tier = {
-        localKey: `db-${item.servicio_id}-${rangeKey}`,
-        cantidad_min: item.cantidad_min,
-        cantidad_max: item.cantidad_max,
+        localKey: `db-${item.service_id}-${rangeKey}`,
+        min_quantity: item.min_quantity,
+        max_quantity: item.max_quantity,
         mensualId: null,
         anualId: null,
         unicoId: null,
@@ -144,17 +149,17 @@ function buildProductGroups(list: PriceList | undefined): ProductGroup[] {
       bucket.byRange.set(rangeKey, tier)
     }
 
-    if (item.frecuencia === 'mensual') {
+    if (item.frequency === 'monthly') {
       tier.mensualId = item.id
-      tier.mensual = item.precio_unitario
+      tier.mensual = item.unit_price
       tier.hasMensual = true
-    } else if (item.frecuencia === 'anual') {
+    } else if (item.frequency === 'annual') {
       tier.anualId = item.id
-      tier.anual = item.precio_unitario
+      tier.anual = item.unit_price
       tier.hasAnual = true
-    } else if (item.frecuencia === 'unico') {
+    } else if (item.frequency === 'single') {
       tier.unicoId = item.id
-      tier.unico = item.precio_unitario
+      tier.unico = item.unit_price
       tier.hasUnico = true
     }
   }
@@ -162,17 +167,17 @@ function buildProductGroups(list: PriceList | undefined): ProductGroup[] {
   return [...byService.entries()]
     .map(([servicioId, data]) => {
       const tiers = [...data.byRange.values()].sort(
-        (a, b) => a.cantidad_min - b.cantidad_min,
+        (a, b) => a.min_quantity - b.min_quantity,
       )
       return {
         servicioId,
-        codigo: data.codigo,
-        nombre: data.nombre,
+        code: data.code,
+        name: data.name,
         tiers,
         forceVolumeUi: !isStandardSingleTier(tiers),
       }
     })
-    .sort((a, b) => a.codigo.localeCompare(b.codigo))
+    .sort((a, b) => a.code.localeCompare(b.code))
 }
 
 function normalizeMoneyInput(raw: string): string | null {
@@ -188,26 +193,21 @@ function snapshotItems(list: PriceList): Map<number, PriceListItem> {
 }
 
 const newListSchema = z.object({
-  nombre: z.string().min(3),
-  segmento_id: z.string().min(1),
-  moneda: z.enum(['MXN', 'USD']),
-  vigente_desde: z.string().min(8),
-  es_default: z.boolean(),
+  name: z.string().min(3),
+  segment_id: z.string().min(1),
+  currency: z.enum(['MXN', 'USD']),
+  valid_from: z.string().min(8),
+  is_default: z.boolean(),
 })
 
 const addItemSchema = z.object({
-  servicio_id: z.string().min(1),
-  frecuencia: z.enum(['mensual', 'anual', 'unico']),
-  precio_unitario: z.string().regex(/^\d+(\.\d{1,2})?$/),
+  service_id: z.string().min(1),
+  frequency: z.enum(['monthly', 'annual', 'single']),
+  unit_price: z.string().regex(/^\d+(\.\d{1,2})?$/),
 })
 
 type NewListForm = z.infer<typeof newListSchema>
 type AddItemForm = z.infer<typeof addItemSchema>
-
-const inputClass =
-  'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0066FF]/30 dark:border-white/[0.08] dark:bg-white/[0.05]'
-
-const coralBorder = 'border-[#EF4444] ring-1 ring-[#EF4444]/40'
 
 /**
  * Listas de precios — directorio + detalle con escalones RF-2.
@@ -234,8 +234,8 @@ export function PriceListsPage() {
   const [search, setSearch] = useState('')
   const { canCreate, canEdit, canDelete } = usePermissions()
   const {
-    segmento,
-    setSegmento,
+    segment,
+    setSegment,
     segmentOptions,
     isSegmentLocked,
   } = useSegmentLock()
@@ -256,18 +256,18 @@ export function PriceListsPage() {
   const filteredLists = useMemo(() => {
     const q = search.trim().toLowerCase()
     return lists.filter((list) => {
-      if (q && !list.nombre.toLowerCase().includes(q)) return false
-      if (segmento !== 'Todos' && list.segmento !== segmento) return false
-      if (moneda !== 'Todas' && list.moneda !== moneda) return false
+      if (q && !list.name.toLowerCase().includes(q)) return false
+      if (segment !== 'Todos' && list.segment_name !== segment) return false
+      if (moneda !== 'Todas' && list.currency !== moneda) return false
       if (vigencia === 'Vigentes') {
-        const fromOk = list.vigente_desde.slice(0, 10) <= today
-        const toOk = !list.vigente_hasta || list.vigente_hasta.slice(0, 10) >= today
-        if (!fromOk || !toOk || !list.activa) return false
+        const fromOk = list.valid_from.slice(0, 10) <= today
+        const toOk = !list.valid_until || list.valid_until.slice(0, 10) >= today
+        if (!fromOk || !toOk || !list.is_active) return false
       }
-      if (vigencia === 'Inactivas' && list.activa) return false
+      if (vigencia === 'Inactivas' && list.is_active) return false
       return true
     })
-  }, [lists, search, segmento, moneda, vigencia, today])
+  }, [lists, search, segment, moneda, vigencia, today])
 
   const pageRows = paginateRows(filteredLists, page, pageSize)
 
@@ -283,7 +283,7 @@ export function PriceListsPage() {
     if (!q) return groups
     return groups.filter(
       (g) =>
-        g.nombre.toLowerCase().includes(q) || g.codigo.toLowerCase().includes(q),
+        g.name.toLowerCase().includes(q) || g.code.toLowerCase().includes(q),
     )
   }, [groups, productSearch])
 
@@ -302,19 +302,19 @@ export function PriceListsPage() {
   const listForm = useForm<NewListForm>({
     resolver: zodResolver(newListSchema),
     defaultValues: {
-      nombre: '',
-      segmento_id: '1',
-      moneda: 'MXN',
-      vigente_desde: today,
-      es_default: false,
+      name: '',
+      segment_id: '1',
+      currency: 'MXN',
+      valid_from: today,
+      is_default: false,
     },
   })
 
   async function markAsDefault(list: (typeof lists)[number]) {
-    if (!canEdit('config_precios') || list.es_default) return
+    if (!canEdit('config_prices') || list.is_default) return
     try {
-      await updatePriceList({ id: list.id, data: { es_default: true } })
-      toast.success('Lista predeterminada', `${list.nombre} es ahora ★ Default.`)
+      await updatePriceList({ id: list.id, data: { is_default: true } })
+      toast.success('Lista predeterminada', `${list.name} es ahora ★ Default.`)
     } catch (error) {
       toast.apiError(error)
     }
@@ -322,7 +322,7 @@ export function PriceListsPage() {
 
   const itemForm = useForm<AddItemForm>({
     resolver: zodResolver(addItemSchema),
-    defaultValues: { servicio_id: '1', frecuencia: 'mensual', precio_unitario: '0.00' },
+    defaultValues: { service_id: '1', frequency: 'monthly', unit_price: '0.00' },
   })
 
   function updateTier(
@@ -353,29 +353,29 @@ export function PriceListsPage() {
     setGroups((prev) =>
       prev.map((g) => {
         if (g.servicioId !== servicioId) return g
-        const sorted = [...g.tiers].sort((a, b) => a.cantidad_min - b.cantidad_min)
+        const sorted = [...g.tiers].sort((a, b) => a.min_quantity - b.min_quantity)
         const last = sorted[sorted.length - 1]
         let nextMin = 1
         let patched = sorted
         if (last) {
-          if (last.cantidad_max == null) {
+          if (last.max_quantity == null) {
             // Cierra el “en adelante” en su mínimo para liberar el siguiente escalón.
             patched = sorted.map((tier, idx) =>
               idx === sorted.length - 1
-                ? { ...tier, cantidad_max: tier.cantidad_min }
+                ? { ...tier, max_quantity: tier.min_quantity }
                 : tier,
             )
-            nextMin = last.cantidad_min + 1
+            nextMin = last.min_quantity + 1
           } else {
-            nextMin = last.cantidad_max + 1
+            nextMin = last.max_quantity + 1
           }
         }
 
         const template = last ?? sorted[0]
         const newTier: ScaleTier = {
           localKey: `new-${servicioId}-${Date.now()}`,
-          cantidad_min: nextMin,
-          cantidad_max: null,
+          min_quantity: nextMin,
+          max_quantity: null,
           mensualId: null,
           anualId: null,
           unicoId: null,
@@ -418,11 +418,11 @@ export function PriceListsPage() {
     for (const group of groups) {
       if (validateProductTiers(group.tiers)) return null
       for (const tier of group.tiers) {
-        const min = tier.cantidad_min
-        const max = tier.cantidad_max
+        const min = tier.min_quantity
+        const max = tier.max_quantity
 
         const pushFreq = (
-          freq: 'mensual' | 'anual' | 'unico',
+          freq: 'monthly' | 'annual' | 'single',
           id: number | null,
           priceRaw: string,
           enabled: boolean,
@@ -435,34 +435,34 @@ export function PriceListsPage() {
             const prev = original.get(id)
             const patch: VolumeMatrixSavePlan['updates'][number] = { id }
             let dirty = false
-            if (!prev || prev.precio_unitario !== price) {
-              patch.precio_unitario = price
+            if (!prev || prev.unit_price !== price) {
+              patch.unit_price = price
               dirty = true
             }
-            if (!prev || prev.cantidad_min !== min) {
-              patch.cantidad_min = min
+            if (!prev || prev.min_quantity !== min) {
+              patch.min_quantity = min
               dirty = true
             }
-            if (!prev || prev.cantidad_max !== max) {
-              patch.cantidad_max = max
+            if (!prev || prev.max_quantity !== max) {
+              patch.max_quantity = max
               dirty = true
             }
             if (dirty) updates.push(patch)
           } else {
             creates.push({
-              lista_precio_id: list.id,
-              servicio_id: group.servicioId,
-              frecuencia: freq,
-              cantidad_min: min,
-              cantidad_max: max,
-              precio_unitario: price,
+              price_list_id: list.id,
+              service_id: group.servicioId,
+              frequency: freq,
+              min_quantity: min,
+              max_quantity: max,
+              unit_price: price,
             })
           }
         }
 
-        pushFreq('mensual', tier.mensualId, tier.mensual, tier.hasMensual)
-        pushFreq('anual', tier.anualId, tier.anual, tier.hasAnual)
-        pushFreq('unico', tier.unicoId, tier.unico, tier.hasUnico)
+        pushFreq('monthly', tier.mensualId, tier.mensual, tier.hasMensual)
+        pushFreq('annual', tier.anualId, tier.anual, tier.hasAnual)
+        pushFreq('single', tier.unicoId, tier.unico, tier.hasUnico)
       }
     }
 
@@ -506,10 +506,10 @@ export function PriceListsPage() {
     if (!selected || !removeTarget) return
     try {
       await removeProductFromPriceList({
-        lista_precio_id: selected.id,
-        servicio_id: removeTarget.servicioId,
+        price_list_id: selected.id,
+        service_id: removeTarget.servicioId,
       })
-      toast.success('Producto quitado', `${removeTarget.nombre} ya no está en esta lista.`)
+      toast.success('Producto quitado', `${removeTarget.name} ya no está en esta lista.`)
       setRemoveTarget(null)
     } catch (error) {
       toast.apiError(error)
@@ -519,13 +519,13 @@ export function PriceListsPage() {
   if (isLoading) return <Skeleton className="h-64 w-full rounded-2xl" />
   if (isApiError) {
     return (
-      <section className="glass-panel border-red-500/30 p-5">
+      <AppCard className="border-red-500/30 p-5">
         <h2 className="font-heading font-semibold text-red-500">Error</h2>
         <p className="text-sm text-slate-500">{errorMessage}</p>
-        <Button className="mt-4 rounded-xl" onClick={() => void refetch()}>
+        <AppButton className="mt-4" onClick={() => void refetch()}>
           Reintentar
-        </Button>
-      </section>
+        </AppButton>
+      </AppCard>
     )
   }
 
@@ -534,22 +534,23 @@ export function PriceListsPage() {
     const productCount = countAssignedProducts(selected)
     return (
       <div className="space-y-5">
-        <button
+        <AppButton
           type="button"
+          variant="ghost"
           onClick={() => {
             setEditingListId(null)
             setProductSearch('')
           }}
-          className="inline-flex items-center gap-1.5 text-sm text-[#0066FF] dark:text-[#0A84FF]"
+          className="h-auto justify-start px-2 text-sm font-normal text-[#0066FF] hover:bg-transparent dark:text-[#0A84FF]"
         >
           <ArrowLeft className="h-4 w-4" /> Volver a todas las listas
-        </button>
+        </AppButton>
 
         <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="font-heading text-2xl font-semibold">{selected.nombre}</h1>
+            <h1 className="font-heading text-2xl font-semibold">{selected.name}</h1>
             <p className="mt-1 text-sm text-slate-500">
-              {selected.segmento} · {selected.moneda} · {productCount}{' '}
+              {selected.segment_name || '—'} · {selected.currency} · {productCount}{' '}
               {productCount === 1 ? 'producto en esta lista' : 'productos en esta lista'}
             </p>
           </div>
@@ -559,28 +560,26 @@ export function PriceListsPage() {
                 <Check className="h-4 w-4" /> Guardado
               </p>
             )}
-            {canCreate('config_precios') && (
-              <Button
+            {canCreate('config_prices') && (
+              <AppButton
                 className="rounded-xl bg-[#0066FF] text-white dark:bg-[#0A84FF]"
                 onClick={() => setAddItemOpen(true)}
               >
                 <Plus className="mr-1 h-4 w-4" /> Agregar producto a la lista
-              </Button>
+              </AppButton>
             )}
           </div>
         </header>
 
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={productSearch}
-            onChange={(e) => setProductSearch(e.target.value)}
-            placeholder="Buscar producto en esta lista…"
-            className="w-full rounded-2xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
-          />
-        </div>
+        <AppSearchInput
+          value={productSearch}
+          onChange={(e) => setProductSearch(e.target.value)}
+          onClear={() => setProductSearch('')}
+          placeholder="Buscar producto en esta lista…"
+          aria-label="Buscar producto en esta lista"
+        />
 
-        <section className="glass-panel overflow-hidden p-0">
+        <AppCard className="overflow-hidden p-0">
           <div className="hidden overflow-x-auto lg:block">
             <table className="w-full text-sm">
               <thead>
@@ -606,22 +605,24 @@ export function PriceListsPage() {
                         className="border-b border-slate-100 dark:border-white/[0.04]"
                       >
                         <td className="px-4 py-3 align-top">
-                          <p className="font-medium">{group.nombre}</p>
-                          <p className="font-mono text-xs text-slate-500">{group.codigo}</p>
+                          <p className="font-medium">{group.name}</p>
+                          <p className="font-mono text-xs text-slate-500">{group.code}</p>
                         </td>
                         <td className="px-4 py-3 align-top">
                           <div className="space-y-2">
                             <span className="inline-flex rounded-full border border-slate-200/80 bg-slate-50 px-2.5 py-1 text-xs dark:border-white/[0.08] dark:bg-white/[0.04]">
-                              {formatRangeLabel(single.cantidad_min, single.cantidad_max)}
+                              {formatRangeLabel(single.min_quantity, single.max_quantity)}
                             </span>
-                            {canEdit('config_precios') && (
-                              <button
+                            {canEdit('config_prices') && (
+                              <AppButton
                                 type="button"
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => addVolumeTier(group.servicioId)}
-                                className="block text-left text-[11px] text-[#0066FF] dark:text-[#0A84FF]"
+                                className="h-auto justify-start px-0 text-[11px] font-normal text-[#0066FF] hover:bg-transparent dark:text-[#0A84FF]"
                               >
                                 + Agregar escalón por volumen
-                              </button>
+                              </AppButton>
                             )}
                           </div>
                         </td>
@@ -629,7 +630,7 @@ export function PriceListsPage() {
                           {single.hasMensual ? (
                             <MoneyInput
                               value={single.mensual}
-                              currency={selected.moneda}
+                              currency={selected.currency}
                               onChange={(v) =>
                                 updateTier(group.servicioId, single.localKey, {
                                   mensual: v,
@@ -639,7 +640,7 @@ export function PriceListsPage() {
                           ) : single.hasUnico ? (
                             <MoneyInput
                               value={single.unico}
-                              currency={selected.moneda}
+                              currency={selected.currency}
                               onChange={(v) =>
                                 updateTier(group.servicioId, single.localKey, {
                                   unico: v,
@@ -657,7 +658,7 @@ export function PriceListsPage() {
                           {single.hasAnual ? (
                             <MoneyInput
                               value={single.anual}
-                              currency={selected.moneda}
+                              currency={selected.currency}
                               onChange={(v) =>
                                 updateTier(group.servicioId, single.localKey, {
                                   anual: v,
@@ -669,16 +670,18 @@ export function PriceListsPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right align-top">
-                          {canDelete('config_precios') && (
-                            <button
+                          {canDelete('config_prices') && (
+                            <AppButton
                               type="button"
+                              variant="ghost"
+                              size="icon"
                               title="Quitar de la lista"
                               aria-label="Quitar de la lista"
                               onClick={() => setRemoveTarget(group)}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-red-500/10 hover:text-red-500"
+                              className="text-slate-400 hover:bg-red-500/10 hover:text-red-500"
                             >
                               <Trash2 className="h-4 w-4" />
-                            </button>
+                            </AppButton>
                           )}
                         </td>
                       </tr>
@@ -696,21 +699,23 @@ export function PriceListsPage() {
                       <td className="px-4 py-3 align-top">
                         {idx === 0 && (
                           <>
-                            <p className="font-medium">{group.nombre}</p>
-                            <p className="font-mono text-xs text-slate-500">{group.codigo}</p>
+                            <p className="font-medium">{group.name}</p>
+                            <p className="font-mono text-xs text-slate-500">{group.code}</p>
                             {err && (
                               <p className="mt-2 max-w-[14rem] text-[11px] text-[#EF4444]">
                                 {err}
                               </p>
                             )}
-                            {canEdit('config_precios') && (
-                              <button
+                            {canEdit('config_prices') && (
+                              <AppButton
                                 type="button"
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => addVolumeTier(group.servicioId)}
-                                className="mt-2 text-[11px] text-[#0066FF] dark:text-[#0A84FF]"
+                                className="mt-2 h-auto justify-start px-0 text-[11px] font-normal text-[#0066FF] hover:bg-transparent dark:text-[#0A84FF]"
                               >
                                 + Agregar escalón por volumen
-                              </button>
+                              </AppButton>
                             )}
                           </>
                         )}
@@ -719,64 +724,65 @@ export function PriceListsPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <label className="text-[10px] uppercase text-slate-400">
                             Desde
-                            <input
+                            <AppInput
                               type="number"
                               min={1}
-                              value={tier.cantidad_min}
-                              disabled={!canEdit('config_precios')}
+                              mono
+                              value={tier.min_quantity}
+                              disabled={!canEdit('config_prices')}
                               onChange={(e) => {
                                 enableVolumeUi(group.servicioId)
                                 updateTier(group.servicioId, tier.localKey, {
-                                  cantidad_min: Math.max(1, Number(e.target.value) || 1),
+                                  min_quantity: Math.max(1, Number(e.target.value) || 1),
                                 })
                               }}
-                              className={cn(
-                                'mt-0.5 w-16 rounded-lg border bg-white px-2 py-1.5 font-mono text-xs tabular-nums dark:bg-white/[0.05]',
-                                err ? coralBorder : 'border-slate-200 dark:border-white/[0.08]',
-                              )}
+                              error={Boolean(err)}
+                              className="mt-0.5 w-16 rounded-lg px-2 py-1.5 text-xs"
                             />
                           </label>
                           <label className="text-[10px] uppercase text-slate-400">
                             Hasta
-                            <input
+                            <AppInput
                               type="number"
                               min={1}
+                              mono
                               placeholder="∞"
-                              value={tier.cantidad_max ?? ''}
-                              disabled={!canEdit('config_precios')}
+                              value={tier.max_quantity ?? ''}
+                              disabled={!canEdit('config_prices')}
                               onChange={(e) => {
                                 enableVolumeUi(group.servicioId)
                                 const raw = e.target.value.trim()
                                 updateTier(group.servicioId, tier.localKey, {
-                                  cantidad_max: raw === '' ? null : Math.max(1, Number(raw) || 1),
+                                  max_quantity: raw === '' ? null : Math.max(1, Number(raw) || 1),
                                 })
                               }}
-                              className={cn(
-                                'mt-0.5 w-16 rounded-lg border bg-white px-2 py-1.5 font-mono text-xs tabular-nums dark:bg-white/[0.05]',
-                                err ? coralBorder : 'border-slate-200 dark:border-white/[0.08]',
-                              )}
+                              error={Boolean(err)}
+                              className="mt-0.5 w-16 rounded-lg px-2 py-1.5 text-xs"
                             />
                           </label>
-                          {canEdit('config_precios') && group.tiers.length > 1 && (
-                            <button
+                          {canEdit('config_prices') && group.tiers.length > 1 && (
+                            <AppButton
                               type="button"
+                              variant="ghost"
+                              size="icon"
                               title="Quitar escalón"
+                              aria-label="Quitar escalón"
                               onClick={() => removeTier(group.servicioId, tier.localKey)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-500"
+                              className="h-8 w-8 text-slate-400 hover:bg-red-500/10 hover:text-red-500"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
-                            </button>
+                            </AppButton>
                           )}
                         </div>
                         <p className="mt-1 font-mono text-[10px] text-slate-400 tabular-nums">
-                          {formatRangeLabel(tier.cantidad_min, tier.cantidad_max)}
+                          {formatRangeLabel(tier.min_quantity, tier.max_quantity)}
                         </p>
                       </td>
                       <td className="px-4 py-3 align-top">
                         {tier.hasMensual ? (
                           <MoneyInput
                             value={tier.mensual}
-                            currency={selected.moneda}
+                            currency={selected.currency}
                             invalid={Boolean(err)}
                             onChange={(v) =>
                               updateTier(group.servicioId, tier.localKey, { mensual: v })
@@ -785,7 +791,7 @@ export function PriceListsPage() {
                         ) : tier.hasUnico ? (
                           <MoneyInput
                             value={tier.unico}
-                            currency={selected.moneda}
+                            currency={selected.currency}
                             invalid={Boolean(err)}
                             onChange={(v) =>
                               updateTier(group.servicioId, tier.localKey, { unico: v })
@@ -799,7 +805,7 @@ export function PriceListsPage() {
                         {tier.hasAnual ? (
                           <MoneyInput
                             value={tier.anual}
-                            currency={selected.moneda}
+                            currency={selected.currency}
                             invalid={Boolean(err)}
                             onChange={(v) =>
                               updateTier(group.servicioId, tier.localKey, { anual: v })
@@ -810,15 +816,17 @@ export function PriceListsPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right align-top">
-                        {idx === 0 && canDelete('config_precios') && (
-                          <button
+                        {idx === 0 && canDelete('config_prices') && (
+                          <AppButton
                             type="button"
+                            variant="ghost"
+                            size="icon"
                             title="Quitar producto de la lista"
                             onClick={() => setRemoveTarget(group)}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-red-500/10 hover:text-red-500"
+                            className="text-slate-400 hover:bg-red-500/10 hover:text-red-500"
                           >
                             <Trash2 className="h-4 w-4" />
-                          </button>
+                          </AppButton>
                         )}
                       </td>
                     </tr>
@@ -835,26 +843,26 @@ export function PriceListsPage() {
               const showVolume =
                 group.forceVolumeUi || !isStandardSingleTier(group.tiers)
               return (
-                <article
+                <AppCard
                   key={group.servicioId}
-                  className={cn(
-                    'rounded-2xl border p-3 dark:border-white/[0.08]',
-                    err ? 'border-[#EF4444]/50' : 'border-slate-200/80',
-                  )}
+                  className={cn('p-3', err && 'border-[#EF4444]/50')}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-medium">{group.nombre}</p>
-                      <p className="font-mono text-xs text-slate-500">{group.codigo}</p>
+                      <p className="font-medium">{group.name}</p>
+                      <p className="font-mono text-xs text-slate-500">{group.code}</p>
                     </div>
-                    {canDelete('config_precios') && (
-                      <button
+                    {canDelete('config_prices') && (
+                      <AppButton
                         type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Quitar de la lista"
                         onClick={() => setRemoveTarget(group)}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-red-500/10 hover:text-red-500"
+                        className="text-slate-400 hover:bg-red-500/10 hover:text-red-500"
                       >
                         <Trash2 className="h-4 w-4" />
-                      </button>
+                      </AppButton>
                     )}
                   </div>
                   {err && <p className="mt-2 text-[11px] text-[#EF4444]">{err}</p>}
@@ -867,45 +875,43 @@ export function PriceListsPage() {
                         <div className="flex gap-2">
                           <label className="flex-1 text-[10px] uppercase text-slate-400">
                             Desde
-                            <input
+                            <AppInput
                               type="number"
                               min={1}
-                              value={tier.cantidad_min}
+                              mono
+                              value={tier.min_quantity}
                               onChange={(e) =>
                                 updateTier(group.servicioId, tier.localKey, {
-                                  cantidad_min: Math.max(1, Number(e.target.value) || 1),
+                                  min_quantity: Math.max(1, Number(e.target.value) || 1),
                                 })
                               }
-                              className={cn(
-                                'mt-0.5 w-full rounded-lg border px-2 py-1.5 font-mono text-xs tabular-nums',
-                                err ? coralBorder : 'border-slate-200 dark:border-white/[0.08]',
-                              )}
+                              error={Boolean(err)}
+                              className="mt-0.5 rounded-lg px-2 py-1.5 text-xs"
                             />
                           </label>
                           <label className="flex-1 text-[10px] uppercase text-slate-400">
                             Hasta
-                            <input
+                            <AppInput
                               type="number"
                               min={1}
+                              mono
                               placeholder="∞"
-                              value={tier.cantidad_max ?? ''}
+                              value={tier.max_quantity ?? ''}
                               onChange={(e) => {
                                 const raw = e.target.value.trim()
                                 updateTier(group.servicioId, tier.localKey, {
-                                  cantidad_max:
+                                  max_quantity:
                                     raw === '' ? null : Math.max(1, Number(raw) || 1),
                                 })
                               }}
-                              className={cn(
-                                'mt-0.5 w-full rounded-lg border px-2 py-1.5 font-mono text-xs tabular-nums',
-                                err ? coralBorder : 'border-slate-200 dark:border-white/[0.08]',
-                              )}
+                              error={Boolean(err)}
+                              className="mt-0.5 rounded-lg px-2 py-1.5 text-xs"
                             />
                           </label>
                         </div>
                       ) : (
                         <p className="text-xs text-slate-500">
-                          {formatRangeLabel(tier.cantidad_min, tier.cantidad_max)}
+                          {formatRangeLabel(tier.min_quantity, tier.max_quantity)}
                         </p>
                       )}
                       {tier.hasMensual && (
@@ -914,7 +920,7 @@ export function PriceListsPage() {
                           <MoneyInput
                             className="mt-1"
                             value={tier.mensual}
-                            currency={selected.moneda}
+                            currency={selected.currency}
                             invalid={Boolean(err)}
                             onChange={(v) =>
                               updateTier(group.servicioId, tier.localKey, { mensual: v })
@@ -928,7 +934,7 @@ export function PriceListsPage() {
                           <MoneyInput
                             className="mt-1"
                             value={tier.anual}
-                            currency={selected.moneda}
+                            currency={selected.currency}
                             invalid={Boolean(err)}
                             onChange={(v) =>
                               updateTier(group.servicioId, tier.localKey, { anual: v })
@@ -942,7 +948,7 @@ export function PriceListsPage() {
                           <MoneyInput
                             className="mt-1"
                             value={tier.unico}
-                            currency={selected.moneda}
+                            currency={selected.currency}
                             invalid={Boolean(err)}
                             onChange={(v) =>
                               updateTier(group.servicioId, tier.localKey, { unico: v })
@@ -952,16 +958,18 @@ export function PriceListsPage() {
                       )}
                     </div>
                   ))}
-                  {canEdit('config_precios') && (
-                    <button
+                  {canEdit('config_prices') && (
+                    <AppButton
                       type="button"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => addVolumeTier(group.servicioId)}
-                      className="mt-3 text-[11px] text-[#0066FF] dark:text-[#0A84FF]"
+                      className="mt-3 h-auto justify-start px-0 text-[11px] font-normal text-[#0066FF] hover:bg-transparent dark:text-[#0A84FF]"
                     >
                       + Agregar escalón por volumen
-                    </button>
+                    </AppButton>
                   )}
-                </article>
+                </AppCard>
               )
             })}
           </div>
@@ -974,47 +982,42 @@ export function PriceListsPage() {
                   ? 'Hay cambios de precios o escalones sin guardar.'
                   : 'Sin cambios pendientes'}
             </p>
-            {canEdit('config_precios') && (
-              <Button
+            {canEdit('config_prices') && (
+              <AppButton
                 type="button"
-                disabled={!hasChanges || hasRangeErrors || isSaving}
+                disabled={!hasChanges || hasRangeErrors}
+                isLoading={isSaving}
                 onClick={() => void onSavePrices()}
-                className={cn(
-                  'rounded-xl',
-                  hasChanges && !hasRangeErrors
-                    ? 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-600'
-                    : 'cursor-not-allowed bg-slate-200 text-slate-500 opacity-60 dark:bg-white/[0.06] dark:text-slate-400',
-                )}
               >
-                <Save className="mr-1 h-4 w-4" />
-                {isSaving ? 'Guardando…' : 'Guardar cambios'}
-              </Button>
+                <Save className="h-4 w-4" />
+                Guardar cambios
+              </AppButton>
             )}
           </footer>
-        </section>
+        </AppCard>
 
-        <Dialog open={addItemOpen} onOpenChange={setAddItemOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Agregar producto</DialogTitle>
-              <DialogDescription>
+        <AppModal open={addItemOpen} onOpenChange={setAddItemOpen}>
+          <AppModalContent>
+            <AppModalHeader>
+              <AppModalTitle>Agregar producto</AppModalTitle>
+              <AppModalDescription>
                 Nueva asignación con rango inicial 1+ (precio único). Puedes agregar escalones
                 después.
-              </DialogDescription>
-            </DialogHeader>
+              </AppModalDescription>
+            </AppModalHeader>
             <form
               className="space-y-3"
               onSubmit={itemForm.handleSubmit(async (values) => {
-                const precio = normalizeMoneyInput(values.precio_unitario)
+                const precio = normalizeMoneyInput(values.unit_price)
                 if (!precio) return
                 try {
                   await createPriceListItem({
-                    lista_precio_id: selected.id,
-                    servicio_id: Number(values.servicio_id),
-                    frecuencia: values.frecuencia,
-                    cantidad_min: 1,
-                    cantidad_max: null,
-                    precio_unitario: precio,
+                    price_list_id: selected.id,
+                    service_id: Number(values.service_id),
+                    frequency: values.frequency,
+                    min_quantity: 1,
+                    max_quantity: null,
+                    unit_price: precio,
                   })
                   toast.success('Producto agregado', 'Ya está disponible en esta lista.')
                   setAddItemOpen(false)
@@ -1025,60 +1028,70 @@ export function PriceListsPage() {
             >
               <label className="block text-sm">
                 Producto
-                <select className={inputClass} {...itemForm.register('servicio_id')}>
-                  {services.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nombre}
-                    </option>
-                  ))}
-                </select>
+                <AppSelect
+                  withLabelSpacing
+                  value={itemForm.watch('service_id')}
+                  onValueChange={(value) =>
+                    itemForm.setValue('service_id', value, { shouldValidate: true })
+                  }
+                  options={services.map((service) => ({
+                    value: String(service.id),
+                    label: service.name,
+                  }))}
+                />
               </label>
               <label className="block text-sm">
                 Frecuencia
-                <select className={inputClass} {...itemForm.register('frecuencia')}>
-                  <option value="mensual">Mensual</option>
-                  <option value="anual">Anual</option>
-                  <option value="unico">Único</option>
-                </select>
+                <AppSelect
+                  withLabelSpacing
+                  value={itemForm.watch('frequency')}
+                  onValueChange={(value) =>
+                    itemForm.setValue('frequency', value as AddItemForm['frequency'], {
+                      shouldValidate: true,
+                    })
+                  }
+                  options={[
+                    { value: 'monthly', label: 'Mensual' },
+                    { value: 'annual', label: 'Anual' },
+                    { value: 'single', label: 'Único' },
+                  ]}
+                />
               </label>
               <label className="block text-sm">
                 Precio
-                <input
-                  className={cn(inputClass, 'font-mono')}
-                  {...itemForm.register('precio_unitario')}
-                />
+                <AppCurrencyInput withLabelSpacing {...itemForm.register('unit_price')} />
               </label>
-              <Button type="submit" className="w-full rounded-xl">
+              <AppButton type="submit" className="w-full rounded-xl">
                 Agregar
-              </Button>
+              </AppButton>
             </form>
-          </DialogContent>
-        </Dialog>
+          </AppModalContent>
+        </AppModal>
 
-        <Dialog
+        <AppModal
           open={removeTarget != null}
           onOpenChange={(open) => {
             if (!open) setRemoveTarget(null)
           }}
         >
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Quitar producto de la lista</DialogTitle>
-              <DialogDescription>
+          <AppModalContent className="max-w-lg">
+            <AppModalHeader>
+              <AppModalTitle>Quitar producto de la lista</AppModalTitle>
+              <AppModalDescription>
                 Se eliminarán todos los escalones de este producto en la lista. Los contratos
                 activos conservan su precio pactado.
-              </DialogDescription>
-            </DialogHeader>
+              </AppModalDescription>
+            </AppModalHeader>
             {removeTarget && (
               <p className="rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-sm dark:border-white/[0.08] dark:bg-white/[0.04]">
-                <span className="font-medium">{removeTarget.nombre}</span>
+                <span className="font-medium">{removeTarget.name}</span>
                 <span className="ml-2 font-mono text-xs text-slate-500">
-                  {removeTarget.codigo}
+                  {removeTarget.code}
                 </span>
               </p>
             )}
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button
+              <AppButton
                 type="button"
                 variant="outline"
                 className="rounded-xl"
@@ -1086,18 +1099,18 @@ export function PriceListsPage() {
                 disabled={isSaving}
               >
                 Cancelar
-              </Button>
-              <Button
+              </AppButton>
+              <AppButton
                 type="button"
-                className="rounded-xl bg-red-600 text-white hover:bg-red-700"
+                variant="danger"
+                isLoading={isSaving}
                 onClick={() => void onConfirmRemove()}
-                disabled={isSaving}
               >
-                {isSaving ? 'Quitando…' : 'Quitar de la lista'}
-              </Button>
+                Quitar de la lista
+              </AppButton>
             </div>
-          </DialogContent>
-        </Dialog>
+          </AppModalContent>
+        </AppModal>
       </div>
     )
   }
@@ -1112,37 +1125,41 @@ export function PriceListsPage() {
             Elige una lista para ver precios y escalones por volumen (RF-2).
           </p>
         </div>
-        {canCreate('config_precios') && (
-          <Button className="rounded-xl" onClick={() => setNewListOpen(true)}>
+        {canCreate('config_prices') && (
+          <AppButton className="rounded-xl" onClick={() => setNewListOpen(true)}>
             <Plus className="mr-1 h-4 w-4" /> Nueva lista
-          </Button>
+          </AppButton>
         )}
       </header>
 
-      <div className="glass-panel space-y-3 p-4">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setPage(1)
-            }}
-            placeholder="Buscar lista por nombre…"
-            className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm dark:border-white/[0.08] dark:bg-white/[0.05]"
-          />
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <AppCard className="space-y-3 p-4">
+        <AppSearchInput
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setPage(1)
+          }}
+          onClear={() => {
+            setSearch('')
+            setPage(1)
+          }}
+          placeholder="Buscar lista por nombre…"
+          aria-label="Buscar lista por nombre"
+        />
+        <div className="flex flex-wrap items-end gap-3">
           <PillFilter
-            value={segmento}
+            label="Segmento"
+            value={segment}
             options={segmentOptions}
+            disabled={isSegmentLocked}
             onChange={(v) => {
               if (isSegmentLocked) return
-              setSegmento(v)
+              setSegment(v)
               setPage(1)
             }}
           />
           <PillFilter
+            label="Moneda"
             value={moneda}
             options={['Todas', 'MXN', 'USD']}
             onChange={(v) => {
@@ -1151,6 +1168,7 @@ export function PriceListsPage() {
             }}
           />
           <PillFilter
+            label="Vigencia"
             value={vigencia}
             options={['Todas', 'Vigentes', 'Inactivas']}
             onChange={(v) => {
@@ -1159,53 +1177,53 @@ export function PriceListsPage() {
             }}
           />
         </div>
-      </div>
+      </AppCard>
 
-      <section className="glass-panel space-y-3 p-4">
+      <AppCard className="space-y-3 p-4">
         {pageRows.map((list) => {
           const products = countAssignedProducts(list)
           return (
-            <article
+            <AppCard
               key={list.id}
-              className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/[0.08]"
+              className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
             >
               <div>
-                <p className="font-heading font-semibold">{list.nombre}</p>
+                <p className="font-heading font-semibold">{list.name}</p>
                 <p className="mt-1 text-xs text-slate-500">
-                  {list.segmento} · {list.moneda} · vigente desde {list.vigente_desde.slice(0, 10)}
+                  {list.segment_name || '—'} · {list.currency} · vigente desde {list.valid_from.slice(0, 10)}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <StatusPill
+                  <AppBadge
                     label={`${products} ${
                       products === 1 ? 'producto en esta lista' : 'productos en esta lista'
                     }`}
                     tone="info"
                   />
-                  <StatusPill
-                    label={list.activa ? 'Activa' : 'Inactiva'}
-                    tone={list.activa ? 'positive' : 'neutral'}
+                  <AppBadge
+                    label={list.is_active ? 'Activa' : 'Inactiva'}
+                    tone={list.is_active ? 'success' : 'neutral'}
                   />
-                  {list.es_default && (
-                    <StatusPill label="★ Default" tone="warning" />
+                  {list.is_default && (
+                    <AppBadge label="★ Default" tone="warning" />
                   )}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {canEdit('config_precios') && !list.es_default && (
-                  <Button
+                {canEdit('config_prices') && !list.is_default && (
+                  <AppButton
                     type="button"
                     variant="outline"
                     className="rounded-xl"
                     onClick={() => void markAsDefault(list)}
                   >
                     Predeterminada (Default)
-                  </Button>
+                  </AppButton>
                 )}
-                <Button className="rounded-xl" onClick={() => setEditingListId(list.id)}>
+                <AppButton className="rounded-xl" onClick={() => setEditingListId(list.id)}>
                   Ver / Editar precios
-                </Button>
+                </AppButton>
               </div>
-            </article>
+            </AppCard>
           )
         })}
         {filteredLists.length === 0 && (
@@ -1218,31 +1236,31 @@ export function PriceListsPage() {
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
         />
-      </section>
+      </AppCard>
 
-      <Dialog open={newListOpen} onOpenChange={setNewListOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nueva lista de precios</DialogTitle>
-            <DialogDescription>Se guarda en MySQL de inmediato.</DialogDescription>
-          </DialogHeader>
+      <AppModal open={newListOpen} onOpenChange={setNewListOpen}>
+        <AppModalContent>
+          <AppModalHeader>
+            <AppModalTitle>Nueva lista de precios</AppModalTitle>
+            <AppModalDescription>Se guarda en MySQL de inmediato.</AppModalDescription>
+          </AppModalHeader>
           <form
             className="space-y-3"
             onSubmit={listForm.handleSubmit(async (values) => {
               try {
                 await createPriceList({
-                  nombre: values.nombre,
-                  segmento_id: Number(values.segmento_id),
-                  moneda: values.moneda,
-                  vigente_desde: values.vigente_desde,
-                  es_default: values.es_default,
-                  activa: true,
+                  name: values.name,
+                  segment_id: Number(values.segment_id),
+                  currency: values.currency,
+                  valid_from: values.valid_from,
+                  is_default: values.is_default,
+                  is_active: true,
                 })
                 toast.success(
                   'Lista creada',
-                  values.es_default
-                    ? `${values.nombre} marcada como ★ Default.`
-                    : values.nombre,
+                  values.is_default
+                    ? `${values.name} marcada como ★ Default.`
+                    : values.name,
                 )
                 setNewListOpen(false)
               } catch (error) {
@@ -1252,68 +1270,103 @@ export function PriceListsPage() {
           >
             <label className="block text-sm">
               Nombre
-              <input className={inputClass} {...listForm.register('nombre')} />
+              <AppInput withLabelSpacing {...listForm.register('name')} />
             </label>
             <label className="block text-sm">
               Segmento
-              <select className={inputClass} {...listForm.register('segmento_id')}>
-                {segments.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nombre}
-                  </option>
-                ))}
-              </select>
+              <AppSelect
+                withLabelSpacing
+                value={listForm.watch('segment_id')}
+                onValueChange={(value) =>
+                  listForm.setValue('segment_id', value, { shouldValidate: true })
+                }
+                options={segments.map((segmentOption) => ({
+                  value: String(segmentOption.id),
+                  label: segmentOption.name,
+                }))}
+              />
             </label>
             <label className="block text-sm">
               Moneda
-              <select className={inputClass} {...listForm.register('moneda')}>
-                <option value="MXN">MXN</option>
-                <option value="USD">USD</option>
-              </select>
+              <AppSelect
+                withLabelSpacing
+                value={listForm.watch('currency')}
+                onValueChange={(value) =>
+                  listForm.setValue('currency', value as NewListForm['currency'], {
+                    shouldValidate: true,
+                  })
+                }
+                options={[
+                  { value: 'MXN', label: 'MXN' },
+                  { value: 'USD', label: 'USD' },
+                ]}
+              />
             </label>
             <label className="block text-sm">
               Vigente desde
-              <input type="date" className={inputClass} {...listForm.register('vigente_desde')} />
+              <AppInput type="date" withLabelSpacing {...listForm.register('valid_from')} />
             </label>
             <label className="flex items-center gap-3 text-sm">
-              <input type="checkbox" {...listForm.register('es_default')} />
+              <AppSwitch
+                checked={listForm.watch('is_default')}
+                onCheckedChange={(next) =>
+                  listForm.setValue('is_default', next, { shouldValidate: true })
+                }
+                label="Predeterminada (Default) para este segmento y moneda"
+              />
               Predeterminada (Default) para este segmento y moneda
             </label>
-            <Button type="submit" className="w-full rounded-xl">
+            <AppButton type="submit" className="w-full rounded-xl">
               Crear lista
-            </Button>
+            </AppButton>
           </form>
-        </DialogContent>
-      </Dialog>
+        </AppModalContent>
+      </AppModal>
     </div>
   )
 }
 
 function PillFilter({
+  label,
   value,
   options,
   onChange,
+  disabled = false,
 }: {
+  label: string
   value: string
-  options: string[]
+  options: Array<string | { value: string; label: string }>
   onChange: (v: string) => void
+  disabled?: boolean
 }) {
   return (
-    <div className="ios-pill-track">
-      {options.map((opt) => (
-        <button
-          key={opt}
-          type="button"
-          onClick={() => onChange(opt)}
-          className={cn(
-            'rounded-xl px-2.5 py-1 text-xs',
-            value === opt ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
-          )}
-        >
-          {opt}
-        </button>
-      ))}
-    </div>
+    <AppFilterField label={label}>
+      <div className="ios-pill-track" role="group" aria-label={label}>
+        {options.map((opt) => {
+          const item = typeof opt === 'string' ? { value: opt, label: opt } : opt
+          const active = value === item.value
+          return (
+            <AppButton
+              key={item.value}
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={disabled}
+              onClick={() => onChange(item.value)}
+              className={cn(
+                'h-auto rounded-xl px-2.5 py-1 text-xs font-normal',
+                active
+                  ? 'bg-[#0066FF] font-medium text-white hover:bg-[#0055DD] hover:text-white dark:bg-[#0A84FF] dark:text-white dark:hover:bg-[#0A74E0]'
+                  : 'text-slate-600 dark:text-slate-300',
+                disabled && 'cursor-not-allowed opacity-80',
+              )}
+            >
+              {item.label}
+            </AppButton>
+          )
+        })}
+      </div>
+    </AppFilterField>
   )
 }
 
@@ -1335,14 +1388,12 @@ function MoneyInput({
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
         {currency === 'USD' ? 'US$' : '$'}
       </span>
-      <input
+      <AppCurrencyInput
         value={value}
         onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ''))}
-        className={cn(
-          'w-full rounded-xl border bg-white py-2 pl-8 pr-3 font-mono text-sm tabular-nums dark:bg-white/[0.05]',
-          invalid ? coralBorder : 'border-slate-200 dark:border-white/[0.08]',
-        )}
         inputMode="decimal"
+        error={invalid}
+        className="pl-8 text-left"
       />
     </div>
   )

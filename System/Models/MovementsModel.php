@@ -8,12 +8,12 @@ use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 
 /**
- * Bitácora inmutable de MRR (`movimiento`) — RNF-3.
- * Solo INSERT (o INSERT de reversión). UPDATE/DELETE estánados en Eloquent + triggers MySQL.
+ * Bitácora inmutable de MRR (`movements`) — RNF-3.
+ * Solo INSERT (o INSERT de reversión). UPDATE/DELETE bloqueados en Eloquent y por triggers MySQL.
  */
 final class MovementsModel extends Model
 {
-    protected $table = 'movimiento';
+    protected $table = 'movements';
 
     /** Alias obligatorio del framework operam/servicios. */
     public $alias = 'mov';
@@ -22,42 +22,43 @@ final class MovementsModel extends Model
 
     /** @var list<string> */
     protected $fillable = [
-        'contrato_id',
-        'contrato_linea_id',
-        'servicio_id',
-        'tipo',
-        'categoria_mrr',
-        'fecha_efectiva',
-        'cantidad_antes',
-        'cantidad_despues',
-        'mrr_antes',
-        'mrr_despues',
+        'contract_id',
+        'contract_line_id',
+        'service_id',
+        'movement_type',
+        'mrr_category',
+        'effective_date',
+        'quantity_before',
+        'quantity_after',
+        'mrr_before',
+        'mrr_after',
         'mrr_delta_mxn',
-        'tipo_cambio',
-        'usuario_id',
-        'solicitud_id',
-        'motivo',
-        'con_excepcion',
-        'movimiento_revertido_id',
+        'exchange_rate',
+        'user_id',
+        'request_id',
+        'reason',
+        'has_exception',
+        'excepted_policy',
+        'reversed_movement_id',
         'created_at',
     ];
 
     /** @var array<string, string> */
     protected $casts = [
-        'contrato_id' => 'integer',
-        'contrato_linea_id' => 'integer',
-        'servicio_id' => 'integer',
-        'fecha_efectiva' => 'date',
-        'cantidad_antes' => 'decimal:2',
-        'cantidad_despues' => 'decimal:2',
-        'mrr_antes' => 'decimal:2',
-        'mrr_despues' => 'decimal:2',
+        'contract_id' => 'integer',
+        'contract_line_id' => 'integer',
+        'service_id' => 'integer',
+        'effective_date' => 'date',
+        'quantity_before' => 'decimal:2',
+        'quantity_after' => 'decimal:2',
+        'mrr_before' => 'decimal:2',
+        'mrr_after' => 'decimal:2',
         'mrr_delta_mxn' => 'decimal:2',
-        'tipo_cambio' => 'decimal:6',
-        'usuario_id' => 'integer',
-        'solicitud_id' => 'integer',
-        'con_excepcion' => 'boolean',
-        'movimiento_revertido_id' => 'integer',
+        'exchange_rate' => 'decimal:6',
+        'user_id' => 'integer',
+        'request_id' => 'integer',
+        'has_exception' => 'boolean',
+        'reversed_movement_id' => 'integer',
         'created_at' => 'datetime',
     ];
 
@@ -65,13 +66,13 @@ final class MovementsModel extends Model
     {
         static::updating(static function (): void {
             throw new RuntimeException(
-                'RNF-3: la bitácora movimiento es inmutable. No se permite UPDATE. Emita una reversión contable.',
+                'RNF-3: la bitácora de movimientos es inmutable. No se permite UPDATE. Emita una reversión contable.',
             );
         });
 
         static::deleting(static function (): void {
             throw new RuntimeException(
-                'RNF-3: la bitácora movimiento es inmutable. No se permite DELETE.',
+                'RNF-3: la bitácora de movimientos es inmutable. No se permite DELETE.',
             );
         });
     }

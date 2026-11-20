@@ -22,13 +22,13 @@ final class PriceListsService extends ModelService
     protected function configureFields(): void
     {
         $this->validator
-            ->setField('segmento_id', DataTypes::Integer, true)
-            ->setField('nombre', DataTypes::String, true)
-            ->setField('moneda', DataTypes::String, true)
-            ->setField('es_default', DataTypes::Boolean, false, false)
-            ->setField('vigente_desde', DataTypes::Date, true)
-            ->setField('vigente_hasta', DataTypes::Date, false)
-            ->setField('activa', DataTypes::Boolean, false, true);
+            ->setField('segment_id', DataTypes::Integer, true)
+            ->setField('name', DataTypes::String, true)
+            ->setField('currency', DataTypes::String, true)
+            ->setField('is_default', DataTypes::Boolean, false, false)
+            ->setField('valid_from', DataTypes::Date, true)
+            ->setField('valid_until', DataTypes::Date, false)
+            ->setField('is_active', DataTypes::Boolean, false, true);
     }
 
     public function handle(Context $context): Result
@@ -46,8 +46,8 @@ final class PriceListsService extends ModelService
             if ($denied !== null) {
                 return Result::fail($denied, 403);
             }
-            if (($auth['segmento_id'] ?? null) !== null) {
-                $request['segmento_id'] = (int) $auth['segmento_id'];
+            if (($auth['segment_id'] ?? null) !== null) {
+                $request['segment_id'] = (int) $auth['segment_id'];
             }
 
             return $this->persistWithUniqueDefault($request, null, $context, 'create');
@@ -62,8 +62,8 @@ final class PriceListsService extends ModelService
             if ($denied !== null) {
                 return Result::fail($denied, 403);
             }
-            if (($auth['segmento_id'] ?? null) !== null) {
-                $request['segmento_id'] = (int) $auth['segmento_id'];
+            if (($auth['segment_id'] ?? null) !== null) {
+                $request['segment_id'] = (int) $auth['segment_id'];
             }
 
             return $this->persistWithUniqueDefault($request, $listId, $context, 'update');
@@ -72,14 +72,14 @@ final class PriceListsService extends ModelService
             return $this->persistWithUniqueDefault($request, $listId, $context, 'patch');
         }
         if ($method === 'DELETE') {
-            return $this->patch($listId, ['activa' => false], $context);
+            return $this->patch($listId, ['is_active' => false], $context);
         }
 
         return Result::fail('Método no soportado.', 405);
     }
 
     /**
-     * Guarda la lista y, si queda como default, desmarca las demás del mismo segmento+moneda.
+     * Guarda la lista y, si queda como default, desmarca las demás del mismo segmento y moneda.
      *
      * @param array<string, mixed> $request
      */
@@ -106,14 +106,14 @@ final class PriceListsService extends ModelService
                     return $result;
                 }
 
-                $row = Capsule::table('lista_precio')->where('id', $savedId)->first();
-                if ($row !== null && (bool) (int) $row->es_default) {
-                    Capsule::table('lista_precio')
-                        ->where('segmento_id', (int) $row->segmento_id)
-                        ->where('moneda', (string) $row->moneda)
+                $row = Capsule::table('price_lists')->where('id', $savedId)->first();
+                if ($row !== null && (bool) (int) $row->is_default) {
+                    Capsule::table('price_lists')
+                        ->where('segment_id', (int) $row->segment_id)
+                        ->where('currency', (string) $row->currency)
                         ->where('id', '!=', $savedId)
                         ->update([
-                            'es_default' => false,
+                            'is_default' => false,
                             'updated_at' => gmdate('Y-m-d H:i:s'),
                         ]);
                 }
@@ -131,71 +131,71 @@ final class PriceListsService extends ModelService
      */
     private function listEnriched(array $auth = []): array
     {
-        $builder = Capsule::table('lista_precio as lp')
-            ->leftJoin('segmento as seg', 'seg.id', '=', 'lp.segmento_id');
+        $builder = Capsule::table('price_lists as lp')
+            ->leftJoin('segments as seg', 'seg.id', '=', 'lp.segment_id');
 
-        if (($auth['segmento_id'] ?? null) !== null) {
-            $builder->where('lp.segmento_id', (int) $auth['segmento_id']);
+        if (($auth['segment_id'] ?? null) !== null) {
+            $builder->where('lp.segment_id', (int) $auth['segment_id']);
         }
 
         $lists = $builder
             ->orderBy('lp.id')
             ->get([
                 'lp.id',
-                'lp.nombre',
-                'lp.segmento_id',
-                'seg.nombre as segmento',
-                'lp.moneda',
-                'lp.es_default',
-                'lp.vigente_desde',
-                'lp.vigente_hasta',
-                'lp.activa',
+                'lp.name',
+                'lp.segment_id',
+                'seg.name as segment_name',
+                'lp.currency',
+                'lp.is_default',
+                'lp.valid_from',
+                'lp.valid_until',
+                'lp.is_active',
             ]);
 
-        // Orden por cantidad_min para que el frontend agrupe escalones RF-2 en secuencia.
-        $items = Capsule::table('lista_precio_item as lpi')
-            ->leftJoin('servicio as s', 's.id', '=', 'lpi.servicio_id')
-            ->orderBy('lpi.lista_precio_id')
-            ->orderBy('lpi.servicio_id')
-            ->orderBy('lpi.cantidad_min')
-            ->orderBy('lpi.frecuencia')
+        // Orden por min_quantity para que el cliente agrupe escalones RF-2 en secuencia.
+        $items = Capsule::table('price_list_items as lpi')
+            ->leftJoin('services as s', 's.id', '=', 'lpi.service_id')
+            ->orderBy('lpi.price_list_id')
+            ->orderBy('lpi.service_id')
+            ->orderBy('lpi.min_quantity')
+            ->orderBy('lpi.frequency')
             ->get([
                 'lpi.id',
-                'lpi.lista_precio_id',
-                'lpi.servicio_id',
-                's.codigo as servicio_codigo',
-                's.nombre as servicio_nombre',
-                'lpi.frecuencia',
-                'lpi.cantidad_min',
-                'lpi.cantidad_max',
-                'lpi.precio_unitario',
+                'lpi.price_list_id',
+                'lpi.service_id',
+                's.code as service_code',
+                's.name as service_name',
+                'lpi.frequency',
+                'lpi.min_quantity',
+                'lpi.max_quantity',
+                'lpi.unit_price',
             ])
-            ->groupBy('lista_precio_id');
+            ->groupBy('price_list_id');
 
         return $lists->map(static function (object $list) use ($items): array {
             $listItems = ($items->get($list->id) ?? collect())->map(static function (object $item): array {
                 return [
                     'id' => (int) $item->id,
-                    'servicio_id' => (int) $item->servicio_id,
-                    'servicio_codigo' => (string) ($item->servicio_codigo ?? ''),
-                    'servicio_nombre' => (string) ($item->servicio_nombre ?? ''),
-                    'frecuencia' => (string) $item->frecuencia,
-                    'cantidad_min' => (int) $item->cantidad_min,
-                    'cantidad_max' => $item->cantidad_max !== null ? (int) $item->cantidad_max : null,
-                    'precio_unitario' => (string) $item->precio_unitario,
+                    'service_id' => (int) $item->service_id,
+                    'service_code' => (string) ($item->service_code ?? ''),
+                    'service_name' => (string) ($item->service_name ?? ''),
+                    'frequency' => (string) $item->frequency,
+                    'min_quantity' => (int) $item->min_quantity,
+                    'max_quantity' => $item->max_quantity !== null ? (int) $item->max_quantity : null,
+                    'unit_price' => (string) $item->unit_price,
                 ];
             })->values()->all();
 
             return [
                 'id' => (int) $list->id,
-                'nombre' => (string) $list->nombre,
-                'segmento' => (string) ($list->segmento ?? ''),
-                'segmento_id' => (int) $list->segmento_id,
-                'moneda' => (string) $list->moneda,
-                'es_default' => (bool) $list->es_default,
-                'vigente_desde' => (string) $list->vigente_desde,
-                'vigente_hasta' => $list->vigente_hasta !== null ? (string) $list->vigente_hasta : null,
-                'activa' => (bool) $list->activa,
+                'name' => (string) $list->name,
+                'segment_name' => (string) ($list->segment_name ?? ''),
+                'segment_id' => (int) $list->segment_id,
+                'currency' => (string) $list->currency,
+                'is_default' => (bool) $list->is_default,
+                'valid_from' => (string) $list->valid_from,
+                'valid_until' => $list->valid_until !== null ? (string) $list->valid_until : null,
+                'is_active' => (bool) $list->is_active,
                 'items' => $listItems,
             ];
         })->all();

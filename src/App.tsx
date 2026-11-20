@@ -16,6 +16,7 @@ import { IssuersPage } from '@/pages/config/IssuersPage'
 import { PriceListsPage } from '@/pages/config/PriceListsPage'
 import { PromotionsPage } from '@/pages/config/PromotionsPage'
 import { RolesPermissionsPage } from '@/pages/config/RolesPermissionsPage'
+import { CompanySettingsPage } from '@/pages/config/CompanySettingsPage'
 import { ScreenPreferencesPage } from '@/pages/config/ScreenPreferencesPage'
 import { UsersManagementPage } from '@/pages/config/UsersManagementPage'
 import { DashboardPage } from '@/pages/DashboardPage'
@@ -32,14 +33,15 @@ const queryClient = new QueryClient({
 })
 
 const CONFIG_HOME_ROUTES: Array<{ module: ModuleKey; to: string }> = [
-  { module: 'config_catalogo', to: '/configuracion/catalogo' },
-  { module: 'config_precios', to: '/configuracion/precios' },
-  { module: 'config_promociones', to: '/configuracion/promociones' },
-  { module: 'config_emisores', to: '/configuracion/emisores' },
-  { module: 'config_instancias', to: '/configuracion/instancias' },
-  { module: 'config_usuarios', to: '/configuracion/usuarios' },
+  { module: 'config_catalog', to: '/configuracion/catalogo' },
+  { module: 'config_prices', to: '/configuracion/precios' },
+  { module: 'config_promotions', to: '/configuracion/promociones' },
+  { module: 'config_issuers', to: '/configuracion/emisores' },
+  { module: 'config_instances', to: '/configuracion/instancias' },
+  { module: 'config_users', to: '/configuracion/usuarios' },
   { module: 'config_roles', to: '/configuracion/roles' },
-  { module: 'config_preferencias', to: '/configuracion/preferencias' },
+  { module: 'config_company', to: '/configuracion/empresa' },
+  { module: 'config_preferences', to: '/configuracion/preferencias' },
 ]
 
 function ModulePage({
@@ -90,7 +92,7 @@ function App() {
                         <Route
                           path="contratos"
                           element={
-                            <ModulePage module="contratos">
+                            <ModulePage module="contracts">
                               <Placeholder title="Contratos" />
                             </ModulePage>
                           }
@@ -98,7 +100,7 @@ function App() {
                         <Route
                           path="clientes"
                           element={
-                            <ModulePage module="clientes">
+                            <ModulePage module="clients">
                               <Placeholder title="Clientes" />
                             </ModulePage>
                           }
@@ -106,7 +108,7 @@ function App() {
                         <Route
                           path="solicitudes"
                           element={
-                            <ModulePage module="solicitudes">
+                            <ModulePage module="requests">
                               <Placeholder title="Solicitudes" />
                             </ModulePage>
                           }
@@ -114,7 +116,7 @@ function App() {
                         <Route
                           path="cobranza"
                           element={
-                            <ModulePage module="cobranza">
+                            <ModulePage module="collections">
                               <Placeholder title="Cobranza" />
                             </ModulePage>
                           }
@@ -122,7 +124,7 @@ function App() {
                         <Route
                           path="promociones-vigentes"
                           element={
-                            <ModulePage module="promociones_ventas">
+                            <ModulePage module="sales_promotions">
                               <SalesPromotionsPage />
                             </ModulePage>
                           }
@@ -130,7 +132,7 @@ function App() {
                         <Route
                           path="utilidad"
                           element={
-                            <ModulePage module="utilidad_segmento">
+                            <ModulePage module="segment_utility">
                               <Placeholder title="Utilidad por segmento" />
                             </ModulePage>
                           }
@@ -142,7 +144,7 @@ function App() {
                         <Route
                           path="configuracion/catalogo"
                           element={
-                            <ModulePage module="config_catalogo">
+                            <ModulePage module="config_catalog">
                               <CatalogServicesPage />
                             </ModulePage>
                           }
@@ -150,7 +152,7 @@ function App() {
                         <Route
                           path="configuracion/precios"
                           element={
-                            <ModulePage module="config_precios">
+                            <ModulePage module="config_prices">
                               <PriceListsPage />
                             </ModulePage>
                           }
@@ -158,7 +160,7 @@ function App() {
                         <Route
                           path="configuracion/promociones"
                           element={
-                            <ModulePage module="config_promociones">
+                            <ModulePage module="config_promotions">
                               <PromotionsPage />
                             </ModulePage>
                           }
@@ -166,7 +168,7 @@ function App() {
                         <Route
                           path="configuracion/emisores"
                           element={
-                            <ModulePage module="config_emisores">
+                            <ModulePage module="config_issuers">
                               <IssuersPage />
                             </ModulePage>
                           }
@@ -174,7 +176,7 @@ function App() {
                         <Route
                           path="configuracion/instancias"
                           element={
-                            <ModulePage module="config_instancias">
+                            <ModulePage module="config_instances">
                               <InstancesPage />
                             </ModulePage>
                           }
@@ -182,7 +184,7 @@ function App() {
                         <Route
                           path="configuracion/usuarios"
                           element={
-                            <ModulePage module="config_usuarios">
+                            <ModulePage module="config_users">
                               <UsersManagementPage />
                             </ModulePage>
                           }
@@ -200,9 +202,17 @@ function App() {
                           element={<Navigate to="/configuracion/roles" replace />}
                         />
                         <Route
+                          path="configuracion/empresa"
+                          element={
+                            <ModulePage module="config_company">
+                              <CompanySettingsPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
                           path="configuracion/preferencias"
                           element={
-                            <ModulePage module="config_preferencias">
+                            <ModulePage module="config_preferences">
                               <ScreenPreferencesPage />
                             </ModulePage>
                           }

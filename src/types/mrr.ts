@@ -1,22 +1,26 @@
 /**
  * Tipos del dominio MRR / cobranza alineados al modelo de datos
- * (`mrr_mensual`, `movimiento`, `cobranza_estado`).
+ * (`monthly_mrr`, `movements`, `collection_statuses`).
  */
 
-/** Categorías del Puente de MRR (bitácora `movimiento` + totales de periodo). */
+/** Categorías del Puente de MRR (bitácora `movements` + totales de periodo). */
 export type MrrCategory =
-  | 'inicio'
-  | 'nuevo'
+  | 'start'
+  | 'new'
   | 'expansion'
-  | 'ajuste_precio'
-  | 'cambio_frecuencia'
-  | 'contraccion'
+  | 'price_adjustment'
+  | 'frequency_change'
+  | 'contraction'
   | 'churn'
-  | 'reactivacion'
-  | 'fin'
+  | 'reactivation'
+  | 'end'
 
-/** Segmentos de producto para filtros del dashboard. */
-export type ProductSegment = 'Todos' | 'Operam' | 'Construsync'
+/**
+ * Filtro de segmento del dashboard.
+ * "Todos" = sin filtro. El mock conserva las etiquetas Operam / Construsync;
+ * el modo API acepta cualquier `name` real de la tabla `segments`.
+ */
+export type ProductSegment = string
 
 /** Tipo visual de cada barra del gráfico de cascada. */
 export type MrrBridgeBarType = 'total' | 'positive' | 'negative'
@@ -30,7 +34,7 @@ export interface MrrBridgeStep {
   /** Nombre visible en el eje X (español UI). */
   label: string
   category: MrrCategory
-  /** Delta firmado en MXN (0 en totales inicio/fin). */
+  /** Delta firmado en MXN (0 en totales start/end). */
   deltaMxn: number
   /** Base invisible del stack (waterfall). */
   start: number
@@ -49,22 +53,23 @@ export interface MrrBridgeStep {
 export interface MrrMovement {
   id: string
   /** ISO date `YYYY-MM-DD` (se formatea a UI-6 en la vista). */
-  fecha_efectiva: string
-  contrato_folio: string
-  cliente_nombre: string
-  segmento: Exclude<ProductSegment, 'Todos'>
-  categoria_mrr: Exclude<MrrCategory, 'inicio' | 'fin'>
-  descripcion: string
+  effective_date: string
+  contract_folio: string
+  client_name: string
+  /** Nombre del segmento del movimiento (el filtro "Todos" no se persiste aquí). */
+  segment: string
+  mrr_category: Exclude<MrrCategory, 'start' | 'end'>
+  description: string
   /** Montos como string decimal para exactitud (RNF-1). */
-  mrr_antes: string
-  mrr_despues: string
+  mrr_before: string
+  mrr_after: string
   mrr_delta_mxn: string
-  usuario: string
-  motivo: string
-  solicitud_origen: string | null
+  user: string
+  reason: string
+  request_origin: string | null
 }
 
-/** Tramos de antigüedad de cartera (`cobranza_estado`). */
+/** Tramos de antigüedad de cartera (`collection_statuses`). */
 export type AgingBucketLabel =
   | 'Por vencer'
   | '1-30 días'

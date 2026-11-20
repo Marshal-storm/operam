@@ -1,47 +1,45 @@
-/** Roles legacy (columna enum) — compatibilidad. */
-export type UserRole = 'admin' | 'operador' | 'lectura'
-
-/** Claves multinivel del catálogo RBAC. */
+/** Claves multinivel del catálogo RBAC (inglés, alineadas al API). */
 export type ModuleKey =
   | 'dashboard'
-  | 'contratos'
-  | 'clientes'
-  | 'solicitudes'
-  | 'cobranza'
-  | 'utilidad_segmento'
-  | 'promociones_ventas'
-  | 'config_catalogo'
-  | 'config_precios'
-  | 'config_promociones'
-  | 'config_emisores'
-  | 'config_instancias'
-  | 'config_usuarios'
+  | 'contracts'
+  | 'clients'
+  | 'requests'
+  | 'collections'
+  | 'segment_utility'
+  | 'sales_promotions'
+  | 'config_catalog'
+  | 'config_prices'
+  | 'config_promotions'
+  | 'config_issuers'
+  | 'config_instances'
+  | 'config_users'
   | 'config_roles'
-  | 'config_preferencias'
+  | 'config_company'
+  | 'config_preferences'
 
 export type ModulePermission = {
-  ver: boolean
-  crear: boolean
-  editar: boolean
-  eliminar: boolean
+  view: boolean
+  create: boolean
+  edit: boolean
+  delete: boolean
 }
 
 export type PermissionsMap = Partial<Record<ModuleKey, ModulePermission>>
 
-export type AllowedSegment = 'Todos' | 'Operam' | 'Construsync'
+/** Nombre de segmento desde MySQL, o "Todos" cuando no hay alcance fijo. */
+export type AllowedSegment = string
 
 /** Usuario autenticado expuesto al frontend (sin password_hash). */
 export type AuthUser = {
   id: number
   email: string
-  nombre: string
-  rol: UserRole
-  rol_id: number | null
-  rol_nombre: string | null
-  rol_codigo: string | null
-  segmento_id: number | null
-  segmento_nombre: AllowedSegment | string
-  permisos: PermissionsMap
+  name: string
+  role_id: number | null
+  role_name: string | null
+  role_code: string | null
+  segment_id: number | null
+  segment_name: AllowedSegment | string
+  permissions: PermissionsMap
   scope: 'enterprise'
 }
 
@@ -59,23 +57,24 @@ export type LoginCredentials = {
 
 export const PRINCIPAL_MODULE_KEYS: ModuleKey[] = [
   'dashboard',
-  'contratos',
-  'clientes',
-  'solicitudes',
-  'cobranza',
-  'utilidad_segmento',
-  'promociones_ventas',
+  'contracts',
+  'clients',
+  'requests',
+  'collections',
+  'segment_utility',
+  'sales_promotions',
 ]
 
 export const CONFIG_MODULE_KEYS: ModuleKey[] = [
-  'config_catalogo',
-  'config_precios',
-  'config_promociones',
-  'config_emisores',
-  'config_instancias',
-  'config_usuarios',
+  'config_catalog',
+  'config_prices',
+  'config_promotions',
+  'config_issuers',
+  'config_instances',
+  'config_users',
   'config_roles',
-  'config_preferencias',
+  'config_company',
+  'config_preferences',
 ]
 
 export const MODULE_KEYS: ModuleKey[] = [
