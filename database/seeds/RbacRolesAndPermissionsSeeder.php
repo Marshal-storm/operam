@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Phinx\Seed\AbstractSeed;
 
 /**
- * Módulos multinivel (15) + roles iniciales con matriz CRUD (idempotente).
+ * Módulos multinivel + roles iniciales con matriz CRUD (idempotente).
  * Incluye el rol de ejemplo "Gestor de Promociones".
  * Emisores e Instancias son submódulos independientes.
  * Claves de módulo y group_key en inglés. Nombres y descripciones visibles en español.
@@ -48,6 +48,8 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
             ['module_key' => 'config_users', 'name' => 'Usuarios del sistema', 'group_key' => 'configuration', 'sort_order' => 150],
             ['module_key' => 'config_roles', 'name' => 'Roles y permisos', 'group_key' => 'configuration', 'sort_order' => 160],
             ['module_key' => 'config_company', 'name' => 'Empresa', 'group_key' => 'configuration', 'sort_order' => 165],
+            ['module_key' => 'config_system', 'name' => 'Sistema', 'group_key' => 'configuration', 'sort_order' => 168],
+            ['module_key' => 'config_audit_logs', 'name' => 'Bitácora de auditoría', 'group_key' => 'configuration', 'sort_order' => 169],
             ['module_key' => 'config_preferences', 'name' => 'Preferencias de pantalla', 'group_key' => 'configuration', 'sort_order' => 170],
         ];
 
@@ -180,8 +182,11 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
             'config_users',
             'config_roles',
             'config_company',
+            'config_system',
+            'config_audit_logs',
             'config_preferences',
-        ];        $allModules = array_merge($main, $config);
+        ];
+        $allModules = array_merge($main, $config);
 
         $zeroConfig = [];
         foreach ($config as $moduleKey) {

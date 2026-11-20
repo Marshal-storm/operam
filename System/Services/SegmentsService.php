@@ -9,6 +9,7 @@ use System\Core\Context;
 use System\Core\DataTypes;
 use System\Core\Result;
 use System\Models\SegmentsModel;
+use System\Support\AuditLogger;
 
 /**
  * Lectura/actualización de segmentos — RF-1 (`default_credit_days`, `usd_exchange_rate`).
@@ -82,6 +83,7 @@ final class SegmentsService extends ModelService
             return Result::fail('Envía default_credit_days y/o usd_exchange_rate.', 422);
         }
 
+        $before = $this->mapRow($existing);
         $payload = ['updated_at' => gmdate('Y-m-d H:i:s')];
 
         if ($hasDays) {
@@ -102,7 +104,19 @@ final class SegmentsService extends ModelService
 
         Capsule::table('segments')->where('id', $segmentId)->update($payload);
 
-        return Result::ok($this->findMapped($segmentId), 'Parámetros comerciales actualizados');
+        $after = $this->findMapped($segmentId);
+        AuditLogger::log(
+            $auth,
+            'config_company',
+            'segment',
+            (string) $segmentId,
+            'update',
+            sprintf('Se actualizaron los parámetros comerciales de %s', $before['name']),
+            $before,
+            $after,
+        );
+
+        return Result::ok($after, 'Parámetros comerciales actualizados');
     }
 
     /**

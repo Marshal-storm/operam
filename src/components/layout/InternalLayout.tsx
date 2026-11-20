@@ -22,6 +22,8 @@ import {
   Gift,
   SlidersHorizontal,
   Shield,
+  Cpu,
+  History,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type ComponentType } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -72,6 +74,8 @@ const CONFIG_SUBITEMS: ConfigSubItem[] = [
   { label: 'Usuarios', to: '/configuracion/usuarios', icon: Users, module: 'config_users' },
   { label: 'Roles y permisos', to: '/configuracion/roles', icon: Shield, module: 'config_roles' },
   { label: 'Empresa', to: '/configuracion/empresa', icon: Building2, module: 'config_company' },
+  { label: 'Sistema', to: '/configuracion/sistema', icon: Cpu, module: 'config_system' },
+  { label: 'Bitácora', to: '/configuracion/auditoria', icon: History, module: 'config_audit_logs' },
   { label: 'Preferencias de pantalla', to: '/configuracion/preferencias', icon: SlidersHorizontal, module: 'config_preferences' },
 ]
 

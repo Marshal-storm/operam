@@ -10,6 +10,7 @@ use System\Core\Context;
 use System\Core\DataTypes;
 use System\Core\Result;
 use System\Models\UsersModel;
+use System\Support\AuditLogger;
 
 /**
  * Alta/edición de usuarios internos con rol y segmento (Todos, Operam o Construsync).
@@ -55,7 +56,7 @@ final class UsersManagementService extends ModelService
                 return Result::fail('Sin permiso para crear usuarios.', 403);
             }
 
-            return $this->createUser($context->getRequest());
+            return $this->createUser($context->getRequest(), $auth);
         }
 
         if ($id === null) {
@@ -77,7 +78,7 @@ final class UsersManagementService extends ModelService
                 return Result::fail('Sin permiso para editar usuarios.', 403);
             }
 
-            return $this->updateUser($userId, $context->getRequest());
+            return $this->updateUser($userId, $context->getRequest(), $auth);
         }
 
         return Result::fail('Método no soportado.', 405);
@@ -164,8 +165,9 @@ final class UsersManagementService extends ModelService
 
     /**
      * @param array<string, mixed> $request
+     * @param array<string, mixed> $auth
      */
-    private function createUser(array $request): Result
+    private function createUser(array $request, array $auth): Result
     {
         $email = strtolower(trim((string) ($request['email'] ?? '')));
         $name = trim((string) ($request['name'] ?? ''));
@@ -205,13 +207,26 @@ final class UsersManagementService extends ModelService
             'updated_at' => $nowUtc,
         ]);
 
-        return Result::ok($this->findUserPayload($userId), 'Usuario creado', 201);
+        $created = $this->findUserPayload($userId);
+        AuditLogger::log(
+            $auth,
+            'config_users',
+            'user',
+            (string) $userId,
+            'create',
+            sprintf('Se creó el usuario %s', (string) ($created['name'] ?? $name)),
+            null,
+            $created,
+        );
+
+        return Result::ok($created, 'Usuario creado', 201);
     }
 
     /**
      * @param array<string, mixed> $request
+     * @param array<string, mixed> $auth
      */
-    private function updateUser(int $userId, array $request): Result
+    private function updateUser(int $userId, array $request, array $auth): Result
     {
         /** @var UsersModel|null $user */
         $user = UsersModel::query()->find($userId);
@@ -267,6 +282,7 @@ final class UsersManagementService extends ModelService
             return Result::fail('No hay campos para actualizar.', 422);
         }
 
+        $before = $this->findUserPayload($userId);
         $updates['updated_at'] = gmdate('Y-m-d H:i:s');
         Capsule::table('users')->where('id', $userId)->update($updates);
 
@@ -290,11 +306,57 @@ final class UsersManagementService extends ModelService
             $revoked = RbacAuthHelper::revokeSessionsForUser($userId);
         }
 
-        $payload = $this->findUserPayload($userId) ?? [];
-        $payload['sessions_revoked'] = $revoked;
-        $payload['requires_reauth'] = $critical;
+        $after = $this->findUserPayload($userId) ?? [];
+        $auditNew = $after;
+        // La contraseña no se registra; solo una bandera sin la palabra que AuditLogger redacta.
+        if (!empty($request['password'])) {
+            $auditNew['credentials_rotated'] = true;
+        }
+        $statusOnly = array_key_exists('is_active', $updates)
+            && array_diff(array_keys($updates), ['updated_at', 'is_active']) === [];
+        $displayName = (string) ($after['name'] ?? (is_array($before) ? ($before['name'] ?? null) : null) ?? 'usuario');
+        if ($statusOnly) {
+            $action = 'status_change';
+            $description = ((bool) ($after['is_active'] ?? false))
+                ? "Se activó el usuario {$displayName}"
+                : "Se desactivó el usuario {$displayName}";
+        } else {
+            $action = 'update';
+            $description = "Se actualizó el usuario {$displayName}";
+            if (!empty($request['password'])) {
+                $description .= ' (contraseña restablecida)';
+            }
+        }
+        AuditLogger::log(
+            $auth,
+            'config_users',
+            'user',
+            (string) $userId,
+            $action,
+            $description,
+            $before,
+            $auditNew,
+        );
+        if ($revoked > 0) {
+            AuditLogger::log(
+                $auth,
+                'config_users',
+                'session',
+                (string) $userId,
+                'revoke_session',
+                sprintf('Se revocaron %d sesión(es) del usuario %s', $revoked, $displayName),
+                null,
+                [
+                    'user_id' => $userId,
+                    'sessions_revoked' => $revoked,
+                ],
+            );
+        }
 
-        return Result::ok($payload, 'Usuario actualizado');
+        $after['sessions_revoked'] = $revoked;
+        $after['requires_reauth'] = $critical;
+
+        return Result::ok($after, 'Usuario actualizado');
     }
 
     /**

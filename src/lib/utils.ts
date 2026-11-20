@@ -101,18 +101,42 @@ export function formatCurrencyMx(
 }
 
 /**
+ * Normaliza instantes de la API a Date.
+ * - `YYYY-MM-DD` se ancla al mediodía UTC (no cruza de día en CDMX).
+ * - Timestamps MySQL sin zona (`YYYY-MM-DD HH:MM:SS`) se leen como UTC (RNF-11).
+ */
+function parseAppDate(value: Date | string | number): Date {
+  if (value instanceof Date) return value
+  if (typeof value === 'number') return new Date(value)
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-').map(Number)
+    return new Date(Date.UTC(year, month - 1, day, 12, 0, 0))
+  }
+
+  const naive = value.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/)
+  const hasZone = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(value.trim())
+  if (naive && !hasZone) {
+    return new Date(
+      Date.UTC(
+        Number(naive[1]),
+        Number(naive[2]) - 1,
+        Number(naive[3]),
+        Number(naive[4]),
+        Number(naive[5]),
+        Number(naive[6]),
+      ),
+    )
+  }
+
+  return new Date(value)
+}
+
+/**
  * Formatea fechas como `15 sep 2026` en zona America/Mexico_City (UI-6).
  */
 export function formatDateEsMx(value: Date | string | number): string {
-  // Fechas solo-día (`YYYY-MM-DD`) se interpretan al mediodía UTC para no
-  // cruzar de día al convertir a America/Mexico_City.
-  let date: Date
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split('-').map(Number)
-    date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0))
-  } else {
-    date = value instanceof Date ? value : new Date(value)
-  }
+  const date = parseAppDate(value)
 
   if (Number.isNaN(date.getTime())) {
     throw new Error(`Fecha inválida para formateo: ${String(value)}`)
@@ -135,4 +159,24 @@ export function formatDateEsMx(value: Date | string | number): string {
 
   const monthLabel = MONTH_SHORT_ES[Number(month) - 1]
   return `${day} ${monthLabel} ${year}`
+}
+
+/**
+ * Fecha y hora `15 sep 2026 14:05` en America/Mexico_City (UI-6).
+ * Pensado para `created_at` UTC de la bitácora.
+ */
+export function formatDateTimeEsMx(value: Date | string | number): string {
+  const date = parseAppDate(value)
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Fecha inválida para formateo: ${String(value)}`)
+  }
+
+  const clock = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone: APP_TIME_ZONE,
+  }).format(date)
+
+  return `${formatDateEsMx(date)} ${clock}`
 }

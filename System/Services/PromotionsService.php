@@ -9,6 +9,7 @@ use System\Core\Context;
 use System\Core\DataTypes;
 use System\Core\Result;
 use System\Models\PromotionsModel;
+use System\Support\AuditLogger;
 
 final class PromotionsService extends ModelService
 {
@@ -53,7 +54,16 @@ final class PromotionsService extends ModelService
             }
             $input = $this->normalizeMoney($request);
 
-            return $this->create($input, $context);
+            $created = $this->create($input, $context);
+            if ($created->isSuccess()) {
+                $data = $created->getData();
+                $newId = (int) (is_array($data) ? ($data['id'] ?? 0) : 0);
+                if ($newId > 0) {
+                    $this->auditPromotion($auth, $newId, 'create', null);
+                }
+            }
+
+            return $created;
         }
         if ($id === null) {
             return Result::fail('Se requiere id de promoción.', 400);
@@ -69,13 +79,33 @@ final class PromotionsService extends ModelService
                 $request['segment_id'] = (int) $auth['segment_id'];
             }
 
-            return $this->update($promoId, $this->normalizeMoney($request), $context);
+            $before = $this->promotionSnapshot($promoId);
+            $updated = $this->update($promoId, $this->normalizeMoney($request), $context);
+            if ($updated->isSuccess()) {
+                $this->auditPromotion($auth, $promoId, 'update', $before);
+            }
+
+            return $updated;
         }
         if ($method === 'PATCH') {
-            return $this->patch($promoId, $this->normalizeMoney($request), $context);
+            $payload = $this->normalizeMoney($request);
+            $before = $this->promotionSnapshot($promoId);
+            $patched = $this->patch($promoId, $payload, $context);
+            if ($patched->isSuccess()) {
+                $action = $this->isStatusToggle($payload, $before) ? 'status_change' : 'update';
+                $this->auditPromotion($auth, $promoId, $action, $before);
+            }
+
+            return $patched;
         }
         if ($method === 'DELETE') {
-            return $this->patch($promoId, ['is_active' => false], $context);
+            $before = $this->promotionSnapshot($promoId);
+            $patched = $this->patch($promoId, ['is_active' => false], $context);
+            if ($patched->isSuccess()) {
+                $this->auditPromotion($auth, $promoId, 'status_change', $before);
+            }
+
+            return $patched;
         }
 
         return Result::fail('Método no soportado.', 405);
@@ -150,8 +180,112 @@ final class PromotionsService extends ModelService
                 'valid_until' => $row->valid_until !== null ? (string) $row->valid_until : null,
                 'max_uses' => $row->max_uses !== null ? (int) $row->max_uses : null,
                 'current_uses' => (int) $row->current_uses,
-                'is_active' => (bool) $row->is_active,
-            ];
+            'is_active' => (bool) $row->is_active,
+        ];
         })->all();
+    }
+
+    /**
+     * @param array<string, mixed> $auth
+     * @param array<string, mixed>|null $before
+     */
+    private function auditPromotion(array $auth, int $id, string $action, ?array $before): void
+    {
+        $after = $this->promotionSnapshot($id);
+        $name = (string) ($after['name'] ?? $before['name'] ?? 'promoción');
+        $code = trim((string) ($after['code'] ?? $before['code'] ?? ''));
+        $label = $code !== '' ? $name . ' (' . $code . ')' : $name;
+        $active = (bool) ($after['is_active'] ?? false);
+        $description = match ($action) {
+            'create' => "Se creó la promoción {$label}",
+            'status_change' => $active
+                ? "Se activó la promoción {$label}"
+                : "Se desactivó la promoción {$label}",
+            default => "Se actualizó la promoción {$label}",
+        };
+
+        AuditLogger::log(
+            $auth,
+            'config_promotions',
+            'promotion',
+            (string) $id,
+            $action,
+            $description,
+            $before,
+            $after,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function promotionSnapshot(int $id): ?array
+    {
+        $row = Capsule::table('promotions')->where('id', $id)->first([
+            'id',
+            'code',
+            'name',
+            'segment_id',
+            'discount_type',
+            'discount_value',
+            'applies_to',
+            'valid_from',
+            'valid_until',
+            'max_uses',
+            'current_uses',
+            'is_active',
+        ]);
+        if ($row === null) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $row->id,
+            'code' => (string) $row->code,
+            'name' => (string) $row->name,
+            'segment_id' => $row->segment_id !== null ? (int) $row->segment_id : null,
+            'discount_type' => (string) $row->discount_type,
+            'discount_value' => (string) $row->discount_value,
+            'applies_to' => (string) $row->applies_to,
+            'valid_from' => $row->valid_from !== null ? (string) $row->valid_from : null,
+            'valid_until' => $row->valid_until !== null ? (string) $row->valid_until : null,
+            'max_uses' => $row->max_uses !== null ? (int) $row->max_uses : null,
+            'current_uses' => (int) $row->current_uses,
+            'is_active' => (bool) (int) $row->is_active,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @param array<string, mixed>|null $before
+     */
+    private function isStatusToggle(array $input, ?array $before): bool
+    {
+        $ignore = ['segment', 'page', 'per_page', 'search'];
+        $keys = [];
+        foreach ($input as $key => $value) {
+            $name = (string) $key;
+            if (in_array($name, $ignore, true)) {
+                continue;
+            }
+            if ($name === 'segment_id' && $before !== null && array_key_exists('segment_id', $before)) {
+                if ($value === null || $value === '' || (int) $value === (int) $before['segment_id']) {
+                    continue;
+                }
+            }
+            $keys[] = $name;
+        }
+
+        if ($keys === []) {
+            return false;
+        }
+
+        foreach ($keys as $name) {
+            if (!in_array($name, ['is_active', 'status'], true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

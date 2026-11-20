@@ -10,6 +10,7 @@ use System\Core\Context;
 use System\Core\DataTypes;
 use System\Core\Result;
 use System\Models\InstancesModel;
+use System\Support\AuditLogger;
 
 final class InstancesService extends ModelService
 {
@@ -51,7 +52,16 @@ final class InstancesService extends ModelService
                 $request['segment_id'] = (int) $auth['segment_id'];
             }
 
-            return $this->create($request, $context);
+            $created = $this->create($request, $context);
+            if ($created->isSuccess()) {
+                $data = $created->getData();
+                $newId = (int) (is_array($data) ? ($data['id'] ?? 0) : 0);
+                if ($newId > 0) {
+                    $this->auditInstance($auth, $newId, 'create', null);
+                }
+            }
+
+            return $created;
         }
         if ($id === null) {
             return Result::fail('Se requiere id de instancia.', 400);
@@ -67,13 +77,32 @@ final class InstancesService extends ModelService
                 $request['segment_id'] = (int) $auth['segment_id'];
             }
 
-            return $this->update($instanceId, $request, $context);
+            $before = $this->instanceSnapshot($instanceId);
+            $updated = $this->update($instanceId, $request, $context);
+            if ($updated->isSuccess()) {
+                $this->auditInstance($auth, $instanceId, 'update', $before);
+            }
+
+            return $updated;
         }
         if ($method === 'PATCH') {
-            return $this->patch($instanceId, $request, $context);
+            $before = $this->instanceSnapshot($instanceId);
+            $patched = $this->patch($instanceId, $request, $context);
+            if ($patched->isSuccess()) {
+                $action = $this->isStatusToggle($request, $before) ? 'status_change' : 'update';
+                $this->auditInstance($auth, $instanceId, $action, $before);
+            }
+
+            return $patched;
         }
         if ($method === 'DELETE') {
-            return $this->patch($instanceId, ['status' => 'decommissioned'], $context);
+            $before = $this->instanceSnapshot($instanceId);
+            $patched = $this->patch($instanceId, ['status' => 'decommissioned'], $context);
+            if ($patched->isSuccess()) {
+                $this->auditInstance($auth, $instanceId, 'status_change', $before);
+            }
+
+            return $patched;
         }
 
         return Result::fail('Método no soportado.', 405);
@@ -205,5 +234,101 @@ final class InstancesService extends ModelService
         return Capsule::table('instances as i')
             ->leftJoin('segments as seg', 'seg.id', '=', 'i.segment_id')
             ->leftJoin('issuers as e', 'e.id', '=', 'i.issuer_id');
+    }
+
+    /**
+     * @param array<string, mixed> $auth
+     * @param array<string, mixed>|null $before
+     */
+    private function auditInstance(array $auth, int $id, string $action, ?array $before): void
+    {
+        $after = $this->instanceSnapshot($id);
+        $name = (string) ($after['name'] ?? $before['name'] ?? 'instancia');
+        $code = trim((string) ($after['code'] ?? $before['code'] ?? ''));
+        $label = $code !== '' ? $name . ' (' . $code . ')' : $name;
+        $status = (string) ($after['status'] ?? $before['status'] ?? '');
+        $description = match ($action) {
+            'create' => "Se creó la instancia {$label}",
+            'status_change' => $status === 'decommissioned'
+                ? "Se dio de baja la instancia {$label}"
+                : "Se cambió el estado de la instancia {$label} a {$status}",
+            default => "Se actualizó la instancia {$label}",
+        };
+
+        AuditLogger::log(
+            $auth,
+            'config_instances',
+            'instance',
+            (string) $id,
+            $action,
+            $description,
+            $before,
+            $after,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function instanceSnapshot(int $id): ?array
+    {
+        $row = Capsule::table('instances')->where('id', $id)->first([
+            'id',
+            'code',
+            'name',
+            'issuer_id',
+            'segment_id',
+            'access_url',
+            'server_ip',
+            'status',
+        ]);
+        if ($row === null) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $row->id,
+            'code' => (string) $row->code,
+            'name' => (string) $row->name,
+            'issuer_id' => (int) $row->issuer_id,
+            'segment_id' => (int) $row->segment_id,
+            'access_url' => $row->access_url !== null ? (string) $row->access_url : null,
+            'server_ip' => $row->server_ip !== null ? (string) $row->server_ip : null,
+            'status' => (string) $row->status,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @param array<string, mixed>|null $before
+     */
+    private function isStatusToggle(array $input, ?array $before): bool
+    {
+        $ignore = ['segment', 'page', 'per_page', 'search'];
+        $keys = [];
+        foreach ($input as $key => $value) {
+            $name = (string) $key;
+            if (in_array($name, $ignore, true)) {
+                continue;
+            }
+            if ($name === 'segment_id' && $before !== null && array_key_exists('segment_id', $before)) {
+                if ($value === null || $value === '' || (int) $value === (int) $before['segment_id']) {
+                    continue;
+                }
+            }
+            $keys[] = $name;
+        }
+
+        if ($keys === []) {
+            return false;
+        }
+
+        foreach ($keys as $name) {
+            if (!in_array($name, ['is_active', 'status'], true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

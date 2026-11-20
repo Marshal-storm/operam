@@ -152,6 +152,7 @@ Usuarios del `EnterpriseUsersSeeder` + vínculo RBAC (`RbacRolesAndPermissionsSe
 5. Rate limiting de fallos en `auth_attempts` (`is_successful`, bloqueo temporal 429).
 6. Rutas protegidas en `AppService::before_get` excepto `$freeuris` (`login`).
 7. Perfil: `GET /api/me` (payload en inglés). Roles (`config_roles`): `/api/roles`, `/api/roles/modules`, `PUT /api/roles/{id}/permissions`. Usuarios (`config_users`): `/api/users`.
+8. Auditoría: las escrituras de Módulos 1/2 registran `AuditLogger` tras éxito. Lectura `GET /api/audit-logs`. Configuración `GET|PUT|PATCH /api/system-settings` y depuración `POST /api/system-settings/purge-audit-logs`.
 
 En UI: botón **Autocompletar credenciales de prueba** en Login (rellena el formulario; el login sigue siendo HTTP real).
 
@@ -181,7 +182,10 @@ Obligatorios para quien continúe el proyecto:
 - DB: solo migraciones/seeders Phinx — **prohibido `.sql` sueltos**.
 - Auth: JWT del framework — **prohibido Sanctum**.
 - **Cero mockups** fuera del Dashboard (Login, Catálogo, Contratos, Clientes, Cobranza, Solicitudes).
-- **Kit atómico (Single Source of Truth):** prohibido `<select>` / `<input>` / `<textarea>` / `<button>` nativos en `src/pages/**` o componentes de negocio. Importar solo desde `src/components/ui/` (`AppCard`, `AppInput`, `AppSelect`, `AppButton`, `AppBadge`, `AppModal`, `AppSwitch`, `AppTableWrapper`). Un cambio visual global = un archivo del kit.
+- **Kit atómico (Single Source of Truth):** prohibido `<select>` / `<input>` / `<textarea>` / `<button>` nativos en `src/pages/**` o componentes de negocio. Importar solo desde `src/components/ui/` (`AppCard`, `AppInput`, `AppSelect`, `AppButton`, `AppBadge`, `AppModal`, `AppSwitch`, `AppTableWrapper`, `AppFilterField`). Un cambio visual global = un archivo del kit.
+- **RBAC multinivel:** permisos por `module_key` (`config_*` + operativos); sin permiso monolítico `configuration`.
+- **Filtros con `<label>` visible:** todo criterio de toolbar/tabla usa `AppFilterField` (o equivalente); catálogos dinámicos desde MySQL.
+- **Auditoría automática (`audit_logs`):** toda escritura vía `System/Support/AuditLogger.php`; secretos redactados; módulo Sistema siempre audita; depuración solo con `@allow_audit_purge`.
 
 Detalle completo: archivo `.cursorrules` en la raíz.
 
@@ -191,7 +195,8 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 
 - [x] **Módulo 0:** Cimientos, Stack, Phinx y Reglas Senior.
 - [x] **Módulo 1:** Dashboard General Interno, Puente de MRR, Cartera y Seguridad JWT Nivel Empresa.
-- [x] **Módulo 2 (checkpoint cerrado):** Catálogos, Listas de Precios con escalas (RF-2), Emisores, Instancias, Promociones, Empresa (`config_company`), Preferencias de pantalla, RBAC multinivel (16 `module_key` en inglés), esquema MySQL 100% inglés, Kit Atómico (`AppSelect`/`AppInput`/`AppCard`/…), filtros con `AppFilterField`, segmentos dinámicos (`useSegments`), cero mockups fuera del Dashboard, Spinner + Toasts globales.
+- [x] **Módulo 2 (checkpoint oficial cerrado):** Catálogos, Listas de Precios con escalas, Promociones, Emisores, Instancias, Empresa, Preferencias, RBAC multinivel, BD 100% inglés, Kit Atómico, segmentos dinámicos, Sistema (`config_system`), Bitácora global `audit_logs` (`config_audit_logs`), Spinner + Toasts, cero mockups fuera del Dashboard.
+- [x] **Infra transversal M2:** RBAC por `module_key`, Kit Atómico `src/components/ui/`, `AuditLogger` + `system_settings` / `audit_logs`.
 - [ ] **Módulo 3:** Motor de Contratos y Bitácora Inmutable (RF-3).
 - [ ] **Módulo 4:** Cobranza, Saldos, Portal Cliente con Magic Links e IntegroPAY (RF-4 a RF-8).
 
@@ -210,6 +215,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `composer.json` / `composer.lock` | Dependencias PHP 8.3 + `phpunit/phpunit` ^11 en require-dev. |
 | `phinx.php` / `phpunit.xml` | Phinx y PHPUnit (suite `tests/Unit`). |
 | `tests/Unit/FinancialRulesTest.php` | Suite oficial RNF-1 / RF-2 / RNF-3 (Puente MRR, paquetes de 5, reversión, inmutabilidad). |
+| `tests/Unit/AuditLoggerTest.php` | Sanitización de secretos y diff de auditoría. |
 | `index.html` | Entrada Vite + Google Fonts (Ubuntu / DM Sans / DM Mono). |
 | `tailwind.config.js` | Referencia `fontFamily` oficial (Tailwind v4 usa `@theme` en CSS). |
 | `package.json` / `package-lock.json` | Dependencias npm. |
@@ -266,6 +272,8 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `pages/config/IssuersPage.tsx` | `/configuracion/emisores` — CRUD exclusivo RF-1 (`issuers`) con filtros, badges IntegroPAY y paginación (`config_issuers`). |
 | `pages/config/InstancesPage.tsx` | `/configuracion/instancias` — CRUD exclusivo de instancias/VPS; filtro por emisor; sin modal de emisores (`config_instances`). |
 | `pages/config/CompanySettingsPage.tsx` | `/configuracion/empresa` — parámetros comerciales por segmento (`default_credit_days`, `usd_exchange_rate`) vía `config_company`. |
+| `pages/config/SystemSettingsPage.tsx` | `/configuracion/sistema` — bandera `audit_logs_enabled` y depuración irreversible de la bitácora (`config_system`). |
+| `pages/config/AuditLogsPage.tsx` | `/configuracion/auditoria` — bitácora paginada de solo lectura con diff antes/después (`config_audit_logs`). |
 | `pages/config/ScreenPreferencesPage.tsx` | `/configuracion/preferencias` — solo pageSize y densidad visual (`config_preferences`). |
 | `pages/config/UsersManagementPage.tsx` | `/configuracion/usuarios` — cuentas, rol y segmento (`config_users`). |
 | `pages/config/RolesPermissionsPage.tsx` | `/configuracion/roles` — matriz multinivel sin preselección (`config_roles`). |
@@ -276,6 +284,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `services/rbacService.ts` | CRUD roles/permisos/usuarios contra API MySQL. |
 | `services/dashboardService.ts` | Dashboard híbrido (mock solo aquí) + Bearer JWT. |
 | `services/catalogService.ts` | CRUD + queries paginadas catálogo/emisores (JWT); `createIssuer` / `updateIssuer`. |
+| `services/systemService.ts` | `GET/PUT /api/system-settings`, depuración `purge-audit-logs` y `GET /api/audit-logs` (JWT). |
 | `services/mockDashboardData.ts` | Mock sep 2026 (solo Dashboard / demos). |
 | `hooks/useDashboardData.ts` | TanStack Query dashboard. |
 | `hooks/useConfigCatalog.ts` | TanStack Query + mutaciones Configuración + candado. |
@@ -287,17 +296,23 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 
 | Área | Descripción |
 |------|-------------|
-| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `movements` + `roles` / `users` / `me` + `segments`. |
+| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `movements` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs`. |
 | `backend/bootstrap/env.php` | Carga `.env` a `getenv` / `$_ENV`. |
 | `backend/bootstrap/eloquent.php` | Capsule Eloquent + MySQL UTC. |
 | `System/Core/*` | Result, Context, DataValidator, DataFormat. |
 | `System/Support/FinancialCalculator.php` | Calculadora BCMath pura: `optimizeUserPackages`, `calculateMrrBridge`, `buildReversalPayload`, `accumulateMonthlyMrrAmount`. Categorías en inglés; ignora `transfer`; `movement_type` = `reversal`. |
-| `System/Services/*` | Login, App, RbacAuthHelper, Roles, Users, Segments (RF-1), Issuers (refs enmascaradas), Movements (RNF-3 + sync RF-10) + catálogo. |
-| `System/Models/*` | Users/Sessions + Roles + SegmentsModel + IssuersModel + MovementsModel (inmutable) + catálogo. |
+| `System/Services/*` | Login, App, RbacAuthHelper, Roles, Users, Segments (RF-1), Issuers (refs enmascaradas), Movements (RNF-3 + sync RF-10), SystemSettings, AuditLogs + catálogo. Escrituras de Módulos 1/2 llaman `AuditLogger`. |
+| `System/Support/AuditLogger.php` | Única puerta a `audit_logs` (redacta secretos, respeta `audit_logs_enabled`). |
+| `System/Services/SystemSettingsService.php` | GET/PUT/PATCH `system-settings` + `POST purge-audit-logs` (`config_system`). |
+| `System/Services/AuditLogsService.php` | GET paginado `audit-logs` de solo lectura (`config_audit_logs`). |
+| `System/Models/SystemSettingsModel.php` / `AuditLogsModel.php` | Eloquent `system_settings` / `audit_logs`. |
+| `database/migrations/20260925000010_create_system_settings_and_audit_logs.php` | Tablas `system_settings` / `audit_logs` + triggers inmutabilidad/depuración. |
+| `database/seeds/SystemSettingsSeeder.php` | Seed idempotente `audit_logs_enabled = 1`. |
+| `System/Models/*` | Users/Sessions + Roles + SegmentsModel + IssuersModel + MovementsModel (inmutable) + SystemSettings + AuditLogs + catálogo. |
 | `database/migrations/*` | Esquema inglés consolidado: MRR (000001), auth (000002), catálogo (000003), RBAC (000004); 000005–000007/000009 no-op de secuencia; triggers RNF-3 (000008). |
 | `database/scripts/reset_english_schema.php` | DROP tablas legacy (español) + actuales + `phinxlog` para remigrar en limpio. |
 | `database/migrations/20260925000009_add_package_link_and_fx_rate.php` | No-op de secuencia. Columnas vivas: `services.package_service_id` + `package_factor`; `segments.usd_exchange_rate`. |
-| `database/seeds/*` | Sep 2026 + EnterpriseUsers + CatalogAndPricing + RbacRolesAndPermissions (15 `module_key` en inglés + Gestor de Promociones). |
+| `database/seeds/*` | Sep 2026 + EnterpriseUsers + CatalogAndPricing + RbacRolesAndPermissions (`module_key` en inglés, incluye `config_system` y `config_audit_logs`, + Gestor de Promociones). |
 | `backend/src/Models/*` | Movement, Client, Contract, Segment, Issuer, MonthlyMrr, CollectionStatus. |
 | `backend/src/Services/MovementService.php` | Alta inmutable auxiliar (Operam\Services) + Money. |
 | `System/Services/MovementsService.php` | API `operam/servicios`: INSERT + reversión + sync transaccional `monthly_mrr` (bcadd); bloqueo UPDATE/DELETE. |

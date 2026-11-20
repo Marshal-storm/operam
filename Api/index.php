@@ -11,6 +11,7 @@ use System\Core\Context;
 use System\Core\Result;
 use System\Models\UsersModel;
 use System\Services\AppService;
+use System\Services\AuditLogsService;
 use System\Services\InstancesService;
 use System\Services\IssuersService;
 use System\Services\LoginService;
@@ -22,6 +23,7 @@ use System\Services\RbacAuthHelper;
 use System\Services\RolesService;
 use System\Services\SegmentsService;
 use System\Services\ServicesCatalogService;
+use System\Services\SystemSettingsService;
 use System\Services\UsersManagementService;
 
 require_once dirname(__DIR__) . '/vendor/autoload.php';
@@ -152,6 +154,8 @@ if ($uri === 'login' && $method === 'POST') {
             'issuers' => (new IssuersService())->handle($context),
             'movements' => (new MovementsService())->handle($context),
             'segments' => (new SegmentsService())->handle($context),
+            'system-settings' => (new SystemSettingsService())->handle($context),
+            'audit-logs' => (new AuditLogsService())->handle($context),
             default => Result::ok([
                 'uri' => $uri,
                 'auth' => $context->getData('auth'),

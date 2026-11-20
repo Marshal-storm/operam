@@ -10,6 +10,7 @@ use System\Core\Context;
 use System\Core\DataTypes;
 use System\Core\Result;
 use System\Models\IssuersModel;
+use System\Support\AuditLogger;
 
 /**
  * CRUD de emisores (RF-1) — endpoint `/api/issuers` (alias `/api/emisores`, `/api/emitters`).
@@ -89,6 +90,9 @@ final class IssuersService extends ModelService
                 return $created;
             }
             $newId = (int) (($created->getData()['id'] ?? 0));
+            if ($newId > 0) {
+                $this->auditIssuer($newId, 'create', null);
+            }
 
             return Result::ok(
                 $this->findEnriched($newId) ?? $created->getData(),
@@ -114,10 +118,12 @@ final class IssuersService extends ModelService
                 return Result::fail($dup, 422);
             }
 
+            $before = $this->issuerRaw($issuerId);
             $updated = $this->update($issuerId, $normalized, $context);
             if (!$updated->isSuccess()) {
                 return $updated;
             }
+            $this->auditIssuer($issuerId, 'update', $before);
 
             return Result::ok($this->findEnriched($issuerId) ?? $updated->getData(), 'Emisor actualizado');
         }
@@ -135,19 +141,24 @@ final class IssuersService extends ModelService
                 }
             }
 
+            $before = $this->issuerRaw($issuerId);
             $patched = $this->patch($issuerId, $normalized, $context);
             if (!$patched->isSuccess()) {
                 return $patched;
             }
+            $action = $this->isStatusOnly($normalized) ? 'status_change' : 'update';
+            $this->auditIssuer($issuerId, $action, $before);
 
             return Result::ok($this->findEnriched($issuerId) ?? $patched->getData(), 'Emisor actualizado');
         }
 
         if ($method === 'DELETE') {
+            $before = $this->issuerRaw($issuerId);
             $patched = $this->patch($issuerId, ['is_active' => false], $context);
             if (!$patched->isSuccess()) {
                 return $patched;
             }
+            $this->auditIssuer($issuerId, 'status_change', $before);
 
             return Result::ok($this->findEnriched($issuerId) ?? $patched->getData(), 'Emisor desactivado');
         }
@@ -398,5 +409,123 @@ final class IssuersService extends ModelService
                 : ($device !== null ? self::MASK : null),
             'is_active' => (bool) (int) $row->is_active,
         ];
+    }
+
+    /**
+     * Bitácora tras escritura exitosa. Las refs no viajan en claro: solo presencia
+     * y una bandera de rotación cuyo nombre no dispara el redactado de AuditLogger.
+     */
+    private function auditIssuer(int $id, string $action, ?object $beforeRow): void
+    {
+        $afterRow = $this->issuerRaw($id);
+        $before = $beforeRow !== null ? $this->issuerAuditFromRow($beforeRow) : null;
+        $after = $afterRow !== null ? $this->issuerAuditFromRow($afterRow) : null;
+        if ($before !== null && $after !== null && $beforeRow !== null && $afterRow !== null) {
+            $this->markReferenceRotations($beforeRow, $afterRow, $after);
+        }
+
+        $label = $this->issuerLabel($after ?? $before ?? []);
+        $active = (bool) ($after['is_active'] ?? false);
+        $description = match ($action) {
+            'create' => "Se creó el emisor {$label}",
+            'status_change' => $active
+                ? "Se activó el emisor {$label}"
+                : "Se desactivó el emisor {$label}",
+            default => "Se actualizó el emisor {$label}",
+        };
+
+        AuditLogger::log(
+            $this->authContext,
+            'config_issuers',
+            'issuer',
+            (string) $id,
+            $action,
+            $description,
+            $before,
+            $after,
+        );
+    }
+
+    private function issuerRaw(int $id): ?object
+    {
+        return Capsule::table('issuers')->where('id', $id)->first([
+            'id',
+            'name',
+            'rfc',
+            'api_url',
+            'secret_ref',
+            'integropay_merchant_token_ref',
+            'integropay_device_token_ref',
+            'is_active',
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function issuerAuditFromRow(object $row): array
+    {
+        return [
+            'id' => (int) $row->id,
+            'name' => (string) $row->name,
+            'rfc' => (string) $row->rfc,
+            'api_url' => $row->api_url !== null && (string) $row->api_url !== ''
+                ? (string) $row->api_url
+                : null,
+            'has_erp_reference' => $this->hasReference($row->secret_ref ?? null),
+            'has_merchant_reference' => $this->hasReference($row->integropay_merchant_token_ref ?? null),
+            'has_device_reference' => $this->hasReference($row->integropay_device_token_ref ?? null),
+            'is_active' => (bool) (int) $row->is_active,
+        ];
+    }
+
+    /**
+     * Marca rotación solo cuando ambos valores existen y cambian (el alta/baja ya va en has_*).
+     *
+     * @param array<string, mixed> $after
+     */
+    private function markReferenceRotations(object $beforeRow, object $afterRow, array &$after): void
+    {
+        $pairs = [
+            'secret_ref' => 'erp_reference_rotated',
+            'integropay_merchant_token_ref' => 'merchant_reference_rotated',
+            'integropay_device_token_ref' => 'device_reference_rotated',
+        ];
+        foreach ($pairs as $column => $flag) {
+            $previous = trim((string) ($beforeRow->{$column} ?? ''));
+            $current = trim((string) ($afterRow->{$column} ?? ''));
+            if ($previous !== '' && $current !== '' && $previous !== $current) {
+                $after[$flag] = true;
+            }
+        }
+    }
+
+    private function hasReference(mixed $value): bool
+    {
+        return $value !== null && trim((string) $value) !== '';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function issuerLabel(array $row): string
+    {
+        $name = trim((string) ($row['name'] ?? ''));
+        $rfc = trim((string) ($row['rfc'] ?? ''));
+        if ($name !== '' && $rfc !== '') {
+            return $name . ' (' . $rfc . ')';
+        }
+
+        return $name !== '' ? $name : ($rfc !== '' ? $rfc : 'sin nombre');
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     */
+    private function isStatusOnly(array $input): bool
+    {
+        $keys = array_map(static fn (mixed $key): string => (string) $key, array_keys($input));
+
+        return $keys !== [] && array_diff($keys, ['is_active']) === [];
     }
 }

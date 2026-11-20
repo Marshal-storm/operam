@@ -15,6 +15,8 @@ export type ModuleKey =
   | 'config_users'
   | 'config_roles'
   | 'config_company'
+  | 'config_system'
+  | 'config_audit_logs'
   | 'config_preferences'
 
 export type ModulePermission = {
@@ -74,6 +76,8 @@ export const CONFIG_MODULE_KEYS: ModuleKey[] = [
   'config_users',
   'config_roles',
   'config_company',
+  'config_system',
+  'config_audit_logs',
   'config_preferences',
 ]
 

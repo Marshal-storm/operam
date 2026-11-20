@@ -66,6 +66,8 @@ $tables = [
     'emisor',
     'segmento',
     // Inglés actual
+    'audit_logs',
+    'system_settings',
     'role_permissions',
     'system_modules',
     'roles',
@@ -92,6 +94,8 @@ $triggers = [
     'trg_movimiento_prevent_delete',
     'trg_movements_prevent_update',
     'trg_movements_prevent_delete',
+    'trg_audit_logs_prevent_update',
+    'trg_audit_logs_controlled_delete',
 ];
 
 echo "Reseteando esquema de `{$name}`..." . PHP_EOL;

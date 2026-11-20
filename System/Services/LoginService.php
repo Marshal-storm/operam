@@ -10,6 +10,7 @@ use System\Core\Result;
 use System\Models\ActiveSessionsModel;
 use System\Models\AuthAttemptModel;
 use System\Models\UsersModel;
+use System\Support\AuditLogger;
 
 /**
  * Login empresarial: rate-limit, password_verify, active_sessions y JWT HS256.
@@ -54,6 +55,27 @@ final class LoginService extends CustomService
         ];
 
         $token = JWT::encode($payload, $key, 'HS256');
+
+        AuditLogger::log(
+            [
+                'user_id' => $jti['user_id'] ?? null,
+                'name' => $jti['name'] ?? null,
+                'email' => $jti['email'] ?? null,
+                'segment_id' => $jti['segment_id'] ?? null,
+            ],
+            'auth',
+            'session',
+            isset($jti['session_uid']) ? (string) $jti['session_uid'] : null,
+            'login',
+            sprintf('Inicio de sesión de %s', (string) ($jti['email'] ?? 'usuario')),
+            null,
+            [
+                'session_uid' => $jti['session_uid'] ?? null,
+                'email' => $jti['email'] ?? null,
+                'name' => $jti['name'] ?? null,
+                'role_name' => $jti['role_name'] ?? null,
+            ],
+        );
 
         return Result::ok([
             'token' => $token,

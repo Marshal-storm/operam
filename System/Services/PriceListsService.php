@@ -10,6 +10,7 @@ use System\Core\Context;
 use System\Core\DataTypes;
 use System\Core\Result;
 use System\Models\PriceListsModel;
+use System\Support\AuditLogger;
 use Throwable;
 
 final class PriceListsService extends ModelService
@@ -72,7 +73,13 @@ final class PriceListsService extends ModelService
             return $this->persistWithUniqueDefault($request, $listId, $context, 'patch');
         }
         if ($method === 'DELETE') {
-            return $this->patch($listId, ['is_active' => false], $context);
+            $before = $this->priceListSnapshot($listId);
+            $deactivated = $this->patch($listId, ['is_active' => false], $context);
+            if ($deactivated->isSuccess()) {
+                $this->auditPriceList($auth, $listId, 'status_change', $before);
+            }
+
+            return $deactivated;
         }
 
         return Result::fail('Método no soportado.', 405);
@@ -89,8 +96,13 @@ final class PriceListsService extends ModelService
         Context $context,
         string $mode,
     ): Result {
+        // La bitácora se escribe después del commit para no ensuciar la transacción de negocio.
+        /** @var list<array{auth: array<string, mixed>, id: int, action: string, description: string, before: array<string, mixed>|null, after: array<string, mixed>|null, primary: bool}> $queued */
+        $queued = [];
         try {
-            return Capsule::connection()->transaction(function () use ($request, $listId, $context, $mode): Result {
+            $result = Capsule::connection()->transaction(function () use ($request, $listId, $context, $mode, &$queued): Result {
+                $auth = $context->getData('auth', []);
+                $before = ($listId !== null && $listId > 0) ? $this->priceListSnapshot($listId) : null;
                 $result = match ($mode) {
                     'create' => $this->create($request, $context),
                     'update' => $this->update((int) $listId, $request, $context),
@@ -108,6 +120,23 @@ final class PriceListsService extends ModelService
 
                 $row = Capsule::table('price_lists')->where('id', $savedId)->first();
                 if ($row !== null && (bool) (int) $row->is_default) {
+                    // Solo se auditan hermanas que sí eran predeterminadas; el UPDATE sigue tocando al resto.
+                    $demoted = Capsule::table('price_lists')
+                        ->where('segment_id', (int) $row->segment_id)
+                        ->where('currency', (string) $row->currency)
+                        ->where('id', '!=', $savedId)
+                        ->where('is_default', 1)
+                        ->get([
+                            'id',
+                            'segment_id',
+                            'name',
+                            'currency',
+                            'is_default',
+                            'valid_from',
+                            'valid_until',
+                            'is_active',
+                        ]);
+
                     Capsule::table('price_lists')
                         ->where('segment_id', (int) $row->segment_id)
                         ->where('currency', (string) $row->currency)
@@ -116,13 +145,60 @@ final class PriceListsService extends ModelService
                             'is_default' => false,
                             'updated_at' => gmdate('Y-m-d H:i:s'),
                         ]);
+
+                    foreach ($demoted as $sibling) {
+                        $siblingBefore = $this->mapPriceListAudit($sibling);
+                        $siblingAfter = $siblingBefore;
+                        $siblingAfter['is_default'] = false;
+                        $queued[] = [
+                            'auth' => $auth,
+                            'id' => (int) $sibling->id,
+                            'action' => 'update',
+                            'description' => sprintf('Se quitó la lista predeterminada «%s»', (string) $sibling->name),
+                            'before' => $siblingBefore,
+                            'after' => $siblingAfter,
+                            'primary' => false,
+                        ];
+                    }
                 }
+
+                $action = $mode === 'create'
+                    ? 'create'
+                    : (($mode === 'patch' && $this->isStatusToggle($request, $before)) ? 'status_change' : 'update');
+                $queued[] = [
+                    'auth' => $auth,
+                    'id' => $savedId,
+                    'action' => $action,
+                    'description' => '',
+                    'before' => $before,
+                    'after' => null,
+                    'primary' => true,
+                ];
 
                 return $result;
             });
         } catch (Throwable $exception) {
             return Result::fail($exception->getMessage(), 422);
         }
+
+        foreach ($queued as $event) {
+            if ($event['primary']) {
+                $this->auditPriceList($event['auth'], $event['id'], $event['action'], $event['before']);
+                continue;
+            }
+            AuditLogger::log(
+                $event['auth'],
+                'config_prices',
+                'price_list',
+                (string) $event['id'],
+                $event['action'],
+                $event['description'],
+                $event['before'],
+                $event['after'],
+            );
+        }
+
+        return $result;
     }
 
     /**
@@ -199,5 +275,104 @@ final class PriceListsService extends ModelService
                 'items' => $listItems,
             ];
         })->all();
+    }
+
+    /**
+     * @param array<string, mixed> $auth
+     * @param array<string, mixed>|null $before
+     */
+    private function auditPriceList(array $auth, int $id, string $action, ?array $before): void
+    {
+        $after = $this->priceListSnapshot($id);
+        $name = (string) ($after['name'] ?? $before['name'] ?? 'lista de precios');
+        $active = (bool) ($after['is_active'] ?? false);
+        $description = match ($action) {
+            'create' => "Se creó la lista de precios «{$name}»",
+            'status_change' => $active
+                ? "Se activó la lista de precios «{$name}»"
+                : "Se desactivó la lista de precios «{$name}»",
+            default => "Se actualizó la lista de precios «{$name}»",
+        };
+
+        AuditLogger::log(
+            $auth,
+            'config_prices',
+            'price_list',
+            (string) $id,
+            $action,
+            $description,
+            $before,
+            $after,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function priceListSnapshot(int $id): ?array
+    {
+        $row = Capsule::table('price_lists')->where('id', $id)->first([
+            'id',
+            'segment_id',
+            'name',
+            'currency',
+            'is_default',
+            'valid_from',
+            'valid_until',
+            'is_active',
+        ]);
+
+        return $row === null ? null : $this->mapPriceListAudit($row);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mapPriceListAudit(object $row): array
+    {
+        return [
+            'id' => (int) $row->id,
+            'segment_id' => (int) $row->segment_id,
+            'name' => (string) $row->name,
+            'currency' => (string) $row->currency,
+            'is_default' => (bool) (int) $row->is_default,
+            'valid_from' => $row->valid_from !== null ? (string) $row->valid_from : null,
+            'valid_until' => $row->valid_until !== null ? (string) $row->valid_until : null,
+            'is_active' => (bool) (int) $row->is_active,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @param array<string, mixed>|null $before
+     */
+    private function isStatusToggle(array $input, ?array $before): bool
+    {
+        $ignore = ['segment', 'page', 'per_page', 'search'];
+        $keys = [];
+        foreach ($input as $key => $value) {
+            $name = (string) $key;
+            if (in_array($name, $ignore, true)) {
+                continue;
+            }
+            if ($name === 'segment_id' && $before !== null && array_key_exists('segment_id', $before)) {
+                if ($value === null || $value === '' || (int) $value === (int) $before['segment_id']) {
+                    continue;
+                }
+            }
+            $keys[] = $name;
+        }
+
+        if ($keys === []) {
+            return false;
+        }
+
+        foreach ($keys as $name) {
+            if (!in_array($name, ['is_active', 'status'], true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

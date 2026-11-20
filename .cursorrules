@@ -68,7 +68,7 @@ Actúa como Arquitecto de Software y Desarrollador Full Stack SENIOR. Aplica est
 - Montos `DECIMAL(14,2)`; timestamps UTC (RNF-11); cortes `America/Mexico_City`.
 - **PROHIBIDO** tablas, columnas o valores `ENUM` en español. Nombres de esquema **solo inglés** en `snake_case` (`segments`, `issuers`, `clients`, `contracts`, `movements`, `users`, `active_sessions`, etc.).
 - Comentarios de migraciones/seeders en español (propósito de negocio); identificadores técnicos siempre en inglés.
-- Tablas canónicas: `segments`, `issuers`, `clients`, `contracts`, `movements`, `collection_statuses`, `monthly_mrr`, `users`, `active_sessions`, `auth_attempts`, `services`, `instances`, `price_lists`, `price_list_items`, `promotions`, `roles`, `system_modules`, `role_permissions`.
+- Tablas canónicas: `segments`, `issuers`, `clients`, `contracts`, `movements`, `collection_statuses`, `monthly_mrr`, `users`, `active_sessions`, `auth_attempts`, `services`, `instances`, `price_lists`, `price_list_items`, `promotions`, `roles`, `system_modules`, `role_permissions`, `system_settings`, `audit_logs`.
 
 ## 8. Backend PHP 8.3, Illuminate y arquitectura `operam/servicios` + JWT
 
@@ -137,8 +137,17 @@ CADA vez que se cree o modifique un módulo del sistema:
 
 1. **Registro obligatorio de `module_key`** en el catálogo (`system_modules` / matriz `role_permissions`) con permisos CRUD (`can_view`, `can_create`, `can_edit`, `can_delete`). **Prohibido** un permiso monolítico `configuration`. Claves vigentes multinivel (inglés):
    - **Nivel 1 — Operativos (`group_key = 'main'`):** `dashboard`, `contracts`, `clients`, `requests`, `collections`, `segment_utility`, `sales_promotions`.
-   - **Nivel 2 — Submódulos de Configuración (`group_key = 'configuration'`):** `config_catalog`, `config_prices`, `config_promotions`, `config_issuers`, `config_instances`, `config_users`, `config_roles`, `config_company`, `config_preferences`.
+   - **Nivel 2 — Submódulos de Configuración (`group_key = 'configuration'`):** `config_catalog`, `config_prices`, `config_promotions`, `config_issuers`, `config_instances`, `config_users`, `config_roles`, `config_company`, `config_system`, `config_audit_logs`, `config_preferences`.
 2. **Visibilidad Sidebar/Rutas:** Si no hay `can_view` en un módulo/submódulo, se oculta el ítem y la ruta bloquea. El padre `"Configuración"` se muestra **solo si** el usuario tiene `can_view` en **al menos un** `config_*`; cada sub-ítem se filtra individualmente. Botones Crear/Editar/Eliminar usan la llave específica del submódulo (`canCreate('config_promotions')`, etc.).
 3. **Alcance de Segmento Dinámico:** `Todos` (`segment_id = NULL`) o el segmento asignado (`segment_id` + `segment_name` desde tabla `segments`). JWT/`auth` exponen `segment_id`, `segment_name` (o `'Todos'`) y mapa `permissions` (`view`/`create`/`edit`/`delete`). Con segmento fijo, APIs y filtros de pantalla se bloquean a ese alcance. **Prohibido** quemar nombres de segmento en el frontend; usar `useSegments()` / `GET /api/segments`.
 4. **Revocación inmediata de sesión:** Al cambiar `role_id`, `segment_id` o `is_active = false` de un usuario, o al guardar la matriz `role_permissions` de un rol, se revocan (`is_revoked = 1`) las filas de `active_sessions` afectadas. El guardia JWT responde `401` y el frontend cierra sesión (toast + `/login`). Si el admin se afecta a sí mismo, logout automático tras guardar.
 5. **Filtros con etiqueta visible (UX inquebrantable):** Todo filtro en barras de herramientas o tablas debe llevar su etiqueta (`label`) visible y clara (vía `AppFilterField` u equivalente) para que el usuario siempre sepa qué criterio está aplicando. Los filtros de catálogos (Segmentos, Emisores, Roles, etc.) **siempre** se pueblan dinámicamente desde la base de datos — nunca arreglos estáticos quemados.
+
+## 12. Auditoría Global `audit_logs` (inquebrantable)
+
+- Toda operación de escritura (`create`, `update`, `patch`, `delete`, `status_change`, `login`, `logout`, `revoke_session`, `purge_logs`) en **cualquier módulo actual o futuro** DEBE invocarse mediante `System/Support/AuditLogger.php`.
+- `AuditLogger` lee la bandera `audit_logs_enabled` de `system_settings` (caché por petición): si está `true`, inserta en `audit_logs`; si está `false`, omite el registro **silenciosamente**.
+- **Excepción de seguridad:** los cambios del propio módulo `Sistema` (`config_system` / `system_settings`) y la acción `purge_logs` **siempre** se auditan, aunque la bandera esté apagada.
+- **PROHIBIDO** persistir secretos en `old_values` / `new_values`: `password`, `password_hash`, `secret_ref`, `token` (y claves que las contengan) se redactan automáticamente como `"[REDACTED]"`.
+- `audit_logs` es append-only: triggers bloquean `UPDATE` y `DELETE` salvo depuración controlada (`@allow_audit_purge = 1`) desde `SystemSettingsService`.
+- Pantallas: `/configuracion/sistema` (`config_system`) y `/configuracion/auditoria` (`config_audit_logs`), 100% Kit Atómico + API real.

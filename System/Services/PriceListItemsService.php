@@ -9,6 +9,7 @@ use System\Core\Context;
 use System\Core\DataTypes;
 use System\Core\Result;
 use System\Models\PriceListItemsModel;
+use System\Support\AuditLogger;
 
 /**
  * CRUD de ítems / escalas de lista de precios (`price_list_items`).
@@ -37,6 +38,7 @@ final class PriceListItemsService extends ModelService
     {
         $method = $context->getMethod();
         $id = $context->getData('_resource_id');
+        $auth = $context->getData('auth', []);
 
         if ($method === 'GET' && $id === null) {
             return Result::ok($this->listEnriched(), 'Ítems de precio');
@@ -48,11 +50,20 @@ final class PriceListItemsService extends ModelService
                 return Result::fail($scaleError, 422);
             }
 
-            return $this->create($input, $context);
+            $created = $this->create($input, $context);
+            if ($created->isSuccess()) {
+                $data = $created->getData();
+                $newId = (int) (is_array($data) ? ($data['id'] ?? 0) : 0);
+                if ($newId > 0) {
+                    $this->auditItem($auth, $newId, 'create', null);
+                }
+            }
+
+            return $created;
         }
         // Quitar producto completo de una lista (todas las frecuencias / escalas).
         if ($method === 'DELETE' && $id === null) {
-            return $this->removeProductFromList($context->getRequest());
+            return $this->removeProductFromList($context->getRequest(), $auth);
         }
         if ($id === null) {
             return Result::fail('Se requiere id de ítem.', 400);
@@ -66,7 +77,13 @@ final class PriceListItemsService extends ModelService
                 return Result::fail($scaleError, 422);
             }
 
-            return $this->update($itemId, $input, $context);
+            $before = $this->itemSnapshot($itemId);
+            $updated = $this->update($itemId, $input, $context);
+            if ($updated->isSuccess()) {
+                $this->auditItem($auth, $itemId, 'update', $before);
+            }
+
+            return $updated;
         }
         if ($method === 'PATCH') {
             $existing = $this->findModel($itemId);
@@ -80,14 +97,31 @@ final class PriceListItemsService extends ModelService
                 return Result::fail($scaleError, 422);
             }
 
-            return $this->patch($itemId, $this->normalizeScale($this->normalizeMoney($context->getRequest())), $context);
+            $before = $this->itemSnapshot($itemId);
+            $patched = $this->patch($itemId, $this->normalizeScale($this->normalizeMoney($context->getRequest())), $context);
+            if ($patched->isSuccess()) {
+                $this->auditItem($auth, $itemId, 'update', $before);
+            }
+
+            return $patched;
         }
         if ($method === 'DELETE') {
             $model = $this->findModel($itemId);
             if ($model === null) {
                 return Result::fail('Ítem no encontrado.', 404);
             }
+            $before = $this->itemSnapshot($itemId);
             $model->delete();
+            AuditLogger::log(
+                $auth,
+                'config_prices',
+                'price_list_item',
+                (string) $itemId,
+                'delete',
+                $this->itemDescription('delete', $before),
+                $before,
+                null,
+            );
 
             return Result::ok(['id' => $itemId], 'Ítem eliminado');
         }
@@ -97,8 +131,9 @@ final class PriceListItemsService extends ModelService
 
     /**
      * @param array<string, mixed> $input
+     * @param array<string, mixed> $auth
      */
-    private function removeProductFromList(array $input): Result
+    private function removeProductFromList(array $input, array $auth): Result
     {
         $priceListId = (int) ($input['price_list_id'] ?? 0);
         $serviceId = (int) ($input['service_id'] ?? 0);
@@ -107,6 +142,19 @@ final class PriceListItemsService extends ModelService
             return Result::fail('price_list_id y service_id son requeridos.', 400);
         }
 
+        $existing = Capsule::table('price_list_items')
+            ->where('price_list_id', $priceListId)
+            ->where('service_id', $serviceId)
+            ->get([
+                'id',
+                'price_list_id',
+                'service_id',
+                'frequency',
+                'min_quantity',
+                'max_quantity',
+                'unit_price',
+            ]);
+
         $deleted = Capsule::table('price_list_items')
             ->where('price_list_id', $priceListId)
             ->where('service_id', $serviceId)
@@ -114,6 +162,20 @@ final class PriceListItemsService extends ModelService
 
         if ($deleted === 0) {
             return Result::fail('No hay ítems de ese producto en la lista.', 404);
+        }
+
+        foreach ($existing as $row) {
+            $before = $this->mapItemAudit($row);
+            AuditLogger::log(
+                $auth,
+                'config_prices',
+                'price_list_item',
+                (string) $row->id,
+                'delete',
+                $this->itemDescription('delete', $before),
+                $before,
+                null,
+            );
         }
 
         return Result::ok(
@@ -272,8 +334,84 @@ final class PriceListItemsService extends ModelService
                 'frequency' => (string) $item->frequency,
                 'min_quantity' => (int) $item->min_quantity,
                 'max_quantity' => $item->max_quantity !== null ? (int) $item->max_quantity : null,
-                'unit_price' => (string) $item->unit_price,
-            ];
+            'unit_price' => (string) $item->unit_price,
+        ];
         })->all();
+    }
+
+    /**
+     * @param array<string, mixed> $auth
+     * @param array<string, mixed>|null $before
+     */
+    private function auditItem(array $auth, int $id, string $action, ?array $before): void
+    {
+        $after = $this->itemSnapshot($id);
+        AuditLogger::log(
+            $auth,
+            'config_prices',
+            'price_list_item',
+            (string) $id,
+            $action,
+            $this->itemDescription($action, $after ?? $before),
+            $before,
+            $after,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function itemSnapshot(int $id): ?array
+    {
+        $row = Capsule::table('price_list_items')->where('id', $id)->first([
+            'id',
+            'price_list_id',
+            'service_id',
+            'frequency',
+            'min_quantity',
+            'max_quantity',
+            'unit_price',
+        ]);
+
+        return $row === null ? null : $this->mapItemAudit($row);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mapItemAudit(object $row): array
+    {
+        return [
+            'id' => (int) $row->id,
+            'price_list_id' => (int) $row->price_list_id,
+            'service_id' => (int) $row->service_id,
+            'frequency' => (string) $row->frequency,
+            'min_quantity' => (int) $row->min_quantity,
+            'max_quantity' => $row->max_quantity !== null ? (int) $row->max_quantity : null,
+            'unit_price' => (string) $row->unit_price,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed>|null $row
+     */
+    private function itemDescription(string $action, ?array $row): string
+    {
+        $row ??= [];
+        $frequency = (string) ($row['frequency'] ?? '');
+        $min = (int) ($row['min_quantity'] ?? 1);
+        $max = array_key_exists('max_quantity', $row) && $row['max_quantity'] !== null
+            ? (int) $row['max_quantity']
+            : null;
+        $range = $this->formatRange($min, $max);
+        $price = (string) ($row['unit_price'] ?? '');
+        $listId = (int) ($row['price_list_id'] ?? 0);
+        $verb = match ($action) {
+            'create' => 'Se creó',
+            'delete' => 'Se eliminó',
+            default => 'Se actualizó',
+        };
+
+        return trim(sprintf('%s la escala %s %s (%s) de la lista %d', $verb, $frequency, $range, $price, $listId));
     }
 }

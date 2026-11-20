@@ -10,6 +10,7 @@ import { ScreenPreferencesProvider } from '@/context/ScreenPreferencesContext'
 import { ThemeProvider } from '@/context/ThemeContext'
 import { ToastProvider } from '@/context/ToastContext'
 import { usePermissions } from '@/hooks/usePermissions'
+import { AuditLogsPage } from '@/pages/config/AuditLogsPage'
 import { CatalogServicesPage } from '@/pages/config/CatalogServicesPage'
 import { InstancesPage } from '@/pages/config/InstancesPage'
 import { IssuersPage } from '@/pages/config/IssuersPage'
@@ -18,6 +19,7 @@ import { PromotionsPage } from '@/pages/config/PromotionsPage'
 import { RolesPermissionsPage } from '@/pages/config/RolesPermissionsPage'
 import { CompanySettingsPage } from '@/pages/config/CompanySettingsPage'
 import { ScreenPreferencesPage } from '@/pages/config/ScreenPreferencesPage'
+import { SystemSettingsPage } from '@/pages/config/SystemSettingsPage'
 import { UsersManagementPage } from '@/pages/config/UsersManagementPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { LoginPage } from '@/pages/LoginPage'
@@ -41,6 +43,8 @@ const CONFIG_HOME_ROUTES: Array<{ module: ModuleKey; to: string }> = [
   { module: 'config_users', to: '/configuracion/usuarios' },
   { module: 'config_roles', to: '/configuracion/roles' },
   { module: 'config_company', to: '/configuracion/empresa' },
+  { module: 'config_system', to: '/configuracion/sistema' },
+  { module: 'config_audit_logs', to: '/configuracion/auditoria' },
   { module: 'config_preferences', to: '/configuracion/preferencias' },
 ]
 
@@ -206,6 +210,22 @@ function App() {
                           element={
                             <ModulePage module="config_company">
                               <CompanySettingsPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="configuracion/sistema"
+                          element={
+                            <ModulePage module="config_system">
+                              <SystemSettingsPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="configuracion/auditoria"
+                          element={
+                            <ModulePage module="config_audit_logs">
+                              <AuditLogsPage />
                             </ModulePage>
                           }
                         />

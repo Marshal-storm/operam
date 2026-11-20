@@ -10,6 +10,7 @@ use System\Core\Context;
 use System\Core\DataTypes;
 use System\Core\Result;
 use System\Models\ServicesCatalogModel;
+use System\Support\AuditLogger;
 
 final class ServicesCatalogService extends ModelService
 {
@@ -60,7 +61,16 @@ final class ServicesCatalogService extends ModelService
                 return Result::fail($linkError, 422);
             }
 
-            return $this->create($normalized, $context);
+            $created = $this->create($normalized, $context);
+            if ($created->isSuccess()) {
+                $data = $created->getData();
+                $newId = (int) (is_array($data) ? ($data['id'] ?? 0) : 0);
+                if ($newId > 0) {
+                    $this->auditService($auth, $newId, 'create', null);
+                }
+            }
+
+            return $created;
         }
         if ($id === null) {
             return Result::fail('Se requiere id de servicio.', 400);
@@ -81,7 +91,13 @@ final class ServicesCatalogService extends ModelService
                 return Result::fail($linkError, 422);
             }
 
-            return $this->update($serviceId, $normalized, $context);
+            $before = $this->serviceSnapshot($serviceId);
+            $updated = $this->update($serviceId, $normalized, $context);
+            if ($updated->isSuccess()) {
+                $this->auditService($auth, $serviceId, 'update', $before);
+            }
+
+            return $updated;
         }
         if ($method === 'PATCH') {
             $normalized = $this->normalizePackageLink($request, true);
@@ -107,10 +123,23 @@ final class ServicesCatalogService extends ModelService
                 return Result::fail($linkError, 422);
             }
 
-            return $this->patch($serviceId, $normalized, $context);
+            $before = $this->serviceSnapshot($serviceId);
+            $patched = $this->patch($serviceId, $normalized, $context);
+            if ($patched->isSuccess()) {
+                $action = $this->isStatusToggle($normalized, $before) ? 'status_change' : 'update';
+                $this->auditService($auth, $serviceId, $action, $before);
+            }
+
+            return $patched;
         }
         if ($method === 'DELETE') {
-            return $this->patch($serviceId, ['is_active' => false], $context);
+            $before = $this->serviceSnapshot($serviceId);
+            $patched = $this->patch($serviceId, ['is_active' => false], $context);
+            if ($patched->isSuccess()) {
+                $this->auditService($auth, $serviceId, 'status_change', $before);
+            }
+
+            return $patched;
         }
 
         return Result::fail('Método no soportado.', 405);
@@ -295,5 +324,111 @@ final class ServicesCatalogService extends ModelService
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $auth
+     * @param array<string, mixed>|null $before
+     */
+    private function auditService(array $auth, int $id, string $action, ?array $before): void
+    {
+        $after = $this->serviceSnapshot($id);
+        $name = (string) ($after['name'] ?? $before['name'] ?? 'servicio');
+        $code = trim((string) ($after['code'] ?? $before['code'] ?? ''));
+        $label = $code !== '' ? $name . ' (' . $code . ')' : $name;
+        $active = (bool) ($after['is_active'] ?? false);
+        $description = match ($action) {
+            'create' => "Se creó el servicio {$label}",
+            'status_change' => $active
+                ? "Se activó el servicio {$label}"
+                : "Se desactivó el servicio {$label}",
+            default => "Se actualizó el servicio {$label}",
+        };
+
+        AuditLogger::log(
+            $auth,
+            'config_catalog',
+            'service',
+            (string) $id,
+            $action,
+            $description,
+            $before,
+            $after,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function serviceSnapshot(int $id): ?array
+    {
+        $row = Capsule::table('services')->where('id', $id)->first([
+            'id',
+            'segment_id',
+            'default_issuer_id',
+            'code',
+            'name',
+            'description',
+            'service_type',
+            'unit_of_measure',
+            'allow_package_conversion',
+            'package_service_id',
+            'package_factor',
+            'is_active',
+        ]);
+        if ($row === null) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $row->id,
+            'segment_id' => (int) $row->segment_id,
+            'default_issuer_id' => $row->default_issuer_id !== null ? (int) $row->default_issuer_id : null,
+            'code' => (string) $row->code,
+            'name' => (string) $row->name,
+            'description' => $row->description !== null ? (string) $row->description : null,
+            'service_type' => (string) $row->service_type,
+            'unit_of_measure' => (string) $row->unit_of_measure,
+            'allow_package_conversion' => (bool) (int) $row->allow_package_conversion,
+            'package_service_id' => $row->package_service_id !== null ? (int) $row->package_service_id : null,
+            'package_factor' => (int) ($row->package_factor ?? 5),
+            'is_active' => (bool) (int) $row->is_active,
+        ];
+    }
+
+    /**
+     * PATCH de estado. Ignora el filtro de segmento inyectado si no cambia el valor.
+     *
+     * @param array<string, mixed> $input
+     * @param array<string, mixed>|null $before
+     */
+    private function isStatusToggle(array $input, ?array $before): bool
+    {
+        $ignore = ['segment', 'page', 'per_page', 'search'];
+        $keys = [];
+        foreach ($input as $key => $value) {
+            $name = (string) $key;
+            if (in_array($name, $ignore, true)) {
+                continue;
+            }
+            if ($name === 'segment_id' && $before !== null && array_key_exists('segment_id', $before)) {
+                if ($value === null || $value === '' || (int) $value === (int) $before['segment_id']) {
+                    continue;
+                }
+            }
+            $keys[] = $name;
+        }
+
+        if ($keys === []) {
+            return false;
+        }
+
+        foreach ($keys as $name) {
+            if (!in_array($name, ['is_active', 'status'], true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

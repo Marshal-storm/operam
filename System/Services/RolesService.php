@@ -11,6 +11,7 @@ use System\Core\Result;
 use System\Models\RolePermissionsModel;
 use System\Models\RolesModel;
 use System\Models\SystemModulesModel;
+use System\Support\AuditLogger;
 
 /**
  * CRUD de roles + matriz viva `role_permissions`.
@@ -61,7 +62,7 @@ final class RolesService extends ModelService
                 return Result::fail('Sin permiso para editar permisos.', 403);
             }
 
-            return $this->savePermissions((int) $id, $context->getRequest());
+            return $this->savePermissions((int) $id, $context->getRequest(), $auth);
         }
 
         if ($method === 'GET' && $id === null) {
@@ -95,9 +96,17 @@ final class RolesService extends ModelService
                 return Result::fail('Sin permiso para editar roles.', 403);
             }
 
-            return $method === 'PUT'
-                ? $this->update($roleId, $context->getRequest(), $context)
-                : $this->patch($roleId, $context->getRequest(), $context);
+            $before = $this->findRolePayload($roleId);
+            $request = $context->getRequest();
+            $result = $method === 'PUT'
+                ? $this->update($roleId, $request, $context)
+                : $this->patch($roleId, $request, $context);
+            if ($result->isSuccess()) {
+                $action = ($method === 'PATCH' && $this->isStatusOnly($request)) ? 'status_change' : 'update';
+                $this->auditRole($auth, $roleId, $action, $before);
+            }
+
+            return $result;
         }
 
         return Result::fail('Método no soportado.', 405);
@@ -230,14 +239,16 @@ final class RolesService extends ModelService
         }
 
         $payload = $this->findRolePayload($roleId);
+        $this->auditRole($context->getData('auth', []), $roleId, 'create', null);
 
         return Result::ok($payload, 'Rol creado', 201);
     }
 
     /**
      * @param array<string, mixed> $request
+     * @param array<string, mixed> $auth
      */
-    private function savePermissions(int $roleId, array $request): Result
+    private function savePermissions(int $roleId, array $request, array $auth): Result
     {
         if (!RolesModel::query()->where('id', $roleId)->exists()) {
             return Result::fail('Rol no encontrado.', 404);
@@ -249,6 +260,7 @@ final class RolesService extends ModelService
             return Result::fail('Se requiere el mapa de permisos.', 422);
         }
 
+        $before = $this->findRolePayload($roleId);
         $nowUtc = gmdate('Y-m-d H:i:s');
         $this->upsertPermissions($roleId, $permissions, $nowUtc);
 
@@ -258,10 +270,76 @@ final class RolesService extends ModelService
         $revoked = RbacAuthHelper::revokeSessionsForRole($roleId);
 
         $payload = $this->findRolePayload($roleId) ?? [];
+        $roleName = (string) ($payload['name'] ?? (is_array($before) ? ($before['name'] ?? 'rol') : 'rol'));
+        AuditLogger::log(
+            $auth,
+            'config_roles',
+            'role',
+            (string) $roleId,
+            'update',
+            sprintf('Se actualizaron los permisos del rol «%s»', $roleName),
+            $before,
+            $payload,
+        );
+        if ($revoked > 0) {
+            AuditLogger::log(
+                $auth,
+                'config_roles',
+                'session',
+                (string) $roleId,
+                'revoke_session',
+                sprintf('Se revocaron %d sesión(es) por cambio de permisos del rol «%s»', $revoked, $roleName),
+                null,
+                [
+                    'role_id' => $roleId,
+                    'sessions_revoked' => $revoked,
+                ],
+            );
+        }
+
         $payload['sessions_revoked'] = $revoked;
         $payload['requires_reauth'] = $revoked > 0;
 
         return Result::ok($payload, 'Permisos actualizados');
+    }
+
+    /**
+     * @param array<string, mixed> $auth
+     * @param array<string, mixed>|null $before
+     */
+    private function auditRole(array $auth, int $roleId, string $action, ?array $before): void
+    {
+        $after = $this->findRolePayload($roleId);
+        $name = (string) ($after['name'] ?? (is_array($before) ? ($before['name'] ?? 'rol') : 'rol'));
+        $active = (bool) ($after['is_active'] ?? false);
+        $description = match ($action) {
+            'create' => "Se creó el rol «{$name}»",
+            'status_change' => $active
+                ? "Se activó el rol «{$name}»"
+                : "Se desactivó el rol «{$name}»",
+            default => "Se actualizó el rol «{$name}»",
+        };
+
+        AuditLogger::log(
+            $auth,
+            'config_roles',
+            'role',
+            (string) $roleId,
+            $action,
+            $description,
+            $before,
+            $after,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     */
+    private function isStatusOnly(array $input): bool
+    {
+        $keys = array_map(static fn (mixed $key): string => (string) $key, array_keys($input));
+
+        return $keys !== [] && array_diff($keys, ['is_active']) === [];
     }
 
     /**

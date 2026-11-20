@@ -19,6 +19,7 @@ import {
 import { configureCatalogAuth } from '@/services/catalogService'
 import { configureDashboardAuth } from '@/services/dashboardService'
 import { configureRbacAuth } from '@/services/rbacService'
+import { configureSystemAuth } from '@/services/systemService'
 import {
   armUnauthorizedGuard,
   disarmUnauthorizedGuard,
@@ -69,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     configureDashboardAuth(getToken, () => logout())
     configureCatalogAuth(getToken)
     configureRbacAuth(getToken)
+    configureSystemAuth(getToken)
   }, [getToken, logout])
 
   // Soft-refresh de permisos desde MySQL (config_issuers, etc.) sin cerrar sesión.
