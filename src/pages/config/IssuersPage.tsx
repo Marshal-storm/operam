@@ -11,10 +11,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { AppBadge } from '@/components/ui/AppBadge'
-import { AppFilterField } from '@/components/ui/AppFilterField'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
-import { AppInput, AppSearchInput } from '@/components/ui/AppInput'
+import { AppFilterBar } from '@/components/ui/AppFilterBar'
+import { AppInput } from '@/components/ui/AppInput'
 import {
   AppModal,
   AppModalContent,
@@ -22,6 +22,10 @@ import {
   AppModalHeader,
   AppModalTitle,
 } from '@/components/ui/AppModal'
+import {
+  AppActionsColumnHeader,
+  AppRowActionsMenu,
+} from '@/components/ui/AppRowActionsMenu'
 import { AppSwitch } from '@/components/ui/AppSwitch'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -156,7 +160,7 @@ export function IssuersPage() {
         cell: ({ row }) => {
           const em = row.original
           return (
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1.5">
               <RefBadge label="Secret" configured={em.has_erp_secret} />
               <RefBadge label="Merchant" configured={em.has_merchant_token} />
               <RefBadge label="Device" configured={em.has_device_token} />
@@ -177,34 +181,31 @@ export function IssuersPage() {
         accessorKey: 'is_active',
         header: 'Estado',
         cell: ({ row }) => (
-          <AppBadge
-            label={row.original.is_active ? 'Activo' : 'Inactivo'}
-            tone={row.original.is_active ? 'success' : 'danger'}
+          <AppSwitch
+            checked={row.original.is_active}
+            caption={row.original.is_active ? 'Activo' : 'Inactivo'}
+            disabled={!canEdit('config_issuers')}
+            onCheckedChange={(next) => void onToggle(row.original, next)}
           />
         ),
       },
       {
         id: 'actions',
-        header: 'Acciones',
-        cell: ({ row }) =>
-          canEdit('config_issuers') ? (
-            <div className="flex items-center gap-2">
-              <AppButton
-                type="button"
-                variant="outline"
-                size="sm"
-                className="rounded-xl"
-                onClick={() => openEdit(row.original)}
-              >
-                <Pencil className="mr-1 h-3.5 w-3.5" /> Editar
-              </AppButton>
-              <AppSwitch
-                checked={row.original.is_active}
-                onCheckedChange={(next) => void onToggle(row.original, next)}
-                label={row.original.is_active ? 'Desactivar emisor' : 'Activar emisor'}
-              />
-            </div>
-          ) : null,
+        header: () => <AppActionsColumnHeader />,
+        cell: ({ row }) => (
+          <div className="flex justify-end">
+            <AppRowActionsMenu
+              actions={[
+                {
+                  label: 'Editar',
+                  icon: <Pencil className="h-4 w-4" />,
+                  onClick: () => openEdit(row.original),
+                  hidden: !canEdit('config_issuers'),
+                },
+              ]}
+            />
+          </div>
+        ),
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -276,11 +277,20 @@ export function IssuersPage() {
       } else {
         await createIssuer(payload)
         toast.success('Emisor creado', `${payload.name} quedó registrado.`)
+        setPage(1)
       }
       setModalOpen(false)
     } catch (error) {
       toast.apiError(error)
     }
+  }
+
+  const hasActiveFilters = search.trim() !== '' || estado !== 'Todos'
+
+  function clearFilters() {
+    setSearch('')
+    setEstado('Todos')
+    setPage(1)
   }
 
   if (isApiError && !items.length) {
@@ -311,43 +321,37 @@ export function IssuersPage() {
         )}
       </header>
 
-      <AppCard className="space-y-3 p-4">
-        <AppSearchInput
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value)
-            setPage(1)
-          }}
-          onClear={() => {
-            setSearch('')
-            setPage(1)
-          }}
-          placeholder="Buscar por nombre o RFC…"
-          aria-label="Buscar emisores"
-        />
-        <AppFilterField label="Estado">
-          <div className="ios-pill-track" role="group" aria-label="Estado">
-            {['Todos', 'Activos', 'Inactivos'].map((opt) => (
-              <AppButton
-                key={opt}
-                type="button"
-                variant={estado === opt ? 'primary' : 'ghost'}
-                size="sm"
-                onClick={() => {
-                  setEstado(opt)
-                  setPage(1)
-                }}
-                className={cn(
-                  'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
-                  estado === opt ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
-                )}
-              >
-                {opt}
-              </AppButton>
-            ))}
-          </div>
-        </AppFilterField>
-      </AppCard>
+      <AppFilterBar
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value)
+          setPage(1)
+        }}
+        onSearchClear={() => {
+          setSearch('')
+          setPage(1)
+        }}
+        searchPlaceholder="Buscar por nombre o RFC…"
+        searchLabel="BUSCAR"
+        filters={[
+          {
+            id: 'status',
+            label: 'ESTADO',
+            value: estado,
+            onValueChange: (value) => {
+              setEstado(value)
+              setPage(1)
+            },
+            options: [
+              { value: 'Todos', label: 'Todos' },
+              { value: 'Activos', label: 'Activos', tone: 'success' },
+              { value: 'Inactivos', label: 'Inactivos', tone: 'danger' },
+            ],
+          },
+        ]}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
+      />
 
       {isLoading ? (
         <Skeleton className="h-64 w-full rounded-2xl" />
@@ -362,7 +366,14 @@ export function IssuersPage() {
                     className="border-b border-slate-200/80 text-left text-[11px] uppercase text-slate-500 dark:border-white/[0.07]"
                   >
                     {hg.headers.map((h) => (
-                      <th key={h.id} className={cn(rowPaddingClass, 'font-medium')}>
+                      <th
+                        key={h.id}
+                        className={cn(
+                          rowPaddingClass,
+                          'font-medium',
+                          h.column.id === 'actions' && 'text-right',
+                        )}
+                      >
                         {h.isPlaceholder ? null : <table.FlexRender header={h} />}
                       </th>
                     ))}
@@ -376,7 +387,13 @@ export function IssuersPage() {
                     className="border-b border-slate-100 dark:border-white/[0.04]"
                   >
                     {row.getAllCells().map((cell) => (
-                      <td key={cell.id} className={rowPaddingClass}>
+                      <td
+                        key={cell.id}
+                        className={cn(
+                          rowPaddingClass,
+                          cell.column.id === 'actions' && 'text-right',
+                        )}
+                      >
                         <table.FlexRender cell={cell} />
                       </td>
                     ))}
@@ -394,15 +411,21 @@ export function IssuersPage() {
                     <p className="font-heading truncate font-semibold">{em.name}</p>
                     <p className="font-mono text-xs text-slate-500">{em.rfc}</p>
                   </div>
-                  <AppBadge
-                    label={em.is_active ? 'Activo' : 'Inactivo'}
-                    tone={em.is_active ? 'success' : 'danger'}
+                  <AppRowActionsMenu
+                    actions={[
+                      {
+                        label: 'Editar',
+                        icon: <Pencil className="h-4 w-4" />,
+                        onClick: () => openEdit(em),
+                        hidden: !canEdit('config_issuers'),
+                      },
+                    ]}
                   />
                 </div>
                 <p className="mt-2 line-clamp-1 font-mono text-[11px] text-slate-500">
                   {em.api_url || 'Sin URL ERP'}
                 </p>
-                <div className="mt-2 flex flex-wrap gap-1">
+                <div className="mt-2 flex flex-wrap gap-1.5">
                   <RefBadge label="Secret" configured={em.has_erp_secret} />
                   <RefBadge label="Merchant" configured={em.has_merchant_token} />
                   <RefBadge label="Device" configured={em.has_device_token} />
@@ -410,24 +433,14 @@ export function IssuersPage() {
                 <p className="mt-2 text-xs text-slate-500">
                   {em.linked_instances_count ?? 0} instancias vinculadas
                 </p>
-                {canEdit('config_issuers') && (
-                  <div className="mt-3 flex items-center gap-2">
-                    <AppButton
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 rounded-xl"
-                      onClick={() => openEdit(em)}
-                    >
-                      <Pencil className="mr-1 h-3.5 w-3.5" /> Editar
-                    </AppButton>
-                    <AppSwitch
-                      checked={em.is_active}
-                      onCheckedChange={(next) => void onToggle(em, next)}
-                      label={em.is_active ? 'Desactivar' : 'Activar'}
-                    />
-                  </div>
-                )}
+                <div className="mt-3">
+                  <AppSwitch
+                    checked={em.is_active}
+                    caption={em.is_active ? 'Activo' : 'Inactivo'}
+                    disabled={!canEdit('config_issuers')}
+                    onCheckedChange={(next) => void onToggle(em, next)}
+                  />
+                </div>
               </AppCard>
             ))}
           </div>

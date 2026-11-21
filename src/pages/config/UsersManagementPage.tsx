@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Users } from 'lucide-react'
+import { Pencil, Plus, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AppBadge } from '@/components/ui/AppBadge'
-import { AppFilterField } from '@/components/ui/AppFilterField'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
-import { AppInput, AppSearchInput } from '@/components/ui/AppInput'
+import { AppFilterBar } from '@/components/ui/AppFilterBar'
+import { AppInput } from '@/components/ui/AppInput'
 import {
   AppModal,
   AppModalContent,
@@ -14,6 +14,7 @@ import {
   AppModalHeader,
   AppModalTitle,
 } from '@/components/ui/AppModal'
+import { AppRowActionsMenu } from '@/components/ui/AppRowActionsMenu'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { AppSwitch } from '@/components/ui/AppSwitch'
 import { PaginationBar } from '@/components/ui/PaginationBar'
@@ -24,7 +25,6 @@ import { useToast } from '@/context/ToastContext'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useSegments } from '@/hooks/useSegments'
 import { scheduleCriticalRelogin } from '@/lib/criticalRelogin'
-import { cn } from '@/lib/utils'
 import {
   createManagedUser,
   fetchManagedUsers,
@@ -179,6 +179,7 @@ export function UsersManagementPage() {
     onSuccess: async (saved) => {
       toast.success(editing ? 'Usuario actualizado' : 'Usuario creado', saved.email)
       setModalOpen(false)
+      if (!editing) setPage(1)
       await queryClient.invalidateQueries({ queryKey: ['rbac', 'users'] })
 
       const isSelf = editing != null && userId != null && editing.id === userId
@@ -202,7 +203,44 @@ export function UsersManagementPage() {
     onError: (error) => toast.apiError(error),
   })
 
+  /** Toggle rápido de is_active desde la tabla (solo el flag). */
+  const toggleActiveMutation = useMutation({
+    mutationFn: ({ row, next }: { row: ManagedUser; next: boolean }) =>
+      updateManagedUser(row.id, { is_active: next }),
+    onSuccess: async (saved, variables) => {
+      toast.success(
+        variables.next ? 'Usuario activado' : 'Usuario desactivado',
+        saved.email,
+      )
+      await queryClient.invalidateQueries({ queryKey: ['rbac', 'users'] })
+
+      const isSelf = userId != null && variables.row.id === userId
+      if (isSelf && variables.row.is_active && !saved.is_active) {
+        scheduleCriticalRelogin({
+          warning: toast.warning,
+          logout,
+          navigateToLogin: () => navigate('/login', { replace: true }),
+        })
+      }
+    },
+    onError: (error) => toast.apiError(error),
+  })
+
   const roles = rolesQuery.data ?? []
+
+  const hasActiveFilters =
+    search.trim() !== '' ||
+    rolFilter !== 'Todos' ||
+    (!isSegmentLocked && segmentoFilter !== 'Todos') ||
+    estadoFilter !== 'Todos'
+
+  function clearFilters() {
+    setSearch('')
+    setRolFilter('Todos')
+    if (!isSegmentLocked) setSegmentoFilter('Todos')
+    setEstadoFilter('Todos')
+    setPage(1)
+  }
 
   return (
     <div className="space-y-5">
@@ -225,88 +263,62 @@ export function UsersManagementPage() {
         )}
       </header>
 
-      <AppCard className="space-y-3 p-4">
-        <AppSearchInput
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value)
-            setPage(1)
-          }}
-          onClear={() => {
-            setSearch('')
-            setPage(1)
-          }}
-          placeholder="Buscar por nombre, correo o rol…"
-          aria-label="Buscar usuarios"
-        />
-        <div className="flex flex-wrap items-end gap-3">
-          <AppFilterField label="Rol">
-            <AppSelect
-              aria-label="Filtrar por rol"
-              className="w-auto min-w-[11rem]"
-              triggerClassName="h-8 py-1 text-xs"
-              value={rolFilter}
-              onValueChange={(v) => {
-                setRolFilter(v)
-                setPage(1)
-              }}
-              options={[
-                { value: 'Todos', label: 'Todos los roles' },
-                ...roles.map((r) => ({ value: String(r.id), label: r.name })),
-              ]}
-            />
-          </AppFilterField>
-          <AppFilterField label="Segmento">
-            <div className="ios-pill-track" role="group" aria-label="Segmento">
-              {filterOptions.map((opt) => (
-                <AppButton
-                  key={opt.value}
-                  type="button"
-                  variant={segmentoFilter === opt.value ? 'primary' : 'ghost'}
-                  size="sm"
-                  disabled={isSegmentLocked}
-                  onClick={() => {
-                    if (isSegmentLocked) return
-                    setSegmentoFilter(opt.value)
-                    setPage(1)
-                  }}
-                  className={cn(
-                    'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
-                    segmentoFilter === opt.value
-                      ? 'ios-pill-active'
-                      : 'text-slate-600 dark:text-slate-300',
-                    isSegmentLocked && 'cursor-not-allowed opacity-80',
-                  )}
-                >
-                  {opt.label}
-                </AppButton>
-              ))}
-            </div>
-          </AppFilterField>
-          <AppFilterField label="Estado">
-            <div className="ios-pill-track" role="group" aria-label="Estado">
-              {['Todos', 'Activos', 'Inactivos'].map((opt) => (
-                <AppButton
-                  key={opt}
-                  type="button"
-                  variant={estadoFilter === opt ? 'primary' : 'ghost'}
-                  size="sm"
-                  onClick={() => {
-                    setEstadoFilter(opt)
-                    setPage(1)
-                  }}
-                  className={cn(
-                    'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
-                    estadoFilter === opt ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
-                  )}
-                >
-                  {opt}
-                </AppButton>
-              ))}
-            </div>
-          </AppFilterField>
-        </div>
-      </AppCard>
+      <AppFilterBar
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value)
+          setPage(1)
+        }}
+        onSearchClear={() => {
+          setSearch('')
+          setPage(1)
+        }}
+        searchPlaceholder="Buscar por nombre, correo o rol…"
+        searchLabel="BUSCAR"
+        filters={[
+          {
+            id: 'role',
+            label: 'ROL',
+            value: rolFilter,
+            onValueChange: (value) => {
+              setRolFilter(value)
+              setPage(1)
+            },
+            options: [
+              { value: 'Todos', label: 'Todos los roles' },
+              ...roles.map((r) => ({ value: String(r.id), label: r.name })),
+            ],
+          },
+          {
+            id: 'segment',
+            label: 'SEGMENTO',
+            value: segmentoFilter,
+            onValueChange: (value) => {
+              if (isSegmentLocked) return
+              setSegmentoFilter(value)
+              setPage(1)
+            },
+            options: filterOptions,
+            disabled: isSegmentLocked,
+          },
+          {
+            id: 'status',
+            label: 'ESTADO',
+            value: estadoFilter,
+            onValueChange: (value) => {
+              setEstadoFilter(value)
+              setPage(1)
+            },
+            options: [
+              { value: 'Todos', label: 'Todos' },
+              { value: 'Activos', label: 'Activos', tone: 'success' },
+              { value: 'Inactivos', label: 'Inactivos', tone: 'danger' },
+            ],
+          },
+        ]}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
+      />
 
       <AppCard className="overflow-hidden p-0">
         {usersQuery.isLoading ? (
@@ -321,7 +333,7 @@ export function UsersManagementPage() {
                     <th className="px-4 py-3 font-medium">Rol</th>
                     <th className="px-4 py-3 font-medium">Segmento</th>
                     <th className="px-4 py-3 font-medium">Estado</th>
-                    <th className="px-4 py-3 font-medium" />
+                    <th className="px-4 py-3 text-right font-medium">ACCIONES</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -353,22 +365,28 @@ export function UsersManagementPage() {
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <AppBadge
-                          label={row.is_active ? 'Activo' : 'Inactivo'}
-                          tone={row.is_active ? 'success' : 'danger'}
+                        <AppSwitch
+                          checked={row.is_active}
+                          caption={row.is_active ? 'Activo' : 'Inactivo'}
+                          disabled={
+                            !canEdit('config_users') || toggleActiveMutation.isPending
+                          }
+                          onCheckedChange={(next) =>
+                            toggleActiveMutation.mutate({ row, next })
+                          }
                         />
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {canEdit('config_users') && (
-                          <AppButton
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEdit(row)}
-                          >
-                            Editar
-                          </AppButton>
-                        )}
+                        <AppRowActionsMenu
+                          actions={[
+                            {
+                              label: 'Editar',
+                              icon: <Pencil className="h-4 w-4" />,
+                              onClick: () => openEdit(row),
+                              hidden: !canEdit('config_users'),
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -379,23 +397,40 @@ export function UsersManagementPage() {
             <div className="space-y-3 p-4 md:hidden">
               {(usersQuery.data?.items ?? []).map((row) => (
                 <AppCard key={row.id} className="p-3">
-                  <p className="font-medium">{row.name}</p>
-                  <p className="font-mono text-xs text-slate-500">{row.email}</p>
-                  <p className="mt-2 text-xs text-slate-500">
-                    {row.role_name ?? row.role_code} ·{' '}
-                    {row.segment_id == null ? 'Todos' : row.segment_name || 'Sin segmento'}
-                  </p>
-                  {canEdit('config_users') && (
-                    <AppButton
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="mt-3 w-full"
-                      onClick={() => openEdit(row)}
-                    >
-                      Editar
-                    </AppButton>
-                  )}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium">{row.name}</p>
+                      <p className="font-mono text-xs text-slate-500">{row.email}</p>
+                      <p className="mt-2 text-xs text-slate-500">
+                        {row.role_name ?? row.role_code} ·{' '}
+                        {row.segment_id == null
+                          ? 'Todos'
+                          : row.segment_name || 'Sin segmento'}
+                      </p>
+                    </div>
+                    <AppRowActionsMenu
+                      actions={[
+                        {
+                          label: 'Editar',
+                          icon: <Pencil className="h-4 w-4" />,
+                          onClick: () => openEdit(row),
+                          hidden: !canEdit('config_users'),
+                        },
+                      ]}
+                    />
+                  </div>
+                  <div className="mt-3">
+                    <AppSwitch
+                      checked={row.is_active}
+                      caption={row.is_active ? 'Activo' : 'Inactivo'}
+                      disabled={
+                        !canEdit('config_users') || toggleActiveMutation.isPending
+                      }
+                      onCheckedChange={(next) =>
+                        toggleActiveMutation.mutate({ row, next })
+                      }
+                    />
+                  </div>
                 </AppCard>
               ))}
             </div>

@@ -2,9 +2,8 @@ import { Check, Copy, Gift } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AppButton } from '@/components/ui/AppButton'
-import { AppFilterField } from '@/components/ui/AppFilterField'
 import { AppCard } from '@/components/ui/AppCard'
-import { AppSearchInput } from '@/components/ui/AppInput'
+import { AppFilterBar } from '@/components/ui/AppFilterBar'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/context/ToastContext'
@@ -77,6 +76,15 @@ export function SalesPromotionsPage() {
 
   const pageRows = paginateRows(active, page, pageSize)
 
+  const hasActiveFilters =
+    search.trim() !== '' || (!isSegmentLocked && segment !== 'Todos')
+
+  function clearFilters() {
+    setSearch('')
+    if (!isSegmentLocked) setSegment('Todos')
+    setPage(1)
+  }
+
   async function copyCode(promo: Promotion) {
     try {
       await navigator.clipboard.writeText(promo.code)
@@ -125,50 +133,35 @@ export function SalesPromotionsPage() {
         </div>
       </header>
 
-      <AppCard className="space-y-3 p-4">
-        <AppSearchInput
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value)
-            setPage(1)
-          }}
-          onClear={() => {
-            setSearch('')
-            setPage(1)
-          }}
-          placeholder="Buscar código o beneficio…"
-          aria-label="Buscar código o beneficio"
-        />
-        <AppFilterField label="Segmento">
-          <div className="ios-pill-track" role="group" aria-label="Segmento">
-            {segmentOptions.map((opt) => {
-              const active = segment === opt.value
-              return (
-                <AppButton
-                  key={opt.value}
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={isSegmentLocked}
-                  onClick={() => {
-                    if (isSegmentLocked) return
-                    setSegment(opt.value)
-                    setPage(1)
-                  }}
-                  className={cn(
-                    'h-auto rounded-xl px-2.5 py-1 text-xs font-normal',
-                    active
-                      ? 'bg-[#0066FF] font-medium text-white shadow-[0_0_15px_rgba(0,102,255,0.4)] hover:bg-[#0055DD] hover:text-white dark:bg-[#0A84FF] dark:text-white dark:hover:bg-[#0A74E0]'
-                      : 'text-slate-600 dark:text-slate-300',
-                  )}
-                >
-                  {opt.label}
-                </AppButton>
-              )
-            })}
-          </div>
-        </AppFilterField>
-      </AppCard>
+      <AppFilterBar
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value)
+          setPage(1)
+        }}
+        onSearchClear={() => {
+          setSearch('')
+          setPage(1)
+        }}
+        searchPlaceholder="Buscar código o beneficio…"
+        searchLabel="BUSCAR"
+        filters={[
+          {
+            id: 'segment',
+            label: 'SEGMENTO',
+            value: segment,
+            onValueChange: (value) => {
+              if (isSegmentLocked) return
+              setSegment(value)
+              setPage(1)
+            },
+            options: segmentOptions,
+            disabled: isSegmentLocked,
+          },
+        ]}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {pageRows.map((promo) => (

@@ -79,6 +79,8 @@ export type PriceListItem = {
   service_id: number
   service_code: string
   service_name: string
+  /** Tipo del catálogo (JOIN services) — guía UI one_time/consumo. */
+  service_type?: ServiceType
   frequency: BillingFrequency
   min_quantity: number
   max_quantity: number | null
@@ -129,9 +131,15 @@ export type CatalogSnapshot = {
 
 export type PackageOptimizationResult = {
   userCount: number
+  /** Factor RF-2 real del producto (usuarios por paquete). */
+  packageFactor: number
+  packsCount: number
+  /** @deprecated Alias de packsCount. */
   packsOf5: number
   leftoverUsers: number
   singleUserPrice: string
+  packPrice: string
+  /** @deprecated Alias de packPrice. */
   pack5Price: string
   naiveTotal: string
   optimizedTotal: string

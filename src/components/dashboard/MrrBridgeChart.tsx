@@ -39,6 +39,10 @@ function resolveVisualFloor(steps: MrrBridgeStep[]): number {
     .filter((step) => step.type !== 'total')
     .map((step) => step.start)
   const minFloating = floatingStarts.length > 0 ? Math.min(...floatingStarts) : 0
+  // Con Inicio = $0 (primer mes / base limpia) no recortar el eje: barras proporcionales.
+  if (minFloating <= 0) {
+    return 0
+  }
   const raw = Math.trunc((minFloating * 96) / 100)
   return Math.trunc(raw / 1000) * 1000
 }
@@ -140,14 +144,15 @@ export function MrrBridgeChart({
     () => toVisualSteps(steps, floor, isDark),
     [steps, floor, isDark],
   )
-  const yMax = useMemo(
-    () =>
-      Math.max(
-        ...visualData.map((step) => step.visualStart + step.visualSize),
-        1,
-      ) + 8_000,
-    [visualData],
-  )
+  const yMax = useMemo(() => {
+    const peak = Math.max(
+      ...visualData.map((step) => step.visualStart + step.visualSize),
+      1,
+    )
+    // Headroom relativo: con montos chicos (Inicio $0 + un Nuevo) evita aplastar la barra.
+    const pad = Math.max(Math.round(peak * 0.18), peak < 20_000 ? 1_000 : 8_000)
+    return peak + pad
+  }, [visualData])
 
   const selectedStep = steps.find((step) => step.category === selectedCategory)
   const detailMovements =

@@ -11,10 +11,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { AppBadge } from '@/components/ui/AppBadge'
-import { AppFilterField } from '@/components/ui/AppFilterField'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
-import { AppInput, AppSearchInput } from '@/components/ui/AppInput'
+import { AppFilterBar } from '@/components/ui/AppFilterBar'
+import { AppInput } from '@/components/ui/AppInput'
 import {
   AppModal,
   AppModalContent,
@@ -22,6 +22,10 @@ import {
   AppModalHeader,
   AppModalTitle,
 } from '@/components/ui/AppModal'
+import {
+  AppActionsColumnHeader,
+  AppRowActionsMenu,
+} from '@/components/ui/AppRowActionsMenu'
 import { AppSelect, type AppSelectTone } from '@/components/ui/AppSelect'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -181,18 +185,21 @@ export function InstancesPage() {
       },
       {
         id: 'actions',
-        header: 'Acciones',
-        cell: ({ row }) =>
-          canEdit('config_instances') ? (
-            <AppButton
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => openEdit(row.original)}
-            >
-              <Pencil className="h-3.5 w-3.5" /> Editar
-            </AppButton>
-          ) : null,
+        header: () => <AppActionsColumnHeader />,
+        cell: ({ row }) => (
+          <div className="flex justify-end">
+            <AppRowActionsMenu
+              actions={[
+                {
+                  label: 'Editar',
+                  icon: <Pencil className="h-4 w-4" />,
+                  onClick: () => openEdit(row.original),
+                  hidden: !canEdit('config_instances'),
+                },
+              ]}
+            />
+          </div>
+        ),
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -250,11 +257,28 @@ export function InstancesPage() {
       } else {
         await createInstance(payload)
         toast.success('Instancia creada', `${payload.name} quedó registrada.`)
+        setPage(1)
       }
       setModalOpen(false)
     } catch (error) {
       toast.apiError(error)
     }
+  }
+
+  const issuerFilterValue = issuerId == null ? 'Todos' : String(issuerId)
+
+  const hasActiveFilters =
+    search.trim() !== '' ||
+    (!isSegmentLocked && segment !== 'Todos') ||
+    estado !== 'Todos' ||
+    issuerId != null
+
+  function clearFilters() {
+    setSearch('')
+    if (!isSegmentLocked) setSegment('Todos')
+    setEstado('Todos')
+    setIssuerId(null)
+    setPage(1)
   }
 
   if (isApiError && !items.length) {
@@ -285,120 +309,66 @@ export function InstancesPage() {
         )}
       </header>
 
-      <AppCard className="space-y-3 p-4">
-        <AppSearchInput
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value)
-            setPage(1)
-          }}
-          onClear={() => {
-            setSearch('')
-            setPage(1)
-          }}
-          placeholder="Buscar por nombre, código, IP o URL…"
-          aria-label="Buscar instancias"
-        />
-        <div className="flex flex-wrap items-end gap-3">
-          <AppFilterField label="Segmento">
-            <div className="ios-pill-track" role="group" aria-label="Segmento">
-              {segmentOptions.map((opt) => (
-                <AppButton
-                  key={opt.value}
-                  type="button"
-                  variant={segment === opt.value ? 'primary' : 'ghost'}
-                  size="sm"
-                  disabled={isSegmentLocked}
-                  onClick={() => {
-                    if (isSegmentLocked) return
-                    setSegment(opt.value)
-                    setPage(1)
-                  }}
-                  className={cn(
-                    'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
-                    segment === opt.value ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
-                    isSegmentLocked && 'cursor-not-allowed opacity-80',
-                  )}
-                >
-                  {opt.label}
-                </AppButton>
-              ))}
-            </div>
-          </AppFilterField>
-          <AppFilterField label="Estado">
-            <div className="ios-pill-track" role="group" aria-label="Estado">
-              {(
-                [
-                  { value: 'Todos', label: 'Todos' },
-                  { value: 'operational', label: 'Operativa' },
-                  { value: 'maintenance', label: 'En mantenimiento' },
-                  { value: 'suspended', label: 'Suspendida' },
-                ] as const
-              ).map((opt) => (
-                <AppButton
-                  key={opt.value}
-                  type="button"
-                  variant={estado === opt.value ? 'primary' : 'ghost'}
-                  size="sm"
-                  onClick={() => {
-                    setEstado(opt.value)
-                    setPage(1)
-                  }}
-                  className={cn(
-                    'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
-                    estado === opt.value ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
-                  )}
-                >
-                  {opt.label}
-                </AppButton>
-              ))}
-            </div>
-          </AppFilterField>
-          <AppFilterField label="Emisor">
-            <div className="ios-pill-track" role="group" aria-label="Emisor">
-              <AppButton
-                type="button"
-                variant={issuerId === null ? 'primary' : 'ghost'}
-                size="sm"
-                onClick={() => {
-                  setIssuerId(null)
-                  setPage(1)
-                }}
-                className={cn(
-                  'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
-                  issuerId === null ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
-                )}
-              >
-                Todos
-              </AppButton>
-              {emitters.map((em) => {
-                const shortLabel = em.name.split(/\s+/)[0] ?? em.name
-                return (
-                  <AppButton
-                    key={em.id}
-                    type="button"
-                    variant={issuerId === em.id ? 'primary' : 'ghost'}
-                    size="sm"
-                    title={em.name}
-                    onClick={() => {
-                      setIssuerId(em.id)
-                      setPage(1)
-                    }}
-                    className={cn(
-                      'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
-                      issuerId === em.id
-                        ? 'ios-pill-active'
-                        : 'text-slate-600 dark:text-slate-300',
-                    )}
-                  >
-                    {shortLabel}
-                  </AppButton>
-                )
-              })}
-            </div>
-          </AppFilterField>
-        </div>
-      </AppCard>
+      <AppFilterBar
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value)
+          setPage(1)
+        }}
+        onSearchClear={() => {
+          setSearch('')
+          setPage(1)
+        }}
+        searchPlaceholder="Buscar por nombre, código, IP o URL…"
+        searchLabel="BUSCAR"
+        filters={[
+          {
+            id: 'segment',
+            label: 'SEGMENTO',
+            value: segment,
+            onValueChange: (value) => {
+              if (isSegmentLocked) return
+              setSegment(value)
+              setPage(1)
+            },
+            options: segmentOptions,
+            disabled: isSegmentLocked,
+          },
+          {
+            id: 'status',
+            label: 'ESTADO',
+            value: estado,
+            onValueChange: (value) => {
+              setEstado(value)
+              setPage(1)
+            },
+            options: [
+              { value: 'Todos', label: 'Todos' },
+              { value: 'operational', label: 'Operativa', tone: 'success' },
+              { value: 'maintenance', label: 'En mantenimiento', tone: 'warning' },
+              { value: 'suspended', label: 'Suspendida', tone: 'danger' },
+            ],
+          },
+          {
+            id: 'issuer',
+            label: 'EMISOR',
+            value: issuerFilterValue,
+            onValueChange: (value) => {
+              setIssuerId(value === 'Todos' ? null : Number(value) || null)
+              setPage(1)
+            },
+            options: [
+              { value: 'Todos', label: 'Todos' },
+              ...emitters.map((em) => ({
+                value: String(em.id),
+                label: em.name,
+              })),
+            ],
+          },
+        ]}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
+      />
 
       {isLoading ? (
         <Skeleton className="h-64 w-full rounded-2xl" />
@@ -413,7 +383,14 @@ export function InstancesPage() {
                     className="border-b border-slate-200/80 text-left text-[11px] uppercase text-slate-500 dark:border-white/[0.07]"
                   >
                     {hg.headers.map((h) => (
-                      <th key={h.id} className={cn(rowPaddingClass, 'font-medium')}>
+                      <th
+                        key={h.id}
+                        className={cn(
+                          rowPaddingClass,
+                          'font-medium',
+                          h.column.id === 'actions' && 'text-right',
+                        )}
+                      >
                         {h.isPlaceholder ? null : <table.FlexRender header={h} />}
                       </th>
                     ))}
@@ -427,7 +404,13 @@ export function InstancesPage() {
                     className="border-b border-slate-100 dark:border-white/[0.04]"
                   >
                     {row.getAllCells().map((cell) => (
-                      <td key={cell.id} className={rowPaddingClass}>
+                      <td
+                        key={cell.id}
+                        className={cn(
+                          rowPaddingClass,
+                          cell.column.id === 'actions' && 'text-right',
+                        )}
+                      >
                         <table.FlexRender cell={cell} />
                       </td>
                     ))}
@@ -451,19 +434,20 @@ export function InstancesPage() {
                         {row.issuer} · {row.segment_name || '—'}
                       </p>
                     </div>
-                    <AppBadge label={meta.label} tone={meta.tone} />
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <AppBadge label={meta.label} tone={meta.tone} />
+                      <AppRowActionsMenu
+                        actions={[
+                          {
+                            label: 'Editar',
+                            icon: <Pencil className="h-4 w-4" />,
+                            onClick: () => openEdit(row),
+                            hidden: !canEdit('config_instances'),
+                          },
+                        ]}
+                      />
+                    </div>
                   </div>
-                  {canEdit('config_instances') && (
-                    <AppButton
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="mt-3 w-full"
-                      onClick={() => openEdit(row)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" /> Editar
-                    </AppButton>
-                  )}
                 </AppCard>
               )
             })}

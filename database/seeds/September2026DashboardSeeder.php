@@ -34,6 +34,7 @@ final class September2026DashboardSeeder extends AbstractSeed
         $clientIds = $this->upsertClients([
             [
                 'key' => 'A',
+                'segment_id' => $segmentIds['Operam'],
                 'issuer_id' => $issuerId,
                 'erp_client_id' => 'ERP-A',
                 'name' => '[Cliente A]',
@@ -42,6 +43,7 @@ final class September2026DashboardSeeder extends AbstractSeed
             ],
             [
                 'key' => 'B',
+                'segment_id' => $segmentIds['Construsync'],
                 'issuer_id' => $issuerId,
                 'erp_client_id' => 'ERP-B',
                 'name' => '[Cliente B]',
@@ -50,6 +52,7 @@ final class September2026DashboardSeeder extends AbstractSeed
             ],
             [
                 'key' => 'C',
+                'segment_id' => $segmentIds['Operam'],
                 'issuer_id' => $issuerId,
                 'erp_client_id' => 'ERP-C',
                 'name' => '[Cliente C]',
@@ -58,6 +61,7 @@ final class September2026DashboardSeeder extends AbstractSeed
             ],
             [
                 'key' => 'P',
+                'segment_id' => $segmentIds['Piloto'] ?? $segmentIds['Operam'],
                 'issuer_id' => $issuerId,
                 'erp_client_id' => 'ERP-P',
                 'name' => '[Cliente Piloto]',
@@ -66,6 +70,7 @@ final class September2026DashboardSeeder extends AbstractSeed
             ],
             [
                 'key' => 'Z',
+                'segment_id' => $segmentIds['Cibus'] ?? $segmentIds['Construsync'],
                 'issuer_id' => $issuerId,
                 'erp_client_id' => 'ERP-Z',
                 'name' => '[Cliente Cibus]',
@@ -401,6 +406,7 @@ final class September2026DashboardSeeder extends AbstractSeed
             }
 
             $table->insert([
+                'segment_id' => (int) ($row['segment_id'] ?? 0),
                 'issuer_id' => $row['issuer_id'],
                 'erp_client_id' => $row['erp_client_id'],
                 'name' => $row['name'],
@@ -409,6 +415,7 @@ final class September2026DashboardSeeder extends AbstractSeed
                 'credit_days' => 30,
                 'stamp_on_issue' => 1,
                 'exclude_suspension' => 0,
+                'active' => 1,
                 'created_at' => $nowUtc,
                 'updated_at' => $nowUtc,
             ])->saveData();

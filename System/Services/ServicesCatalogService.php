@@ -102,20 +102,25 @@ final class ServicesCatalogService extends ModelService
         if ($method === 'PATCH') {
             $normalized = $this->normalizePackageLink($request, true);
             $merged = $normalized;
-            if (!array_key_exists('allow_package_conversion', $merged)
-                || !array_key_exists('package_service_id', $merged)
-            ) {
-                $existing = Capsule::table('services')->where('id', $serviceId)->first();
-                if ($existing !== null) {
-                    if (!array_key_exists('allow_package_conversion', $merged)) {
-                        $merged['allow_package_conversion'] = (bool) $existing->allow_package_conversion;
-                    }
-                    if (!array_key_exists('package_service_id', $merged)) {
-                        $merged['package_service_id'] = $existing->package_service_id;
-                    }
-                    if (!array_key_exists('package_factor', $merged)) {
-                        $merged['package_factor'] = (int) ($existing->package_factor ?? 5);
-                    }
+            $existing = Capsule::table('services')->where('id', $serviceId)->first();
+            if ($existing !== null) {
+                if (!array_key_exists('unit_of_measure', $merged)) {
+                    $merged['unit_of_measure'] = (string) $existing->unit_of_measure;
+                }
+                if (!array_key_exists('allow_package_conversion', $merged)) {
+                    $merged['allow_package_conversion'] = (bool) $existing->allow_package_conversion;
+                }
+                if (!array_key_exists('package_service_id', $merged)) {
+                    $merged['package_service_id'] = $existing->package_service_id;
+                }
+                if (!array_key_exists('package_factor', $merged)) {
+                    $merged['package_factor'] = (int) ($existing->package_factor ?? 5);
+                }
+                // Reaplica regla RF-2 con unidad completa (paquete destino nunca convierte).
+                $merged = $this->normalizePackageLink($merged, true);
+                if (($merged['allow_package_conversion'] ?? false) === false) {
+                    $normalized['allow_package_conversion'] = false;
+                    $normalized['package_service_id'] = null;
                 }
             }
             $linkError = $this->assertPackageLink($merged, $serviceId);
@@ -188,7 +193,8 @@ final class ServicesCatalogService extends ModelService
 
         $total = (clone $builder)->count();
         $rows = $builder
-            ->orderBy('s.id')
+            ->orderByRaw('COALESCE(s.updated_at, s.created_at) DESC')
+            ->orderByDesc('s.id')
             ->forPage($page, $perPage)
             ->get([
                 's.id',
@@ -282,9 +288,19 @@ final class ServicesCatalogService extends ModelService
 
         if (array_key_exists('package_factor', $input)) {
             $factor = filter_var($input['package_factor'], FILTER_VALIDATE_INT);
-            $input['package_factor'] = ($factor !== false && $factor > 0) ? $factor : 5;
+            // RF-2: factor mínimo 2 (default 5 solo si el valor es inválido).
+            $input['package_factor'] = ($factor !== false && $factor >= 2) ? min(100, $factor) : 5;
         } elseif (!$partial) {
             $input['package_factor'] = 5;
+        }
+
+        // RF-2: solo unidades "user" pueden agruparse; paquetes destino nunca convierten.
+        $unit = array_key_exists('unit_of_measure', $input)
+            ? (string) $input['unit_of_measure']
+            : null;
+        if ($unit !== null && $unit !== 'user') {
+            $input['allow_package_conversion'] = false;
+            $input['package_service_id'] = null;
         }
 
         if (
@@ -305,6 +321,11 @@ final class ServicesCatalogService extends ModelService
         $allows = (bool) ($input['allow_package_conversion'] ?? false);
         if (!$allows) {
             return null;
+        }
+
+        $unit = (string) ($input['unit_of_measure'] ?? '');
+        if ($unit !== '' && $unit !== 'user') {
+            return 'La conversión a paquete (RF-2) solo aplica a productos con unidad Usuario.';
         }
 
         $pkgId = isset($input['package_service_id']) ? (int) $input['package_service_id'] : 0;

@@ -111,6 +111,12 @@ final class CatalogAndPricingSeeder extends AbstractSeed
                 $this->quote($nowUtc),
                 (int) $serviceIds['OP-USR'],
             ));
+            // El paquete destino NUNCA convierte a sí mismo (evita confusión RF-2).
+            $this->execute(sprintf(
+                "UPDATE services SET allow_package_conversion = 0, package_service_id = NULL, updated_at = '%s' WHERE id = %d",
+                $this->quote($nowUtc),
+                (int) $serviceIds['OP-PKG5'],
+            ));
         }
 
         $this->upsertInstances([

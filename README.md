@@ -86,6 +86,12 @@ D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx migrate
 D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx seed:run
 ```
 
+Vaciar solo datos operativos/comerciales (conserva users, roles, permisos, sesiones, segmentos, `system_settings` y `phinxlog`):
+
+```bash
+php scripts/reset_operational_data.php
+```
+
 (Alternativa Composer: `composer migrate` / `composer seed`.)
 
 Tablas canónicas: `segments`, `issuers`, `clients`, `contracts`, `movements`, `collection_statuses`, `monthly_mrr`, `users`, `active_sessions`, `auth_attempts`, `services`, `instances`, `price_lists`, `price_list_items`, `promotions`, `roles`, `system_modules`, `role_permissions`. Triggers RNF-3: `trg_movements_prevent_update` / `trg_movements_prevent_delete`.
@@ -197,8 +203,8 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 - [x] **Módulo 1:** Dashboard General Interno, Puente de MRR, Cartera y Seguridad JWT Nivel Empresa.
 - [x] **Módulo 2 (checkpoint oficial cerrado):** Catálogos, Listas de Precios con escalas, Promociones, Emisores, Instancias, Empresa, Preferencias, RBAC multinivel, BD 100% inglés, Kit Atómico, segmentos dinámicos, Sistema (`config_system`), Bitácora global `audit_logs` (`config_audit_logs`), Spinner + Toasts, cero mockups fuera del Dashboard.
 - [x] **Infra transversal M2:** RBAC por `module_key`, Kit Atómico `src/components/ui/`, `AuditLogger` + `system_settings` / `audit_logs`.
-- [ ] **Módulo 3:** Motor de Contratos y Bitácora Inmutable (RF-3).
-- [ ] **Módulo 4:** Cobranza, Saldos, Portal Cliente con Magic Links e IntegroPAY (RF-4 a RF-8).
+- [x] **Módulo 3 (checkpoint oficial cerrado):** Directorio de Clientes, Motor de Contratos, Operaciones de Ciclo de Vida y Bitácora Inmutable (RF-3) — pasos 1–3: `/clientes`, `/contratos`, `/contratos/nuevo`, `/contratos/:id`, RF-2 dinámico, cupón quemado, BCMath y `movements` append-only.
+- [ ] **Módulo 4:** Cobranza, Saldos, Solicitudes (cargos únicos/consumo), Portal Cliente con Magic Links e IntegroPAY (RF-4 a RF-8).
 
 ---
 
@@ -216,6 +222,11 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `phinx.php` / `phpunit.xml` | Phinx y PHPUnit (suite `tests/Unit`). |
 | `tests/Unit/FinancialRulesTest.php` | Suite oficial RNF-1 / RF-2 / RNF-3 (Puente MRR, paquetes de 5, reversión, inmutabilidad). |
 | `tests/Unit/AuditLoggerTest.php` | Sanitización de secretos y diff de auditoría. |
+| `tests/Unit/ClientRulesTest.php` | Normalización de RFC y herencia de días de crédito por segmento. |
+| `tests/Unit/ContractPricingEngineTest.php` | Motor BCMath de contrato: RF-2, anual/12, USD→MXN y promo %. |
+| `tests/Unit/ContractLifecycleEngineTest.php` | Deltas BCMath de ciclo de vida: expansión, contracción, precio, frecuencia, transfer=0, churn, reactivación. |
+| `tests/Unit/BurnedCouponLifecycleTest.php` | Cupón quemado: alta 10% + ajuste/contracción → `discount_amount=0`, delta BCMath exacto, sin subtotales negativos. |
+| `scripts/reset_contracts_only.php` | TRUNCATE solo tablas de contratos + `promotions.current_uses=0`; verifica triggers RNF-3. |
 | `index.html` | Entrada Vite + Google Fonts (Ubuntu / DM Sans / DM Mono). |
 | `tailwind.config.js` | Referencia `fontFamily` oficial (Tailwind v4 usa `@theme` en CSS). |
 | `package.json` / `package-lock.json` | Dependencias npm. |
@@ -239,7 +250,9 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `hooks/usePermissions.ts` | Helpers `canView/Create/Edit/Delete` + alcance por `segment_id` / `isSegmentLocked`. |
 | `hooks/useSegments.ts` | Hook central TanStack Query → `GET /api/segments` (mapa id→nombre, opciones de filtro). |
 | `hooks/useSegmentLock.ts` | Filtro de segmento dinámico + bloqueo JWT (sin nombres quemados). |
-| `components/ui/AppFilterField.tsx` | Label visible obligatorio para grupos de filtros en toolbars. |
+| `components/ui/AppFilterBar.tsx` | Estándar homologado de filtros (§3.2): buscador cápsula + selects píldora con labels en mayúsculas + Limpiar filtros. |
+| `components/ui/AppFilterField.tsx` | Campo suelto con label (complemento; listados usan `AppFilterBar`). |
+| `components/ui/AppRowActionsMenu.tsx` | Menú `⋮` de acciones de fila (§3.3) + encabezado `ACCIONES`; Liquid Glass Radix Dropdown. |
 | `context/ScreenPreferencesContext.tsx` | pageSize (10/25/50/100) + densidad + `toastPosition` (6 anclas) en `localStorage`. |
 | `context/LoadingLockContext.tsx` | Candado global + `withScreenLock` / start/stop. |
 | `context/ToastContext.tsx` | Toasts Liquid Glass apilados (baraja iOS, expand/pause al hover); posición desde ScreenPreferences; `useToast`. |
@@ -250,7 +263,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `components/ui/AppInput.tsx` | Input / moneda / búsqueda / textarea atómicos. |
 | `components/ui/AppSelect.tsx` | Select Radix Liquid Glass; buscador si >6 opciones; semáforo por opción. |
 | `components/ui/AppCard.tsx` | Tarjeta Liquid Glass (`Header` / `Content` / `Footer`). |
-| `components/ui/AppBadge.tsx` | Píldoras semáforo (`success` \| `warning` \| `danger` \| `info` \| `neutral`). |
+| `components/ui/AppBadge.tsx` | Píldoras semáforo (`success` \| `warning` \| `danger` \| `info` \| `neutral` \| `slate`); siempre `whitespace-nowrap`. |
 | `components/ui/AppModal.tsx` | Diálogo accesible sobre `@radix-ui/react-dialog`. |
 | `components/ui/AppSwitch.tsx` | Interruptor estilo iOS. |
 | `components/ui/AppTableWrapper.tsx` | Contenedor de tabla (toolbar cristal, cuerpo, pie). |
@@ -266,6 +279,19 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `components/dashboard/RecentMovementsTable.tsx` | Tabla/tarjetas + status pills. |
 | `pages/LoginPage.tsx` | Login 2 columnas Liquid Glass → `POST /api/login`. |
 | `pages/DashboardPage.tsx` | Dashboard KPIs + switch Mockup/API (única excepción). |
+| `pages/ClientsPage.tsx` | `/clientes` — directorio CRUD (KPIs, filtros dinámicos, tabla paginada, modales crear/editar/detalle) con Kit Atómico (`clients`). |
+| `pages/ContractsPage.tsx` | `/contratos` — listado paginado servidor, 4 KPIs, `AppFilterBar`, tabla/tarjetas UI-4 (`contracts`). |
+| `pages/NewContractPage.tsx` | `/contratos/nuevo` — formulario 2 columnas + panel sticky MRR (UI-9), RF-2 en vivo, promo y alta atómica. |
+| `pages/ContractDetailPage.tsx` | `/contratos/:id` — detalle, KPIs, líneas, bitácora movements y menú de ciclo de vida (`contracts`). |
+| `components/contracts/LifecycleOperationModal.tsx` | Modales RHF+Zod de operaciones con preview de impacto MRR (UI-9). |
+| `components/contracts/MrrImpactPreview.tsx` | Caja destacada MRR actual → Delta → Nuevo MRR (neutral en transfer). |
+| `types/client.ts` | Tipos `Client`, `ClientsSummary`, `ClientWriteInput`. |
+| `types/contract.ts` | Tipos listado/detalle/líneas/movimientos + `ContractLifecycleInput`. |
+| `services/clientsService.ts` | HTTP JWT contra `/api/clients` (paginación, summary, CRUD, toggle). |
+| `services/contractsService.ts` | HTTP JWT contra `/api/contracts` (listado, detalle, create, lifecycle). |
+| `hooks/useClients.ts` | TanStack Query + mutaciones con `useLoadingLock` para el directorio. |
+| `hooks/useContracts.ts` | TanStack Query + mutación de alta con candado Operam. |
+| `hooks/useContractDetail.ts` | Detalle + mutación lifecycle con invalidación de `contract` / `contracts` / `dashboard`. |
 | `pages/config/CatalogServicesPage.tsx` | `/configuracion/catalogo` — tabla paginada API + filtros + CRUD (`config_catalog`). |
 | `pages/config/PriceListsPage.tsx` | `/configuracion/precios` — directorio → detalle con columna Rango/Escala (RF-2), validación de traslapes y `saveVolumeMatrix` (`config_prices`). |
 | `pages/config/PromotionsPage.tsx` | `/configuracion/promociones` — cards verde/ámbar + filtros (`config_promotions`). |
@@ -279,7 +305,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `pages/config/RolesPermissionsPage.tsx` | `/configuracion/roles` — matriz multinivel sin preselección (`config_roles`). |
 | `services/sessionSecurity.ts` / `lib/criticalRelogin.ts` | Interceptor 401 + logout diferido ante cambios críticos propios. |
 | `pages/SalesPromotionsPage.tsx` | `/promociones-vigentes` — solo lectura + copiar código (ventas). |
-| `types/auth.ts` / `types/mrr.ts` / `types/catalog.ts` | Tipos (incluye `ModuleKey`, `PermissionsMap`, alcance de segmento). |
+| `types/auth.ts` / `types/mrr.ts` / `types/catalog.ts` / `types/client.ts` | Tipos (incluye `ModuleKey`, `PermissionsMap`, alcance de segmento, clientes). |
 | `services/authService.ts` | Login HTTP real + JWT con perfil RBAC. |
 | `services/rbacService.ts` | CRUD roles/permisos/usuarios contra API MySQL. |
 | `services/dashboardService.ts` | Dashboard híbrido (mock solo aquí) + Bearer JWT. |
@@ -296,12 +322,20 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 
 | Área | Descripción |
 |------|-------------|
-| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `movements` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs`. |
+| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `clients` + `contracts` + `movements` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs`. |
 | `backend/bootstrap/env.php` | Carga `.env` a `getenv` / `$_ENV`. |
 | `backend/bootstrap/eloquent.php` | Capsule Eloquent + MySQL UTC. |
 | `System/Core/*` | Result, Context, DataValidator, DataFormat. |
 | `System/Support/FinancialCalculator.php` | Calculadora BCMath pura: `optimizeUserPackages`, `calculateMrrBridge`, `buildReversalPayload`, `accumulateMonthlyMrrAmount`. Categorías en inglés; ignora `transfer`; `movement_type` = `reversal`. |
-| `System/Services/*` | Login, App, RbacAuthHelper, Roles, Users, Segments (RF-1), Issuers (refs enmascaradas), Movements (RNF-3 + sync RF-10), SystemSettings, AuditLogs + catálogo. Escrituras de Módulos 1/2 llaman `AuditLogger`. |
+| `System/Services/*` | Login, App, RbacAuthHelper, Roles, Users, Segments (RF-1), Issuers (refs enmascaradas), Clients (Módulo 3 Paso 1), Movements (RNF-3 + sync RF-10), SystemSettings, AuditLogs + catálogo. Escrituras llaman `AuditLogger`. |
+| `System/Services/ClientsService.php` | CRUD `/api/clients`: paginación servidor, summary KPI, RBAC `clients`, alcance de segmento, herencia de crédito, anti-borrado con contratos. |
+| `System/Services/ContractsService.php` | `/api/contracts`: listado, detalle enriquecido, POST alta y `POST /{id}/lifecycle` (7 operaciones BCMath + movements + audit). |
+| `System/Services/DashboardMetricsService.php` | `GET /api/dashboard` (alias `/api/dashboard/mrr`): Puente MRR + KPIs + movimientos del mes (`month=YYYY-MM`). |
+| `System/Support/ContractPricingEngine.php` | Motor puro BCMath: escalones, RF-2, promo, `lineMrrMxn`. |
+| `System/Support/ContractLifecycleEngine.php` | Motor puro BCMath de deltas de ciclo de vida (expansion…reactivation, transfer=0.00). |
+| `System/Models/ClientsModel.php` | Eloquent `clients` (`alias = cli`, fillable completo Módulo 3). |
+| `System/Models/ContractsModel.php` / `ContractLinesModel.php` | Eloquent `contracts` / `contract_lines` (precios congelados RNF-3). |
+| `System/Support/ClientRules.php` | Normalización RFC + resolución de `credit_days` (herencia de segmento). |
 | `System/Support/AuditLogger.php` | Única puerta a `audit_logs` (redacta secretos, respeta `audit_logs_enabled`). |
 | `System/Services/SystemSettingsService.php` | GET/PUT/PATCH `system-settings` + `POST purge-audit-logs` (`config_system`). |
 | `System/Services/AuditLogsService.php` | GET paginado `audit-logs` de solo lectura (`config_audit_logs`). |
@@ -309,8 +343,13 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `database/migrations/20260925000010_create_system_settings_and_audit_logs.php` | Tablas `system_settings` / `audit_logs` + triggers inmutabilidad/depuración. |
 | `database/seeds/SystemSettingsSeeder.php` | Seed idempotente `audit_logs_enabled = 1`. |
 | `System/Models/*` | Users/Sessions + Roles + SegmentsModel + IssuersModel + MovementsModel (inmutable) + SystemSettings + AuditLogs + catálogo. |
-| `database/migrations/*` | Esquema inglés consolidado: MRR (000001), auth (000002), catálogo (000003), RBAC (000004); 000005–000007/000009 no-op de secuencia; triggers RNF-3 (000008). |
+| `database/migrations/*` | Esquema inglés consolidado: MRR (000001), auth (000002), catálogo (000003), RBAC (000004); 000005–000007/000009 no-op de secuencia; triggers RNF-3 (000008); settings/audit (000010); clients Módulo 3 (000011). |
+| `database/migrations/20260925000011_enrich_clients_directory_module3.php` | `clients`: `segment_id`, contacto, `active`, índices `(segment_id, active)` / `rfc`. |
+| `database/migrations/20260925000012_enrich_contracts_module3_paso2.php` | `contracts` enriquecido (`issuer_id`, `price_list_id`, `mrr_mxn`…) + tabla `contract_lines`. |
+| `database/seeds/ClientsSeeder.php` | ≥8 clientes realistas Operam/Construsync × Piloto/Cibus (idempotente). |
+| `database/seeds/ContractsSeeder.php` | 4 contratos demo CT-0601…0604 con líneas, movements y monthly_mrr (idempotente). |
 | `database/scripts/reset_english_schema.php` | DROP tablas legacy (español) + actuales + `phinxlog` para remigrar en limpio. |
+| `scripts/reset_operational_data.php` | TRUNCATE operativo/comercial (contratos, clientes, catálogo, MRR, audit) conservando auth/RBAC/segmentos/settings; verifica triggers RNF-3. |
 | `database/migrations/20260925000009_add_package_link_and_fx_rate.php` | No-op de secuencia. Columnas vivas: `services.package_service_id` + `package_factor`; `segments.usd_exchange_rate`. |
 | `database/seeds/*` | Sep 2026 + EnterpriseUsers + CatalogAndPricing + RbacRolesAndPermissions (`module_key` en inglés, incluye `config_system` y `config_audit_logs`, + Gestor de Promociones). |
 | `backend/src/Models/*` | Movement, Client, Contract, Segment, Issuer, MonthlyMrr, CollectionStatus. |

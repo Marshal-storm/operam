@@ -2,10 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import { History } from 'lucide-react'
 import { useState } from 'react'
 import { AppBadge, type AppBadgeTone } from '@/components/ui/AppBadge'
-import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
-import { AppFilterField } from '@/components/ui/AppFilterField'
-import { AppInput, AppSearchInput } from '@/components/ui/AppInput'
+import { AppRowActionsMenu } from '@/components/ui/AppRowActionsMenu'
+import { AppFilterBar } from '@/components/ui/AppFilterBar'
+import { AppInput } from '@/components/ui/AppInput'
 import {
   AppModal,
   AppModalContent,
@@ -13,7 +13,6 @@ import {
   AppModalHeader,
   AppModalTitle,
 } from '@/components/ui/AppModal'
-import { AppSelect } from '@/components/ui/AppSelect'
 import { AppTableHeadRow, AppTableWrapper } from '@/components/ui/AppTableWrapper'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -42,6 +41,8 @@ const MODULE_LABELS: Record<string, string> = {
   config_audit_logs: 'Bitácora',
   config_preferences: 'Preferencias',
   dashboard: 'Dashboard',
+  clients: 'Clientes',
+  contracts: 'Contratos',
   auth: 'Autenticación',
 }
 
@@ -195,6 +196,14 @@ export function AuditLogsPage() {
     setPage(1)
   }
 
+  const hasActiveFilters =
+    search.trim() !== '' ||
+    moduleKey !== ALL ||
+    action !== ALL ||
+    userId !== ALL ||
+    dateFrom !== '' ||
+    dateTo !== ''
+
   const selectedMeta = selected ? actionMeta(selected.action) : null
   const selectedRows = selected ? diffRows(selected) : []
 
@@ -219,95 +228,93 @@ export function AuditLogsPage() {
         </AppCard>
       ) : null}
 
-      <AppCard className="space-y-3 p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <AppFilterField label="Búsqueda" className="min-w-[16rem] flex-1">
-            <AppSearchInput
-              value={search}
-              placeholder="Descripción, IP, usuario o identificador…"
-              aria-label="Buscar en la bitácora"
-              onChange={(event) => {
-                setSearch(event.target.value)
-                setPage(1)
-              }}
-              onClear={() => {
-                setSearch('')
-                setPage(1)
-              }}
-            />
-          </AppFilterField>
-          <AppFilterField label="Módulo">
-            <AppSelect
-              aria-label="Filtrar por módulo"
-              className="w-auto min-w-[11rem]"
-              triggerClassName="h-10 py-2 text-sm"
-              value={moduleKey}
-              options={MODULE_OPTIONS}
-              onValueChange={(value) => {
+      <div className="space-y-2">
+        <AppFilterBar
+          searchValue={search}
+          onSearchChange={(value) => {
+            setSearch(value)
+            setPage(1)
+          }}
+          onSearchClear={() => {
+            setSearch('')
+            setPage(1)
+          }}
+          searchPlaceholder="Descripción, IP, usuario o identificador…"
+          searchLabel="BUSCAR"
+          filters={[
+            {
+              id: 'module',
+              label: 'MÓDULO',
+              value: moduleKey,
+              onValueChange: (value) => {
                 setModuleKey(value)
                 setPage(1)
-              }}
-            />
-          </AppFilterField>
-          <AppFilterField label="Acción">
-            <AppSelect
-              aria-label="Filtrar por acción"
-              className="w-auto min-w-[12rem]"
-              triggerClassName="h-10 py-2 text-sm"
-              value={action}
-              options={ACTION_OPTIONS}
-              onValueChange={(value) => {
+              },
+              options: MODULE_OPTIONS,
+            },
+            {
+              id: 'action',
+              label: 'ACCIÓN',
+              value: action,
+              onValueChange: (value) => {
                 setAction(value)
                 setPage(1)
-              }}
-            />
-          </AppFilterField>
-          <AppFilterField label="Usuario">
-            <AppSelect
-              aria-label="Filtrar por usuario"
-              className="w-auto min-w-[14rem]"
-              triggerClassName="h-10 py-2 text-sm"
-              value={userId}
-              options={userOptions}
-              placeholder="Todos"
-              onValueChange={(value) => {
+              },
+              options: ACTION_OPTIONS,
+            },
+            {
+              id: 'user',
+              label: 'USUARIO',
+              value: userId,
+              onValueChange: (value) => {
                 setUserId(value)
                 setPage(1)
-              }}
-            />
-          </AppFilterField>
-          <AppFilterField label="Desde">
-            <AppInput
-              type="date"
-              aria-label="Fecha desde"
-              value={dateFrom}
-              onChange={(event) => {
-                setDateFrom(event.target.value)
-                setPage(1)
-              }}
-            />
-          </AppFilterField>
-          <AppFilterField label="Hasta">
-            <AppInput
-              type="date"
-              aria-label="Fecha hasta"
-              value={dateTo}
-              onChange={(event) => {
-                setDateTo(event.target.value)
-                setPage(1)
-              }}
-            />
-          </AppFilterField>
-          <AppButton type="button" variant="outline" onClick={clearFilters}>
-            Limpiar
-          </AppButton>
-        </div>
+              },
+              options: userOptions,
+              placeholder: 'Todos',
+            },
+            {
+              id: 'from',
+              label: 'DESDE',
+              content: (
+                <AppInput
+                  type="date"
+                  className="rounded-full"
+                  aria-label="Fecha desde"
+                  value={dateFrom}
+                  onChange={(event) => {
+                    setDateFrom(event.target.value)
+                    setPage(1)
+                  }}
+                />
+              ),
+            },
+            {
+              id: 'to',
+              label: 'HASTA',
+              content: (
+                <AppInput
+                  type="date"
+                  className="rounded-full"
+                  aria-label="Fecha hasta"
+                  value={dateTo}
+                  onChange={(event) => {
+                    setDateTo(event.target.value)
+                    setPage(1)
+                  }}
+                />
+              ),
+            },
+          ]}
+          hasActiveFilters={hasActiveFilters}
+          onClearFilters={clearFilters}
+        />
         {usersQuery.isError ? (
           <p className="text-xs text-amber-700 dark:text-amber-300">
             No se pudo cargar el catálogo de usuarios. El resto de filtros sigue disponible.
           </p>
         ) : null}
-      </AppCard>
+      </div>
 
       <AppTableWrapper
         isLoading={logsQuery.isLoading}
@@ -344,7 +351,7 @@ export function AuditLogsPage() {
                 <th className="px-4 py-3 font-medium">Acción</th>
                 <th className="px-4 py-3 font-medium">Descripción</th>
                 <th className="px-4 py-3 font-medium">IP</th>
-                <th className="px-4 py-3 font-medium" />
+                <th className="px-4 py-3 text-right font-medium">ACCIONES</th>
               </AppTableHeadRow>
             </thead>
             <tbody>
@@ -373,14 +380,14 @@ export function AuditLogsPage() {
                     </td>
                     <td className={`${rowPaddingClass} font-mono text-xs`}>{row.ip_address}</td>
                     <td className={`${rowPaddingClass} text-right`}>
-                      <AppButton
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelected(row)}
-                      >
-                        Ver cambios
-                      </AppButton>
+                      <AppRowActionsMenu
+                        actions={[
+                          {
+                            label: 'Ver cambios',
+                            onClick: () => setSelected(row),
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
                 )
@@ -398,7 +405,17 @@ export function AuditLogsPage() {
                   <p className="font-mono text-xs tabular-nums text-slate-500">
                     {formatWhen(row.created_at)}
                   </p>
-                  <AppBadge label={meta.label} tone={meta.tone} />
+                  <div className="flex shrink-0 items-center gap-2">
+                    <AppBadge label={meta.label} tone={meta.tone} />
+                    <AppRowActionsMenu
+                      actions={[
+                        {
+                          label: 'Ver cambios',
+                          onClick: () => setSelected(row),
+                        },
+                      ]}
+                    />
+                  </div>
                 </div>
                 <p className="font-medium">{row.user_name || 'Sistema'}</p>
                 <p className="text-xs text-slate-500">
@@ -406,15 +423,6 @@ export function AuditLogsPage() {
                   <span className="font-mono">{row.ip_address}</span>
                 </p>
                 <p className="text-sm">{row.description}</p>
-                <AppButton
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => setSelected(row)}
-                >
-                  Ver cambios
-                </AppButton>
               </AppCard>
             )
           })}

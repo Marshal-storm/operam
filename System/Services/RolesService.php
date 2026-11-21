@@ -135,7 +135,10 @@ final class RolesService extends ModelService
      */
     private function listRolesWithPermissions(): array
     {
-        $roles = RolesModel::query()->orderBy('id')->get();
+        $roles = RolesModel::query()
+            ->orderByRaw('COALESCE(updated_at, created_at) DESC')
+            ->orderByDesc('id')
+            ->get();
         $out = [];
         foreach ($roles as $role) {
             $payload = $this->findRolePayload((int) $role->id);

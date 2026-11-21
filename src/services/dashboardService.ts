@@ -85,7 +85,7 @@ function buildPeriodLabel(month: string, mode: DataSourceMode): string {
     'diciembre',
   ]
   const monthLabel = labels[Number(monthNumber) - 1] ?? month
-  const suffix = mode === 'mock' ? 'Datos de ejemplo' : 'API real'
+  const suffix = mode === 'mock' ? 'Datos de ejemplo' : 'Datos en vivo de MySQL'
   return `Cierre de ${monthLabel} ${year} · ${suffix}`
 }
 
@@ -185,7 +185,26 @@ async function fetchDashboardFromApi(
     )
   }
 
-  const payload = (await response.json()) as ApiDashboardResponse
+  let body: {
+    success?: boolean
+    message?: string
+    data?: ApiDashboardResponse
+  } & ApiDashboardResponse = {}
+  try {
+    body = (await response.json()) as typeof body
+  } catch {
+    throw new DashboardApiError('Respuesta inválida del dashboard.')
+  }
+
+  if (body.success === false) {
+    throw new DashboardApiError(
+      body.message ?? 'No se pudo cargar el dashboard.',
+      response.status,
+    )
+  }
+
+  // Framework operam/servicios envuelve el payload en `{ success, data }`.
+  const payload = (body.data ?? body) as ApiDashboardResponse
   return mapApiDashboardToSnapshot(payload, params)
 }
 

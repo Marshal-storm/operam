@@ -156,7 +156,8 @@ final class InstancesService extends ModelService
 
         $total = (clone $builder)->count();
         $rows = $builder
-            ->orderBy('i.id')
+            ->orderByRaw('COALESCE(i.updated_at, i.created_at) DESC')
+            ->orderByDesc('i.id')
             ->forPage($page, $perPage)
             ->get([
                 'i.id',

@@ -16,25 +16,37 @@ final class Client extends BaseModel
 
     /** @var list<string> */
     protected $fillable = [
+        'segment_id',
         'issuer_id',
         'erp_client_id',
         'name',
-        'rfc',
         'legal_name',
+        'rfc',
+        'contact_name',
+        'contact_email',
+        'contact_phone',
         'credit_days',
         'stamp_on_issue',
         'exclude_suspension',
+        'active',
     ];
 
     /** @var array<string, string> */
     protected $casts = [
+        'segment_id' => 'integer',
         'issuer_id' => 'integer',
         'credit_days' => 'integer',
         'stamp_on_issue' => 'boolean',
         'exclude_suspension' => 'boolean',
+        'active' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    public function segment(): BelongsTo
+    {
+        return $this->belongsTo(Segment::class, 'segment_id');
+    }
 
     public function issuer(): BelongsTo
     {

@@ -149,7 +149,8 @@ final class PromotionsService extends ModelService
         }
 
         $rows = $builder
-            ->orderBy('p.id')
+            ->orderByRaw('COALESCE(p.updated_at, p.created_at) DESC')
+            ->orderByDesc('p.id')
             ->get([
                 'p.id',
                 'p.code',

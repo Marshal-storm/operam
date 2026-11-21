@@ -174,7 +174,8 @@ final class IssuersService extends ModelService
     private function listForSelects(): array
     {
         $rows = Capsule::table('issuers')
-            ->orderBy('name')
+            ->orderByRaw('COALESCE(updated_at, created_at) DESC')
+            ->orderByDesc('id')
             ->get([
                 'id',
                 'name',
@@ -245,7 +246,8 @@ final class IssuersService extends ModelService
         $total = (int) (clone $builder)->count('e.id');
 
         $rows = $builder
-            ->orderBy('e.name')
+            ->orderByRaw('COALESCE(e.updated_at, e.created_at) DESC')
+            ->orderByDesc('e.id')
             ->forPage($page, $perPage)
             ->get([
                 'e.id',

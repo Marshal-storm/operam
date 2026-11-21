@@ -32,8 +32,10 @@ export function useDashboardData({ mode, segment, month }: UseDashboardDataParam
   const isEmpty =
     query.error instanceof DashboardEmptyError ||
     (query.isSuccess &&
-      query.data.aging.length === 0 &&
       query.data.allMovements.length === 0 &&
+      query.data.bridge.every(
+        (step) => step.category === 'start' || step.category === 'end' || step.size === 0,
+      ) &&
       query.data.kpis.mrrMxn === 0)
 
   const isApiError = query.error instanceof DashboardApiError ||

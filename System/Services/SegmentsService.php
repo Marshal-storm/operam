@@ -102,6 +102,7 @@ final class SegmentsService extends ModelService
             $payload['usd_exchange_rate'] = $fx;
         }
 
+        $payload['updated_at'] = gmdate('Y-m-d H:i:s');
         Capsule::table('segments')->where('id', $segmentId)->update($payload);
 
         $after = $this->findMapped($segmentId);
@@ -125,7 +126,9 @@ final class SegmentsService extends ModelService
      */
     private function listSegments(array $auth): array
     {
-        $builder = Capsule::table('segments')->orderBy('id');
+        $builder = Capsule::table('segments')
+            ->orderByRaw('COALESCE(updated_at, created_at) DESC')
+            ->orderByDesc('id');
         $lockedId = $auth['segment_id'] ?? null;
         if ($lockedId !== null) {
             $builder->where('id', (int) $lockedId);

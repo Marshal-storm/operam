@@ -13,10 +13,10 @@ import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 import { fetchServices } from '@/services/catalogService'
 import { AppBadge } from '@/components/ui/AppBadge'
-import { AppFilterField } from '@/components/ui/AppFilterField'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
-import { AppInput, AppSearchInput, AppTextarea } from '@/components/ui/AppInput'
+import { AppFilterBar } from '@/components/ui/AppFilterBar'
+import { AppInput, AppTextarea } from '@/components/ui/AppInput'
 import {
   AppModal,
   AppModalContent,
@@ -25,6 +25,10 @@ import {
   AppModalTitle,
 } from '@/components/ui/AppModal'
 import { AppSelect } from '@/components/ui/AppSelect'
+import {
+  AppActionsColumnHeader,
+  AppRowActionsMenu,
+} from '@/components/ui/AppRowActionsMenu'
 import { AppSwitch } from '@/components/ui/AppSwitch'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -38,7 +42,8 @@ import type { CatalogService, ServiceType, ServiceUnit } from '@/types/catalog'
 
 const UNIT_LABELS: Record<ServiceUnit, string> = {
   user: 'Usuario',
-  pack_5_users: 'Paquete 5',
+  // Valor BD `pack_5_users` se mantiene; etiqueta visible genérica (factor dinámico).
+  pack_5_users: 'Paquete',
   stamp: 'Timbre',
   hour: 'Hora',
   license: 'Licencia',
@@ -80,7 +85,10 @@ const formSchema = z.object({
   ]),
   allow_package_conversion: z.boolean(),
   package_service_id: z.string().optional(),
-  package_factor: z.string().regex(/^[1-9]\d*$/, 'Factor entero entre 1 y 100'),
+  package_factor: z
+    .string()
+    .regex(/^[1-9]\d*$/, 'Factor entero entre 2 y 100')
+    .refine((v) => Number(v) >= 2 && Number(v) <= 100, 'Factor entero entre 2 y 100'),
   is_active: z.boolean(),
 }).superRefine((values, ctx) => {
   if (values.allow_package_conversion && !values.package_service_id) {
@@ -166,10 +174,32 @@ export function CatalogServicesPage() {
     control: form.control,
     name: 'allow_package_conversion',
   })
+  const watchedUnit = useWatch({
+    control: form.control,
+    name: 'unit_of_measure',
+  })
   const watchedSegmentId = useWatch({
     control: form.control,
     name: 'segment_id',
   })
+  const watchedPackageFactor = useWatch({
+    control: form.control,
+    name: 'package_factor',
+  })
+
+  // RF-2: el switch de paquetes solo aplica a Usuario individual.
+  const isUserUnit = watchedUnit === 'user'
+  const isPackUnit = watchedUnit === 'pack_5_users'
+
+  useEffect(() => {
+    if (isUserUnit) return
+    if (form.getValues('allow_package_conversion')) {
+      form.setValue('allow_package_conversion', false, { shouldValidate: true })
+    }
+    if (form.getValues('package_service_id')) {
+      form.setValue('package_service_id', '', { shouldValidate: true })
+    }
+  }, [isUserUnit, form])
 
   const packageOptionsQuery = useQuery({
     queryKey: ['config', 'services', 'packages', watchedSegmentId],
@@ -231,49 +261,47 @@ export function CatalogServicesPage() {
         accessorKey: 'is_active',
         header: 'Estado',
         cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            <AppSwitch
-              checked={row.original.is_active}
-              disabled={!canEdit('config_catalog') && !canDelete('config_catalog')}
-              label={row.original.is_active ? 'Desactivar producto' : 'Activar producto'}
-              onCheckedChange={(next) => {
-                if (!canEdit('config_catalog') && !canDelete('config_catalog')) return
-                void (async () => {
-                  try {
-                    await toggleService({ id: row.original.id, is_active: next })
-                    toast.success(
-                      next ? 'Producto activado' : 'Producto desactivado',
-                      row.original.name,
-                    )
-                  } catch (error) {
-                    toast.apiError(error)
-                  }
-                })()
-              }}
-            />
-            <span className="text-xs text-slate-500">
-              {row.original.is_active ? 'Disponible' : 'Inactivo'}
-            </span>
-          </div>
+          <AppSwitch
+            checked={row.original.is_active}
+            caption={row.original.is_active ? 'Disponible' : 'Inactivo'}
+            disabled={!canEdit('config_catalog')}
+            onCheckedChange={(next) => {
+              if (!canEdit('config_catalog')) return
+              void (async () => {
+                try {
+                  await toggleService({ id: row.original.id, is_active: next })
+                  toast.success(
+                    next ? 'Producto activado' : 'Producto desactivado',
+                    row.original.name,
+                  )
+                } catch (error) {
+                  toast.apiError(error)
+                }
+              })()
+            }}
+          />
         ),
       },
       {
         id: 'actions',
-        header: '',
-        cell: ({ row }) =>
-          canEdit('config_catalog') ? (
-            <AppButton
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => openEdit(row.original)}
-            >
-              <Pencil className="h-3.5 w-3.5" /> Editar
-            </AppButton>
-          ) : null,
+        header: () => <AppActionsColumnHeader />,
+        cell: ({ row }) => (
+          <div className="flex justify-end">
+            <AppRowActionsMenu
+              actions={[
+                {
+                  label: 'Editar',
+                  icon: <Pencil className="h-4 w-4" />,
+                  onClick: () => openEdit(row.original),
+                  hidden: !canEdit('config_catalog'),
+                },
+              ]}
+            />
+          </div>
+        ),
       },
     ],
-    [toggleService, toast, canEdit, canDelete],
+    [toggleService, toast, canEdit],
   )
 
   const table = useTable({
@@ -328,13 +356,17 @@ export function CatalogServicesPage() {
       segment_id: Number(values.segment_id),
       service_type: values.service_type,
       unit_of_measure: values.unit_of_measure,
-      allow_package_conversion: values.allow_package_conversion,
-      package_service_id: values.allow_package_conversion
-        ? Number(values.package_service_id)
-        : null,
-      package_factor: values.allow_package_conversion
-        ? Math.min(100, Math.max(1, Number(values.package_factor) || 5))
-        : 5,
+      // RF-2 solo para Usuario individual; paquetes destino nunca convierten.
+      allow_package_conversion:
+        values.unit_of_measure === 'user' ? values.allow_package_conversion : false,
+      package_service_id:
+        values.unit_of_measure === 'user' && values.allow_package_conversion
+          ? Number(values.package_service_id)
+          : null,
+      package_factor:
+        values.unit_of_measure === 'user' && values.allow_package_conversion
+          ? Math.min(100, Math.max(2, Number(values.package_factor) || 5))
+          : 5,
       is_active: values.is_active,
     }
     try {
@@ -344,6 +376,7 @@ export function CatalogServicesPage() {
       } else {
         await createService(payload)
         toast.success('Producto creado', payload.name)
+        setPage(1)
       }
       setModalOpen(false)
     } catch (error) {
@@ -351,11 +384,17 @@ export function CatalogServicesPage() {
     }
   }
 
-  function resetFilters(partial: Record<string, string>) {
-    if ('search' in partial) setSearch(partial.search!)
-    if ('segment' in partial) setSegment(partial.segment as typeof segment)
-    if ('service_type' in partial) setServiceType(partial.service_type!)
-    if ('status' in partial) setStatus(partial.status!)
+  const hasActiveFilters =
+    search.trim() !== '' ||
+    (!isSegmentLocked && segment !== 'Todos') ||
+    serviceType !== 'all' ||
+    status !== 'all'
+
+  function clearFilters() {
+    setSearch('')
+    if (!isSegmentLocked) setSegment('Todos')
+    setServiceType('all')
+    setStatus('all')
     setPage(1)
   }
 
@@ -389,44 +428,55 @@ export function CatalogServicesPage() {
         )}
       </header>
 
-      <AppCard className="space-y-3 p-4">
-        <AppSearchInput
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value)
-            setPage(1)
-          }}
-          onClear={() => {
-            setSearch('')
-            setPage(1)
-          }}
-          placeholder="Buscar por nombre, SKU o descripción…"
-          aria-label="Buscar productos"
-        />
-        <div className="flex flex-wrap gap-2">
-          <FilterGroup
-            label="Segmento"
-            value={segment}
-            options={segmentOptions}
-            onChange={(v) => {
+      <AppFilterBar
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value)
+          setPage(1)
+        }}
+        onSearchClear={() => {
+          setSearch('')
+          setPage(1)
+        }}
+        searchPlaceholder="Buscar por nombre, SKU o descripción…"
+        searchLabel="BUSCAR"
+        filters={[
+          {
+            id: 'segment',
+            label: 'SEGMENTO',
+            value: segment,
+            onValueChange: (value) => {
               if (isSegmentLocked) return
-              resetFilters({ segment: v })
-            }}
-          />
-          <FilterGroup
-            label="Tipo"
-            value={serviceType}
-            options={TYPE_FILTERS}
-            onChange={(v) => resetFilters({ service_type: v })}
-          />
-          <FilterGroup
-            label="Estado"
-            value={status}
-            options={STATUS_FILTERS}
-            onChange={(v) => resetFilters({ status: v })}
-          />
-        </div>
-      </AppCard>
+              setSegment(value)
+              setPage(1)
+            },
+            options: segmentOptions,
+            disabled: isSegmentLocked,
+          },
+          {
+            id: 'type',
+            label: 'TIPO',
+            value: serviceType,
+            onValueChange: (value) => {
+              setServiceType(value)
+              setPage(1)
+            },
+            options: TYPE_FILTERS,
+          },
+          {
+            id: 'status',
+            label: 'ESTADO',
+            value: status,
+            onValueChange: (value) => {
+              setStatus(value)
+              setPage(1)
+            },
+            options: STATUS_FILTERS,
+          },
+        ]}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
+      />
 
       {isLoading ? (
         <Skeleton className="h-64 w-full rounded-2xl" />
@@ -442,7 +492,14 @@ export function CatalogServicesPage() {
                     className="border-b border-slate-200/80 text-left text-[11px] uppercase tracking-wide text-slate-500 dark:border-white/[0.07]"
                   >
                     {hg.headers.map((h) => (
-                      <th key={h.id} className={cn(rowPaddingClass, 'font-medium')}>
+                      <th
+                        key={h.id}
+                        className={cn(
+                          rowPaddingClass,
+                          'font-medium',
+                          h.column.id === 'actions' && 'text-right',
+                        )}
+                      >
                         {h.isPlaceholder ? null : <table.FlexRender header={h} />}
                       </th>
                     ))}
@@ -459,7 +516,13 @@ export function CatalogServicesPage() {
                     )}
                   >
                     {row.getAllCells().map((cell) => (
-                      <td key={cell.id} className={rowPaddingClass}>
+                      <td
+                        key={cell.id}
+                        className={cn(
+                          rowPaddingClass,
+                          cell.column.id === 'actions' && 'text-right',
+                        )}
+                      >
                         <table.FlexRender cell={cell} />
                       </td>
                     ))}
@@ -481,20 +544,38 @@ export function CatalogServicesPage() {
                       {service.segment_name || '—'} · {TYPE_LABELS[service.service_type]}
                     </p>
                   </div>
-                  <AppBadge
-                    label={service.is_active ? 'Disponible' : 'Inactivo'}
-                    tone={service.is_active ? 'success' : 'neutral'}
+                  <AppRowActionsMenu
+                    actions={[
+                      {
+                        label: 'Editar',
+                        icon: <Pencil className="h-4 w-4" />,
+                        onClick: () => openEdit(service),
+                        hidden: !canEdit('config_catalog'),
+                      },
+                    ]}
                   />
                 </div>
-                <AppButton
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-3 w-full"
-                  onClick={() => openEdit(service)}
-                >
-                  Editar
-                </AppButton>
+                <div className="mt-3">
+                  <AppSwitch
+                    checked={service.is_active}
+                    caption={service.is_active ? 'Disponible' : 'Inactivo'}
+                    disabled={!canEdit('config_catalog') && !canDelete('config_catalog')}
+                    onCheckedChange={(next) => {
+                      if (!canEdit('config_catalog') && !canDelete('config_catalog')) return
+                      void (async () => {
+                        try {
+                          await toggleService({ id: service.id, is_active: next })
+                          toast.success(
+                            next ? 'Producto activado' : 'Producto desactivado',
+                            service.name,
+                          )
+                        } catch (error) {
+                          toast.apiError(error)
+                        }
+                      })()
+                    }}
+                  />
+                </div>
               </AppCard>
             ))}
           </div>
@@ -576,63 +657,90 @@ export function CatalogServicesPage() {
               <AppSelect
                 withLabelSpacing
                 value={form.watch('unit_of_measure')}
-                onValueChange={(v) =>
-                  form.setValue('unit_of_measure', v as FormValues['unit_of_measure'], {
-                    shouldValidate: true,
-                  })
-                }
+                onValueChange={(v) => {
+                  const next = v as FormValues['unit_of_measure']
+                  form.setValue('unit_of_measure', next, { shouldValidate: true })
+                  // Paquete destino / otras unidades: limpia vínculo RF-2.
+                  if (next !== 'user') {
+                    form.setValue('allow_package_conversion', false, { shouldValidate: true })
+                    form.setValue('package_service_id', '', { shouldValidate: true })
+                  }
+                }}
                 options={(Object.keys(UNIT_LABELS) as ServiceUnit[]).map((u) => ({
                   value: u,
                   label: UNIT_LABELS[u],
                 }))}
               />
             </label>
-            <label className="flex items-center gap-3 text-sm">
-              <AppSwitch
-                checked={form.watch('allow_package_conversion')}
-                onCheckedChange={(next) =>
-                  form.setValue('allow_package_conversion', next, { shouldValidate: true })
-                }
-                label="Agrupar automáticamente cada 5 usuarios"
-              />
-              Agrupar automáticamente cada 5 usuarios
-            </label>
-            {allowsPackage && (
-              <AppCard className="space-y-3 p-3">
-                <label className="block text-sm">
-                  Producto paquete destino (RF-2)
-                  <AppSelect
-                    withLabelSpacing
-                    placeholder="Selecciona un paquete…"
-                    value={form.watch('package_service_id') || undefined}
-                    onValueChange={(v) =>
-                      form.setValue('package_service_id', v, { shouldValidate: true })
+            {isPackUnit ? (
+              <p className="rounded-xl border border-[#0A84FF]/25 bg-[#0A84FF]/5 px-3 py-2 text-xs text-[#0066FF] dark:border-[#0A84FF]/30 dark:bg-[#0A84FF]/10 dark:text-[#0A84FF]">
+                Este producto funcionará como paquete destino para la conversión automática de
+                usuarios individuales (RF-2).
+              </p>
+            ) : null}
+            {isUserUnit ? (
+              <>
+                <label className="flex items-center gap-3 text-sm">
+                  <AppSwitch
+                    checked={form.watch('allow_package_conversion')}
+                    onCheckedChange={(next) =>
+                      form.setValue('allow_package_conversion', next, { shouldValidate: true })
                     }
-                    error={Boolean(form.formState.errors.package_service_id)}
-                    options={packageOptions.map((pkg) => ({
-                      value: String(pkg.id),
-                      label: `${pkg.code} — ${pkg.name}`,
-                    }))}
+                    label="Agrupar automáticamente en paquetes"
                   />
-                  {form.formState.errors.package_service_id && (
-                    <span className="mt-1 block text-xs text-red-500">
-                      {form.formState.errors.package_service_id.message}
-                    </span>
-                  )}
+                  Agrupar automáticamente en paquetes
                 </label>
-                <label className="block text-sm">
-                  Factor de paquete
-                  <AppInput
-                    type="number"
-                    min={1}
-                    max={100}
-                    withLabelSpacing
-                    mono
-                    {...form.register('package_factor')}
-                  />
-                </label>
-              </AppCard>
-            )}
+                {allowsPackage && (
+                  <AppCard className="space-y-3 p-3">
+                    <label className="block text-sm">
+                      Producto paquete destino (RF-2)
+                      <AppSelect
+                        withLabelSpacing
+                        placeholder="Selecciona un paquete…"
+                        value={form.watch('package_service_id') || undefined}
+                        onValueChange={(v) =>
+                          form.setValue('package_service_id', v, { shouldValidate: true })
+                        }
+                        error={Boolean(form.formState.errors.package_service_id)}
+                        options={packageOptions.map((pkg) => ({
+                          value: String(pkg.id),
+                          label: `${pkg.code} — ${pkg.name}`,
+                        }))}
+                      />
+                      {form.formState.errors.package_service_id && (
+                        <span className="mt-1 block text-xs text-red-500">
+                          {form.formState.errors.package_service_id.message}
+                        </span>
+                      )}
+                    </label>
+                    <label className="block text-sm">
+                      Factor de paquete
+                      <AppInput
+                        type="number"
+                        min={2}
+                        max={100}
+                        withLabelSpacing
+                        mono
+                        {...form.register('package_factor')}
+                      />
+                      {form.formState.errors.package_factor && (
+                        <span className="mt-1 block text-xs text-red-500">
+                          {form.formState.errors.package_factor.message}
+                        </span>
+                      )}
+                    </label>
+                    <p className="rounded-xl border border-[#0A84FF]/25 bg-[#0A84FF]/5 px-3 py-2 text-xs text-[#0066FF] dark:border-[#0A84FF]/30 dark:bg-[#0A84FF]/10 dark:text-[#0A84FF]">
+                      {`Cada ${
+                        Number.isFinite(Number(watchedPackageFactor)) &&
+                        Number(watchedPackageFactor) >= 2
+                          ? Math.min(100, Math.trunc(Number(watchedPackageFactor)))
+                          : 5
+                      } usuarios individuales se convertirán automáticamente en 1 paquete destino.`}
+                    </p>
+                  </AppCard>
+                )}
+              </>
+            ) : null}
             <label className="flex items-center gap-3 text-sm">
               <AppSwitch
                 checked={form.watch('is_active')}
@@ -650,44 +758,5 @@ export function CatalogServicesPage() {
         </AppModalContent>
       </AppModal>
     </div>
-  )
-}
-
-function FilterGroup({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string
-  value: string
-  options: Array<string | { value: string; label: string }>
-  onChange: (v: string) => void
-}) {
-  return (
-    <AppFilterField label={label}>
-      <div className="ios-pill-track" role="group" aria-label={label}>
-        {options.map((opt) => {
-          const item = typeof opt === 'string' ? { value: opt, label: opt } : opt
-          return (
-            <AppButton
-              key={item.value}
-              type="button"
-              variant={value === item.value ? 'primary' : 'ghost'}
-              size="sm"
-              onClick={() => onChange(item.value)}
-              className={cn(
-                'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
-                value === item.value
-                  ? 'ios-pill-active'
-                  : 'text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-white/5',
-              )}
-            >
-              {item.label}
-            </AppButton>
-          )
-        })}
-      </div>
-    </AppFilterField>
   )
 }

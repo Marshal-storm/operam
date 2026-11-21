@@ -133,7 +133,8 @@ final class UsersManagementService extends ModelService
 
         $total = (clone $builder)->count();
         $rows = $builder
-            ->orderBy('u.id')
+            ->orderByRaw('COALESCE(u.updated_at, u.created_at) DESC')
+            ->orderByDesc('u.id')
             ->forPage($page, $perPage)
             ->get([
                 'u.id',

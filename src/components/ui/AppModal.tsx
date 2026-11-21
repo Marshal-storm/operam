@@ -96,6 +96,21 @@ export function AppModalDescription({
   )
 }
 
+export function AppModalFooter({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        'flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3',
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
 /** Alias de compatibilidad con imports históricos de dialog.tsx */
 export const Dialog = AppModal
 export const DialogTrigger = AppModalTrigger

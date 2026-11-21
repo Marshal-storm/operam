@@ -12,6 +12,9 @@ use System\Core\Result;
 use System\Models\UsersModel;
 use System\Services\AppService;
 use System\Services\AuditLogsService;
+use System\Services\ClientsService;
+use System\Services\ContractsService;
+use System\Services\DashboardMetricsService;
 use System\Services\InstancesService;
 use System\Services\IssuersService;
 use System\Services\LoginService;
@@ -108,7 +111,10 @@ if ($uri === 'login' && $method === 'POST') {
             'catalog/instances' => 'instances',
             'catalog/promotions' => 'promotions',
             'emisores', 'emitters', 'catalog/issuers' => 'issuers',
+            'clientes', 'catalog/clients' => 'clients',
+            'contratos', 'catalog/contracts' => 'contracts',
             'movimientos', 'catalog/movements' => 'movements',
+            'dashboard/mrr', 'mrr' => 'dashboard',
             'roles-permissions', 'rbac/roles' => 'roles',
             'users-management', 'usuarios' => 'users',
             'session', 'profile' => 'me',
@@ -152,7 +158,10 @@ if ($uri === 'login' && $method === 'POST') {
             'price-list-items' => (new PriceListItemsService())->handle($context),
             'promotions' => (new PromotionsService())->handle($context),
             'issuers' => (new IssuersService())->handle($context),
+            'clients' => (new ClientsService())->handle($context),
+            'contracts' => (new ContractsService())->handle($context),
             'movements' => (new MovementsService())->handle($context),
+            'dashboard' => (new DashboardMetricsService())->handle($context),
             'segments' => (new SegmentsService())->handle($context),
             'system-settings' => (new SystemSettingsService())->handle($context),
             'audit-logs' => (new AuditLogsService())->handle($context),

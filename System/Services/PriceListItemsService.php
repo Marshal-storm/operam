@@ -231,6 +231,23 @@ final class PriceListItemsService extends ModelService
             }
         }
 
+        // Alias UI/API: one_time → single (ENUM canónico en MySQL).
+        if (array_key_exists('frequency', $input)) {
+            $freq = strtolower(trim((string) $input['frequency']));
+            if (in_array($freq, ['one_time', 'onetime', 'unico'], true)) {
+                $input['frequency'] = 'single';
+            }
+        }
+
+        // Productos de pago único / consumo siempre se guardan con frequency=single.
+        $serviceId = (int) ($input['service_id'] ?? 0);
+        if ($serviceId > 0) {
+            $serviceType = Capsule::table('services')->where('id', $serviceId)->value('service_type');
+            if (in_array((string) $serviceType, ['single', 'consumption', 'one_time'], true)) {
+                $input['frequency'] = 'single';
+            }
+        }
+
         return $input;
     }
 
@@ -318,6 +335,7 @@ final class PriceListItemsService extends ModelService
                 'lpi.service_id',
                 's.code as service_code',
                 's.name as service_name',
+                's.service_type as service_type',
                 'lpi.frequency',
                 'lpi.min_quantity',
                 'lpi.max_quantity',
@@ -331,11 +349,12 @@ final class PriceListItemsService extends ModelService
                 'service_id' => (int) $item->service_id,
                 'service_code' => (string) ($item->service_code ?? ''),
                 'service_name' => (string) ($item->service_name ?? ''),
+                'service_type' => (string) ($item->service_type ?? 'recurring'),
                 'frequency' => (string) $item->frequency,
                 'min_quantity' => (int) $item->min_quantity,
                 'max_quantity' => $item->max_quantity !== null ? (int) $item->max_quantity : null,
-            'unit_price' => (string) $item->unit_price,
-        ];
+                'unit_price' => (string) $item->unit_price,
+            ];
         })->all();
     }
 

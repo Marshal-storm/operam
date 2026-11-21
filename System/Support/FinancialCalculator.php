@@ -27,11 +27,12 @@ final class FinancialCalculator
     ];
 
     /**
-     * RF-2: descompone usuarios en paquetes de 5 + sueltos y compara totales.
+     * RF-2: descompone usuarios en paquetes de N (`$packageFactor`) + sueltos y compara totales.
      *
      * @return array{
      *     packagesCount: int,
      *     singleUsersCount: int,
+     *     packageFactor: int,
      *     regularTotal: string,
      *     optimizedTotal: string,
      *     savings: string
@@ -40,17 +41,19 @@ final class FinancialCalculator
     public static function optimizeUserPackages(
         int $userCount,
         string $singleUserPrice,
-        string $pack5Price,
+        string $packPrice,
+        int $packageFactor = 5,
     ): array {
         if ($userCount < 0) {
             throw new InvalidArgumentException('userCount no puede ser negativo.');
         }
 
+        $factor = max(2, $packageFactor);
         $single = self::normalizeMoney($singleUserPrice);
-        $pack = self::normalizeMoney($pack5Price);
+        $pack = self::normalizeMoney($packPrice);
 
-        $packagesCount = intdiv($userCount, 5);
-        $singleUsersCount = $userCount % 5;
+        $packagesCount = intdiv($userCount, $factor);
+        $singleUsersCount = $userCount % $factor;
 
         $regularTotal = bcmul((string) $userCount, $single, self::SCALE);
         $packsTotal = bcmul((string) $packagesCount, $pack, self::SCALE);
@@ -66,6 +69,7 @@ final class FinancialCalculator
         return [
             'packagesCount' => $packagesCount,
             'singleUsersCount' => $singleUsersCount,
+            'packageFactor' => $factor,
             'regularTotal' => $regularTotal,
             'optimizedTotal' => $optimizedTotal,
             'savings' => $savings,

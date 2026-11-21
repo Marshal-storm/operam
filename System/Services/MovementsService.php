@@ -187,14 +187,7 @@ final class MovementsService extends ModelService
     {
         try {
             $row = Capsule::connection()->transaction(function () use ($payload) {
-                $id = Capsule::table('movements')->insertGetId($payload);
-                $this->syncMonthlyMrrFromMovement($payload);
-                $inserted = Capsule::table('movements')->where('id', $id)->first();
-                if ($inserted === null) {
-                    throw new \RuntimeException('No se pudo leer el movimiento insertado.');
-                }
-
-                return $inserted;
+                return $this->insertMovementRowAndSync($payload);
             });
         } catch (Throwable $exception) {
             return Result::fail(
@@ -204,6 +197,35 @@ final class MovementsService extends ModelService
         }
 
         return Result::ok($this->mapRow($row), $okMessage, 201);
+    }
+
+    /**
+     * Inserta movimiento + sync MRR asumiendo que ya hay una transacción abierta
+     * (p. ej. alta atómica de contrato en ContractsService).
+     *
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function recordWithinTransaction(array $payload): array
+    {
+        $row = $this->insertMovementRowAndSync($payload);
+
+        return $this->mapRow($row);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function insertMovementRowAndSync(array $payload): object
+    {
+        $id = Capsule::table('movements')->insertGetId($payload);
+        $this->syncMonthlyMrrFromMovement($payload);
+        $inserted = Capsule::table('movements')->where('id', $id)->first();
+        if ($inserted === null) {
+            throw new \RuntimeException('No se pudo leer el movimiento insertado.');
+        }
+
+        return $inserted;
     }
 
     /**
@@ -286,15 +308,19 @@ final class MovementsService extends ModelService
         $row = Capsule::table('contracts as c')
             ->leftJoin('clients as cl', 'cl.id', '=', 'c.client_id')
             ->where('c.id', $contractId)
-            ->first(['c.segment_id', 'cl.issuer_id']);
+            ->first(['c.segment_id', 'c.issuer_id as contract_issuer_id', 'cl.issuer_id as client_issuer_id']);
 
         if ($row === null) {
             throw new \RuntimeException("Contrato {$contractId} no encontrado para sincronizar monthly_mrr.");
         }
 
+        $issuerId = $row->contract_issuer_id !== null
+            ? (int) $row->contract_issuer_id
+            : ($row->client_issuer_id !== null ? (int) $row->client_issuer_id : null);
+
         return [
             'segment_id' => (int) $row->segment_id,
-            'issuer_id' => $row->issuer_id !== null ? (int) $row->issuer_id : null,
+            'issuer_id' => $issuerId,
             'service_id' => $serviceId,
         ];
     }
@@ -306,7 +332,10 @@ final class MovementsService extends ModelService
     private function listRecent(array $query): array
     {
         $limit = max(1, min(200, (int) ($query['limit'] ?? 50)));
-        $builder = Capsule::table('movements')->orderByDesc('id')->limit($limit);
+        $builder = Capsule::table('movements')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit($limit);
 
         if (!empty($query['contract_id'])) {
             $builder->where('contract_id', (int) $query['contract_id']);

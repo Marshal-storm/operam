@@ -20,11 +20,93 @@ import {
 import { SEGMENT_OPTIONS } from '@/services/mockDashboardData'
 import type { MrrCategory } from '@/types/mrr'
 
-const MONTH_OPTIONS = [
+/** Meses fijos del dataset de demostración (Mockup sep-2026). */
+const MOCK_MONTH_OPTIONS = [
   { value: '2026-09', label: 'Sep 2026' },
   { value: '2026-08', label: 'Ago 2026' },
   { value: '2026-07', label: 'Jul 2026' },
-]
+] as const
+
+const MOCK_DEFAULT_MONTH = '2026-09'
+
+const MONTH_SHORT_ES = [
+  'Ene',
+  'Feb',
+  'Mar',
+  'Abr',
+  'May',
+  'Jun',
+  'Jul',
+  'Ago',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dic',
+] as const
+
+const MONTH_LONG_ES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+] as const
+
+/** Mes actual `YYYY-MM` en zona America/Mexico_City. */
+function currentMonthKeyMexicoCity(now = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+  }).format(now)
+}
+
+/** Últimos 12 meses (mes en curso primero) para modo API Real. */
+function buildLast12MonthOptions(referenceMonth = currentMonthKeyMexicoCity()): Array<{
+  value: string
+  label: string
+}> {
+  const [yearRaw, monthRaw] = referenceMonth.split('-').map(Number)
+  let year = yearRaw
+  let month = monthRaw
+  const options: Array<{ value: string; label: string }> = []
+  for (let i = 0; i < 12; i += 1) {
+    const value = `${year}-${String(month).padStart(2, '0')}`
+    options.push({
+      value,
+      label: `${MONTH_SHORT_ES[month - 1]} ${year}`,
+    })
+    month -= 1
+    if (month < 1) {
+      month = 12
+      year -= 1
+    }
+  }
+  return options
+}
+
+function previousMonthKey(month: string): string {
+  const [yearRaw, monthRaw] = month.split('-').map(Number)
+  let year = yearRaw
+  let monthNum = monthRaw - 1
+  if (monthNum < 1) {
+    monthNum = 12
+    year -= 1
+  }
+  return `${year}-${String(monthNum).padStart(2, '0')}`
+}
+
+function monthLongLabelEs(month: string): string {
+  const [, monthRaw] = month.split('-').map(Number)
+  return MONTH_LONG_ES[(monthRaw ?? 1) - 1] ?? month
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -139,9 +221,12 @@ export function DashboardPage() {
   const [segment, setSegment] = useState<string>(
     isSegmentLocked ? lockedSegmentFilter : 'Todos',
   )
-  const [month, setMonth] = useState('2026-09')
+  const [month, setMonth] = useState(MOCK_DEFAULT_MONTH)
   const [mode, setMode] = useState<DataSourceMode>('mock')
   const [activeCategory, setActiveCategory] = useState<MrrCategory | null>(null)
+
+  const apiMonthOptions = useMemo(() => buildLast12MonthOptions(), [])
+  const monthOptions = mode === 'api' ? apiMonthOptions : [...MOCK_MONTH_OPTIONS]
 
   const segmentChoices = useMemo(() => {
     if (mode === 'api' || isSegmentLocked) return segmentOptions
@@ -168,6 +253,23 @@ export function DashboardPage() {
     errorMessage,
     refetch,
   } = useDashboardData({ mode, segment, month })
+
+  const prevMonthHint = useMemo(() => monthLongLabelEs(previousMonthKey(month)), [month])
+
+  const subtitle = useMemo(() => {
+    if (mode === 'api' && (isLoading || isFetching)) {
+      return 'Cargando datos de API real...'
+    }
+    if (snapshot?.periodLabel) {
+      return snapshot.periodLabel
+    }
+    if (mode === 'mock') {
+      return 'Cierre de septiembre 2026 · Datos de ejemplo'
+    }
+    const [year, monthNum] = month.split('-').map(Number)
+    const name = MONTH_LONG_ES[(monthNum ?? 1) - 1] ?? month
+    return `Cierre de ${name} ${year} · Datos en vivo de MySQL`
+  }, [mode, isLoading, isFetching, snapshot?.periodLabel, month])
 
   const tableMovements = useMemo(() => {
     if (!snapshot) return []
@@ -202,10 +304,7 @@ export function DashboardPage() {
             MRR y crecimiento
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 md:text-base">
-            {snapshot?.periodLabel ??
-              (mode === 'mock'
-                ? 'Cierre de septiembre 2026 · Datos de ejemplo'
-                : 'Cargando datos de API real…')}
+            {subtitle}
           </p>
         </div>
 
@@ -217,6 +316,7 @@ export function DashboardPage() {
               if (next === mode) return
               void runDashboardSync(() => {
                 setMode(next)
+                setMonth(next === 'api' ? currentMonthKeyMexicoCity() : MOCK_DEFAULT_MONTH)
                 setActiveCategory(null)
               }, 'Sincronizando métricas del ERP...')
             }}
@@ -251,7 +351,7 @@ export function DashboardPage() {
                   setActiveCategory(null)
                 }, 'Sincronizando métricas del ERP...')
               }}
-              options={MONTH_OPTIONS}
+              options={monthOptions}
               triggerClassName="h-9 w-[9.5rem] rounded-2xl border-slate-200 bg-slate-100 px-3 dark:border-white/[0.08] dark:bg-white/[0.05]"
             />
           </AppFilterField>
@@ -303,7 +403,7 @@ export function DashboardPage() {
             <KpiCard
               label="MRR"
               value={formatCurrencyMx(snapshot.kpis.mrrMxn)}
-              hint={`${snapshot.kpis.mrrDeltaVsPrevPercent} vs agosto`}
+              hint={`${snapshot.kpis.mrrDeltaVsPrevPercent} vs ${prevMonthHint}`}
               tone="positive"
               onClick={() => setActiveCategory(null)}
             />

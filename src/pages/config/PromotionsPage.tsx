@@ -4,10 +4,10 @@ import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { AppBadge } from '@/components/ui/AppBadge'
-import { AppFilterField } from '@/components/ui/AppFilterField'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
-import { AppCurrencyInput, AppInput, AppSearchInput } from '@/components/ui/AppInput'
+import { AppFilterBar } from '@/components/ui/AppFilterBar'
+import { AppCurrencyInput, AppInput } from '@/components/ui/AppInput'
 import {
   AppModal,
   AppModalContent,
@@ -126,6 +126,18 @@ export function PromotionsPage() {
 
   const pageRows = paginateRows(filtered, page, pageSize)
 
+  const hasActiveFilters =
+    search.trim() !== '' ||
+    estado !== 'Todas' ||
+    (!isSegmentLocked && segment !== 'Todos')
+
+  function clearFilters() {
+    setSearch('')
+    setEstado('Todas')
+    if (!isSegmentLocked) setSegment('Todos')
+    setPage(1)
+  }
+
   function openCreate() {
     setEditing(null)
     form.reset({
@@ -182,6 +194,7 @@ export function PromotionsPage() {
       } else {
         await createPromotion({ ...payload, current_uses: 0 })
         toast.success('Promoción creada', payload.code)
+        setPage(1)
       }
       setModalOpen(false)
     } catch (error) {
@@ -228,70 +241,49 @@ export function PromotionsPage() {
         )}
       </header>
 
-      <AppCard className="space-y-3 p-4">
-        <AppSearchInput
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value)
-            setPage(1)
-          }}
-          onClear={() => {
-            setSearch('')
-            setPage(1)
-          }}
-          placeholder="Buscar por código o nombre…"
-          aria-label="Buscar promociones"
-        />
-        <div className="flex flex-wrap items-end gap-3">
-          <AppFilterField label="Estado">
-            <div className="ios-pill-track" role="group" aria-label="Estado">
-              {['Todas', 'Activas', 'Pausadas'].map((opt) => (
-                <AppButton
-                  key={opt}
-                  type="button"
-                  variant={estado === opt ? 'primary' : 'ghost'}
-                  size="sm"
-                  onClick={() => {
-                    setEstado(opt)
-                    setPage(1)
-                  }}
-                  className={cn(
-                    'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
-                    estado === opt ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
-                  )}
-                >
-                  {opt}
-                </AppButton>
-              ))}
-            </div>
-          </AppFilterField>
-          <AppFilterField label="Segmento">
-            <div className="ios-pill-track" role="group" aria-label="Segmento">
-              {segmentOptions.map((opt) => (
-                <AppButton
-                  key={opt.value}
-                  type="button"
-                  variant={segment === opt.value ? 'primary' : 'ghost'}
-                  size="sm"
-                  disabled={isSegmentLocked}
-                  onClick={() => {
-                    if (isSegmentLocked) return
-                    setSegment(opt.value)
-                    setPage(1)
-                  }}
-                  className={cn(
-                    'h-auto rounded-xl px-2.5 py-1 text-xs font-normal shadow-none',
-                    segment === opt.value ? 'ios-pill-active' : 'text-slate-600 dark:text-slate-300',
-                    isSegmentLocked && 'cursor-not-allowed opacity-80',
-                  )}
-                >
-                  {opt.label}
-                </AppButton>
-              ))}
-            </div>
-          </AppFilterField>
-        </div>
-      </AppCard>
+      <AppFilterBar
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value)
+          setPage(1)
+        }}
+        onSearchClear={() => {
+          setSearch('')
+          setPage(1)
+        }}
+        searchPlaceholder="Buscar por código o nombre…"
+        searchLabel="BUSCAR"
+        filters={[
+          {
+            id: 'status',
+            label: 'ESTADO',
+            value: estado,
+            onValueChange: (value) => {
+              setEstado(value)
+              setPage(1)
+            },
+            options: [
+              { value: 'Todas', label: 'Todas' },
+              { value: 'Activas', label: 'Activas', tone: 'success' },
+              { value: 'Pausadas', label: 'Pausadas', tone: 'warning' },
+            ],
+          },
+          {
+            id: 'segment',
+            label: 'SEGMENTO',
+            value: segment,
+            onValueChange: (value) => {
+              if (isSegmentLocked) return
+              setSegment(value)
+              setPage(1)
+            },
+            options: segmentOptions,
+            disabled: isSegmentLocked,
+          },
+        ]}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {pageRows.map((promo) => {

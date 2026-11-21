@@ -28,6 +28,12 @@ if (is_readable($dotenvPath)) {
 /**
  * @return array{adapter:string,host:string,name:string,user:string,pass:string,port:string,charset:string,collation:string}
  */
+/**
+ * @return array{
+ *   adapter:string,host:string,name:string,user:string,pass:string,port:string,
+ *   charset:string,collation:string,timezone:string
+ * }
+ */
 function operam_phinx_mysql_env(): array
 {
     return [
@@ -39,6 +45,8 @@ function operam_phinx_mysql_env(): array
         'port' => getenv('DB_PORT') ?: '3306',
         'charset' => 'utf8mb4',
         'collation' => 'utf8mb4_unicode_ci',
+        // Obliga UTC en migraciones/seeders (RNF-11) — evita desfase vs Capsule +00:00.
+        'timezone' => '+00:00',
     ];
 }
 

@@ -31,17 +31,50 @@ Actúa como Arquitecto de Software y Desarrollador Full Stack SENIOR. Aplica est
   - `AppInput` (y variantes `AppCurrencyInput` / `AppSearchInput`)
   - `AppSelect` (Radix Select + Liquid Glass; iconos/semáforo; buscador automático si hay >6 opciones)
   - `AppButton` (variantes `primary` | `secondary` | `outline` | `ghost` | `danger`; `disabled` / `isLoading`)
-  - `AppBadge` (píldoras semáforo `success` | `warning` | `danger` | `info` | `neutral`)
+  - `AppBadge` (píldoras semáforo `success` | `warning` | `danger` | `info` | `neutral`; siempre `whitespace-nowrap`)
   - `AppModal` (diálogos sobre `@radix-ui/react-dialog`)
-  - `AppSwitch` (interruptor iOS)
+  - `AppSwitch` (interruptor iOS; en columna ESTADO con caption `Activo`/`Inactivo`)
   - `AppTableWrapper` (contenedor de tabla: cabecera de cristal, estados UI-7, pie paginación/acciones)
+  - `AppFilterBar` (estándar homologado de búsqueda/filtros en listados y directorios)
+  - `AppRowActionsMenu` (menú `⋮` de acciones de fila — única forma de agrupar acciones en tablas)
 - **Objetivo de mantenibilidad:** un cambio global de borde/sombra/radio/focus se hace en **un solo archivo** del kit y se propaga a todos los módulos.
+
+### 3.2 Estándar Homologado de Filtros — `AppFilterBar` (inquebrantable)
+
+- **Toda pantalla de listado o directorio** con búsqueda y/o filtros **debe** usar el componente centralizado `<AppFilterBar />` (`src/components/ui/AppFilterBar.tsx`).
+- **PROHIBIDO** inventar barras de filtros personalizadas, tracks `ios-pill` sueltos o filas de `AppButton` como sustituto de filtros en `src/pages/**`.
+- Geometría oficial (Tema Claro Crisp + Tema Oscuro OLED Liquid Glass neutro, sin tintes azulados):
+  1. **Fila 1 (superior):** buscador a ancho completo (`w-full`) estilo cápsula (`rounded-full`) con ícono `Search`, botón interno para limpiar texto y etiqueta superior en mayúsculas discretas (`BUSCAR` por defecto).
+  2. **Fila 2 (inferior):** contenedor `flex flex-wrap items-end gap-4` con `AppSelect` en cápsula (`rounded-full`, `min-w-[200px]`), cada uno con etiqueta superior en mayúsculas (`SEGMENTO`, `EMISOR`, `ESTADO`, `TIPO`, `MONEDA`, `ROL`, etc.) y el botón `"Limpiar filtros"` (`AppButton` `variant="ghost"`) alineado a la derecha **solo** cuando `hasActiveFilters` sea verdadero.
+- Catálogos (Segmento, Emisor, Rol, etc.) **siempre** dinámicos desde MySQL; respetar `isSegmentLocked` / alcance JWT. En móvil (~360px) la fila 2 se apila sin scroll horizontal.
+
+### 3.3 Estándar Global Homologado de Tablas (inquebrantable)
+
+Obligatorio en **todas** las tablas actuales y futuras (listados operativos y catálogos admin):
+
+1. **Badges en una sola línea:** Toda etiqueta destacada en celda (`30 días crédito`, `Timbrado auto`, `MXN`, `Default`, etc.) usa `<AppBadge />` con `whitespace-nowrap shrink-0`. Varios badges en la misma celda van en `flex flex-wrap gap-1.5` — **prohibido** que el texto de un badge se parta en dos renglones.
+2. **Columna `ESTADO` con Switch directo (binario):** Si la entidad es Activo/Inactivo (o Disponible/Inactivo), `ESTADO` renderiza `<AppSwitch />` + texto a la derecha (`Activo`/`Inactivo` o `Disponible`/`Inactivo`). Respeta `canEdit` del módulo (`disabled` si no puede editar). **Prohibido** poner el switch en `ACCIONES` o duplicar badge+switch. Excepción: entidades con **≥3 estados** (p. ej. Instancias: Operativa | Mantenimiento | Suspendida) conservan píldora semáforo en `ESTADO`.
+3. **Columna `ACCIONES` con título y menú:** El encabezado **siempre** muestra el texto **`ACCIONES`** (nunca vacío), alineado a la derecha (`text-right`). Las acciones de fila (`Ver detalle`, `Editar`, `Ver / Editar productos`, etc.) se agrupan **solo** en `<AppRowActionsMenu />` (trigger `MoreHorizontal` / `⋮`). **Prohibido** filas llenas de botones sueltos.
+4. **Directorios en tabla:** Todo listado operativo o catálogo administrativo (incluido `Listas de precios`) se presenta en tabla paginada sincronizada con `useScreenPreferences()` + tarjetas apiladas en móvil (UI-4). **Excepción visual expresa:** pantallas de tarjetas de Promociones (`PromotionsPage`, `SalesPromotionsPage`) no se convierten a tabla.
+
+### 3.4 Estándar Global de Ordenamiento por Reciente (inquebrantable)
+
+Obligatorio en **todos** los módulos actuales y futuros:
+
+1. **Todo endpoint de listado (`GET`) y toda tabla/lista** ordena por defecto del registro **más reciente al más antiguo**, considerando creación y última actualización.
+2. **Tablas mutables** con `updated_at` y `created_at` (`clients`, `contracts`, `services`, `price_lists`, `promotions`, `issuers`, `instances`, `users`, `roles`, etc.):
+   - SQL: `ORDER BY COALESCE(alias.updated_at, alias.created_at) DESC, alias.id DESC`
+   - Todo `UPDATE` / `PATCH` / toggle de estado / cambio de `is_default` **debe** actualizar `updated_at` al timestamp UTC actual (también en `Capsule::table(...)->update(...)` que no dispara timestamps Eloquent).
+3. **Tablas inmutables append-only** sin `updated_at` (`audit_logs`, `movements`):
+   - SQL: `ORDER BY created_at DESC, id DESC`
+4. El ordenamiento se ejecuta **siempre en SQL en el servidor antes de la paginación** (`LIMIT` / `OFFSET`). **Prohibido** reordenar en memoria en el cliente (p. ej. `.sort()` alfabético por nombre/código) salvo petición explícita del usuario o excepciones lógicas documentadas (p. ej. escalones de precio por `min_quantity ASC`; matriz RBAC de `system_modules` por `sort_order`).
+5. Tras crear/editar, invalidar la query de TanStack Query; al crear un registro nuevo conviene volver a la página 1 para verlo en la primera fila.
 
 ## 4. Reglas de negocio y UI críticas
 
 - Sin `float` en dinero; montos `es-MX` + `tabular-nums`; fechas `15 sep 2026` / `America/Mexico_City`.
 - MRR inmutable desde `movements`; Puente de MRR con la ecuación de deltas.
-- Tablas → tarjetas en móvil (UI-4).
+- Tablas → tarjetas en móvil (UI-4) — ver §3.3 para columnas ESTADO/ACCIONES y badges.
 
 ### RNF-3 — Inmutabilidad de `movements` (obligatorio Módulo 3+)
 
@@ -49,6 +82,12 @@ Actúa como Arquitecto de Software y Desarrollador Full Stack SENIOR. Aplica est
 - Blindaje en tres capas: triggers MySQL (`trg_movements_prevent_update` / `trg_movements_prevent_delete`), eventos Eloquent `updating`/`deleting` en `MovementsModel`, y hooks `before_update`/`before_patch`/`before_delete` en `MovementsService` (HTTP 403).
 - Correcciones contables: **solo** via `MovementsService::createReversalMovement()` (INSERT inverso con `reversed_movement_id` y deltas con `bcmath`).
 - El futuro Motor de Contratos (Módulo 3) únicamente puede `INSERT` movimientos nuevos o invocar la reversión contable; nunca mutar filas existentes.
+
+### Cupón de Un Solo Uso ("Cupón Quemado") — promociones en contratos
+
+- Los cupones promocionales (`promotions`) se consumen exclusivamente en el alta inicial del contrato (`POST /api/contracts`).
+- Al ejecutar cualquier operación de ciclo de vida que modifique una línea (`expansion`, `contraction`, `price_adjustment`, `frequency_change`), el cupón ya no aplica sobre la línea modificada (`discount_amount` se restablece a `'0.00'`) y el nuevo subtotal/MRR se calcula estrictamente sobre el precio neto pactado, garantizando exactitud con BCMath y cero MRR negativos.
+- Las líneas no tocadas en esa operación conservan intactos su `subtotal`, `discount_amount` y `mrr_mxn`.
 
 ## 5. Documentación viva (README)
 
@@ -145,7 +184,7 @@ CADA vez que se cree o modifique un módulo del sistema:
 2. **Visibilidad Sidebar/Rutas:** Si no hay `can_view` en un módulo/submódulo, se oculta el ítem y la ruta bloquea. El padre `"Configuración"` se muestra **solo si** el usuario tiene `can_view` en **al menos un** `config_*`; cada sub-ítem se filtra individualmente. Botones Crear/Editar/Eliminar usan la llave específica del submódulo (`canCreate('config_promotions')`, etc.).
 3. **Alcance de Segmento Dinámico:** `Todos` (`segment_id = NULL`) o el segmento asignado (`segment_id` + `segment_name` desde tabla `segments`). JWT/`auth` exponen `segment_id`, `segment_name` (o `'Todos'`) y mapa `permissions` (`view`/`create`/`edit`/`delete`). Con segmento fijo, APIs y filtros de pantalla se bloquean a ese alcance. **Prohibido** quemar nombres de segmento en el frontend; usar `useSegments()` / `GET /api/segments`.
 4. **Revocación inmediata de sesión:** Al cambiar `role_id`, `segment_id` o `is_active = false` de un usuario, o al guardar la matriz `role_permissions` de un rol, se revocan (`is_revoked = 1`) las filas de `active_sessions` afectadas. El guardia JWT responde `401` y el frontend cierra sesión (toast + `/login`). Si el admin se afecta a sí mismo, logout automático tras guardar.
-5. **Filtros con etiqueta visible (UX inquebrantable):** Todo filtro en barras de herramientas o tablas debe llevar su etiqueta (`label`) visible y clara (vía `AppFilterField` u equivalente) para que el usuario siempre sepa qué criterio está aplicando. Los filtros de catálogos (Segmentos, Emisores, Roles, etc.) **siempre** se pueblan dinámicamente desde la base de datos — nunca arreglos estáticos quemados.
+5. **Filtros con etiqueta visible (UX inquebrantable):** Toda barra de búsqueda/filtros de listados usa **obligatoriamente** `<AppFilterBar />` (§3.2) con etiquetas superiores en mayúsculas. Los catálogos (Segmentos, Emisores, Roles, etc.) **siempre** se pueblan dinámicamente desde la base de datos — nunca arreglos estáticos quemados.
 
 ## 12. Auditoría Global `audit_logs` (inquebrantable)
 

@@ -21,8 +21,12 @@ import { CompanySettingsPage } from '@/pages/config/CompanySettingsPage'
 import { ScreenPreferencesPage } from '@/pages/config/ScreenPreferencesPage'
 import { SystemSettingsPage } from '@/pages/config/SystemSettingsPage'
 import { UsersManagementPage } from '@/pages/config/UsersManagementPage'
+import { ClientsPage } from '@/pages/ClientsPage'
+import { ContractDetailPage } from '@/pages/ContractDetailPage'
+import { ContractsPage } from '@/pages/ContractsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { LoginPage } from '@/pages/LoginPage'
+import { NewContractPage } from '@/pages/NewContractPage'
 import { SalesPromotionsPage } from '@/pages/SalesPromotionsPage'
 import type { ModuleKey } from '@/types/auth'
 
@@ -64,6 +68,15 @@ function ConfigHomeRedirect() {
   return <Navigate to={first?.to ?? '/dashboard'} replace />
 }
 
+/** Alta de contrato: exige can_create además de can_view del módulo. */
+function NewContractGate() {
+  const { canCreate } = usePermissions()
+  if (!canCreate('contracts')) {
+    return <Navigate to="/contratos" replace />
+  }
+  return <NewContractPage />
+}
+
 /**
  * Enrutado: `/login` es la única ruta pública.
  * Configuración con permisos granulares config_*.
@@ -97,7 +110,23 @@ function App() {
                           path="contratos"
                           element={
                             <ModulePage module="contracts">
-                              <Placeholder title="Contratos" />
+                              <ContractsPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="contratos/nuevo"
+                          element={
+                            <ModulePage module="contracts">
+                              <NewContractGate />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="contratos/:id"
+                          element={
+                            <ModulePage module="contracts">
+                              <ContractDetailPage />
                             </ModulePage>
                           }
                         />
@@ -105,7 +134,7 @@ function App() {
                           path="clientes"
                           element={
                             <ModulePage module="clients">
-                              <Placeholder title="Clientes" />
+                              <ClientsPage />
                             </ModulePage>
                           }
                         />

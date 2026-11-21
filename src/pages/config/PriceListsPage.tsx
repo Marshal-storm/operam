@@ -1,24 +1,36 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { ArrowLeft, Check, Plus, Save, Trash2 } from 'lucide-react'
+import {
+  tableFeatures,
+  useTable,
+  type ColumnDef,
+} from '@tanstack/react-table'
+import { ArrowLeft, Check, ListChecks, Pencil, Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { AppBadge } from '@/components/ui/AppBadge'
-import { AppFilterField } from '@/components/ui/AppFilterField'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
-import { AppCurrencyInput, AppInput, AppSearchInput } from '@/components/ui/AppInput'
+import { AppFilterBar } from '@/components/ui/AppFilterBar'
+import { AppCurrencyInput, AppInput } from '@/components/ui/AppInput'
 import {
   AppModal,
   AppModalContent,
   AppModalDescription,
+  AppModalFooter,
   AppModalHeader,
   AppModalTitle,
 } from '@/components/ui/AppModal'
+import {
+  AppActionsColumnHeader,
+  AppRowActionsMenu,
+} from '@/components/ui/AppRowActionsMenu'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { AppSwitch } from '@/components/ui/AppSwitch'
+import { AppTableHeadRow, AppTableWrapper } from '@/components/ui/AppTableWrapper'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useScreenPreferences } from '@/context/ScreenPreferencesContext'
 import { useToast } from '@/context/ToastContext'
 import { usePriceListsConfig } from '@/hooks/useConfigCatalog'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -27,6 +39,8 @@ import { paginateRows, useClientTableState } from '@/hooks/useClientTableState'
 import { cn } from '@/lib/utils'
 import type { VolumeMatrixSavePlan } from '@/services/catalogService'
 import type { PriceList, PriceListItem } from '@/types/catalog'
+
+const priceListsTableFeatures = tableFeatures({})
 
 /** Escalón editable (mensual + anual alineados por rango). */
 type ScaleTier = {
@@ -48,9 +62,27 @@ type ProductGroup = {
   servicioId: number
   code: string
   name: string
+  /** recurring | consumption | single (pago único). */
+  serviceType: 'recurring' | 'consumption' | 'single'
   tiers: ScaleTier[]
   /** Forzar vista de escalones aunque solo haya un rango 1+. */
   forceVolumeUi: boolean
+}
+
+/** Pago único / consumo: un solo precio (frequency=single), sin anual. */
+function isOneTimeOrConsumption(
+  serviceType: ProductGroup['serviceType'] | string | undefined,
+): boolean {
+  return serviceType === 'single' || serviceType === 'consumption' || serviceType === 'one_time'
+}
+
+/** Advertencia si el último escalón cierra con máximo finito (no cubre ∞). */
+function lastTierFiniteMaxWarning(tiers: ScaleTier[]): string | null {
+  if (tiers.length < 2) return null
+  const sorted = [...tiers].sort((a, b) => a.min_quantity - b.min_quantity)
+  const last = sorted[sorted.length - 1]
+  if (!last || last.max_quantity == null) return null
+  return `El último escalón cierra en ${last.max_quantity}. Déjalo vacío (∞) si deseas cubrir cantidades mayores.`
 }
 
 function countAssignedProducts(list: PriceList): number {
@@ -108,13 +140,17 @@ function validateProductTiers(tiers: ScaleTier[]): string | null {
   return null
 }
 
-function buildProductGroups(list: PriceList | undefined): ProductGroup[] {
+function buildProductGroups(
+  list: PriceList | undefined,
+  serviceTypeById?: Map<number, ProductGroup['serviceType']>,
+): ProductGroup[] {
   if (!list) return []
   const byService = new Map<
     number,
     {
       code: string
       name: string
+      serviceType: ProductGroup['serviceType']
       byRange: Map<string, ScaleTier>
     }
   >()
@@ -122,9 +158,16 @@ function buildProductGroups(list: PriceList | undefined): ProductGroup[] {
   for (const item of list.items) {
     let bucket = byService.get(item.service_id)
     if (!bucket) {
+      const fromItem = item.service_type
+      const fromCatalog = serviceTypeById?.get(item.service_id)
+      const serviceType: ProductGroup['serviceType'] =
+        fromItem === 'consumption' || fromItem === 'single' || fromItem === 'recurring'
+          ? fromItem
+          : fromCatalog ?? 'recurring'
       bucket = {
         code: item.service_code,
         name: item.service_name,
+        serviceType,
         byRange: new Map<string, ScaleTier>(),
       }
       byService.set(item.service_id, bucket)
@@ -149,10 +192,18 @@ function buildProductGroups(list: PriceList | undefined): ProductGroup[] {
       bucket.byRange.set(rangeKey, tier)
     }
 
+    const oneTimeProduct = isOneTimeOrConsumption(bucket.serviceType)
     if (item.frequency === 'monthly') {
-      tier.mensualId = item.id
-      tier.mensual = item.unit_price
-      tier.hasMensual = true
+      // Compat: consumo/único guardado como monthly → tratarlo como precio unitario.
+      if (oneTimeProduct) {
+        tier.unicoId = item.id
+        tier.unico = item.unit_price
+        tier.hasUnico = true
+      } else {
+        tier.mensualId = item.id
+        tier.mensual = item.unit_price
+        tier.hasMensual = true
+      }
     } else if (item.frequency === 'annual') {
       tier.anualId = item.id
       tier.anual = item.unit_price
@@ -164,20 +215,39 @@ function buildProductGroups(list: PriceList | undefined): ProductGroup[] {
     }
   }
 
-  return [...byService.entries()]
-    .map(([servicioId, data]) => {
-      const tiers = [...data.byRange.values()].sort(
-        (a, b) => a.min_quantity - b.min_quantity,
-      )
-      return {
-        servicioId,
-        code: data.code,
-        name: data.name,
-        tiers,
-        forceVolumeUi: !isStandardSingleTier(tiers),
+  // Conserva el orden del API (reciente primero a nivel lista; escalones por min_quantity).
+  // Prohibido reordenar alfabéticamente por código (§3.4).
+  return [...byService.entries()].map(([servicioId, data]) => {
+    const tiers = [...data.byRange.values()].sort(
+      (a, b) => a.min_quantity - b.min_quantity,
+    )
+    const oneTime = isOneTimeOrConsumption(data.serviceType)
+    // Asegura flags de UI para productos único/consumo.
+    if (oneTime) {
+      for (const tier of tiers) {
+        if (!tier.hasUnico && tier.hasMensual) {
+          tier.hasUnico = true
+          tier.unico = tier.mensual
+          tier.unicoId = tier.mensualId
+          tier.hasMensual = false
+          tier.mensualId = null
+          tier.mensual = ''
+        }
+        if (!tier.hasUnico) {
+          tier.hasUnico = true
+        }
+        tier.hasAnual = false
       }
-    })
-    .sort((a, b) => a.code.localeCompare(b.code))
+    }
+    return {
+      servicioId,
+      code: data.code,
+      name: data.name,
+      serviceType: data.serviceType,
+      tiers,
+      forceVolumeUi: !isStandardSingleTier(tiers),
+    }
+  })
 }
 
 function normalizeMoneyInput(raw: string): string | null {
@@ -192,12 +262,14 @@ function snapshotItems(list: PriceList): Map<number, PriceListItem> {
   return new Map(list.items.map((item) => [item.id, item]))
 }
 
-const newListSchema = z.object({
-  name: z.string().min(3),
-  segment_id: z.string().min(1),
+const listSettingsSchema = z.object({
+  name: z.string().min(3, 'Indica el nombre de la lista'),
+  segment_id: z.string().min(1, 'Selecciona un segmento'),
   currency: z.enum(['MXN', 'USD']),
-  valid_from: z.string().min(8),
+  valid_from: z.string().min(8, 'Indica la vigencia desde'),
+  valid_until: z.string().optional(),
   is_default: z.boolean(),
+  is_active: z.boolean(),
 })
 
 const addItemSchema = z.object({
@@ -206,8 +278,18 @@ const addItemSchema = z.object({
   unit_price: z.string().regex(/^\d+(\.\d{1,2})?$/),
 })
 
-type NewListForm = z.infer<typeof newListSchema>
+type ListSettingsForm = z.infer<typeof listSettingsSchema>
 type AddItemForm = z.infer<typeof addItemSchema>
+
+const EMPTY_LIST_SETTINGS: ListSettingsForm = {
+  name: '',
+  segment_id: '1',
+  currency: 'MXN',
+  valid_from: '',
+  valid_until: '',
+  is_default: false,
+  is_active: true,
+}
 
 /**
  * Listas de precios — directorio + detalle con escalones RF-2.
@@ -231,6 +313,7 @@ export function PriceListsPage() {
   } = usePriceListsConfig()
 
   const { page, setPage, pageSize, setPageSize } = useClientTableState()
+  const { rowPaddingClass } = useScreenPreferences()
   const [search, setSearch] = useState('')
   const { canCreate, canEdit, canDelete } = usePermissions()
   const {
@@ -246,12 +329,15 @@ export function PriceListsPage() {
   const [groups, setGroups] = useState<ProductGroup[]>([])
   const [baselineJson, setBaselineJson] = useState('')
   const [savedFlash, setSavedFlash] = useState(false)
-  const [newListOpen, setNewListOpen] = useState(false)
+  const [listSettingsOpen, setListSettingsOpen] = useState(false)
+  const [configuringListId, setConfiguringListId] = useState<number | null>(null)
   const [addItemOpen, setAddItemOpen] = useState(false)
   const [removeTarget, setRemoveTarget] = useState<ProductGroup | null>(null)
 
   const today = new Date().toISOString().slice(0, 10)
   const selected = lists.find((l) => l.id === editingListId)
+  const configuringList = lists.find((l) => l.id === configuringListId) ?? null
+  const isEditingListSettings = configuringListId !== null
 
   const filteredLists = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -271,12 +357,22 @@ export function PriceListsPage() {
 
   const pageRows = paginateRows(filteredLists, page, pageSize)
 
+  const serviceTypeById = useMemo(() => {
+    const map = new Map<number, ProductGroup['serviceType']>()
+    for (const s of services) {
+      if (s.service_type === 'recurring' || s.service_type === 'consumption' || s.service_type === 'single') {
+        map.set(s.id, s.service_type)
+      }
+    }
+    return map
+  }, [services])
+
   useEffect(() => {
-    const next = buildProductGroups(selected)
+    const next = buildProductGroups(selected, serviceTypeById)
     setGroups(next)
     setBaselineJson(JSON.stringify(next))
     setSavedFlash(false)
-  }, [selected])
+  }, [selected, serviceTypeById])
 
   const filteredGroups = useMemo(() => {
     const q = productSearch.trim().toLowerCase()
@@ -299,26 +395,179 @@ export function PriceListsPage() {
   const hasRangeErrors = tierErrors.size > 0
   const hasChanges = JSON.stringify(groups) !== baselineJson
 
-  const listForm = useForm<NewListForm>({
-    resolver: zodResolver(newListSchema),
+  const listForm = useForm<ListSettingsForm>({
+    resolver: zodResolver(listSettingsSchema),
     defaultValues: {
-      name: '',
-      segment_id: '1',
-      currency: 'MXN',
+      ...EMPTY_LIST_SETTINGS,
       valid_from: today,
-      is_default: false,
     },
   })
 
-  async function markAsDefault(list: (typeof lists)[number]) {
-    if (!canEdit('config_prices') || list.is_default) return
+  function openCreateList() {
+    setConfiguringListId(null)
+    listForm.reset({
+      ...EMPTY_LIST_SETTINGS,
+      segment_id: segments[0] ? String(segments[0].id) : '1',
+      valid_from: today,
+    })
+    setListSettingsOpen(true)
+  }
+
+  function openConfigureList(list: PriceList) {
+    if (!canEdit('config_prices')) return
+    setConfiguringListId(list.id)
+    listForm.reset({
+      name: list.name,
+      segment_id: String(list.segment_id),
+      currency: list.currency === 'USD' ? 'USD' : 'MXN',
+      valid_from: list.valid_from.slice(0, 10),
+      valid_until: list.valid_until ? list.valid_until.slice(0, 10) : '',
+      is_default: list.is_default,
+      is_active: list.is_active,
+    })
+    setListSettingsOpen(true)
+  }
+
+  async function onToggleActive(list: PriceList, next: boolean) {
+    if (!canEdit('config_prices')) return
     try {
-      await updatePriceList({ id: list.id, data: { is_default: true } })
-      toast.success('Lista predeterminada', `${list.name} es ahora ★ Default.`)
+      await updatePriceList({ id: list.id, data: { is_active: next } })
+      toast.success(next ? 'Lista activada' : 'Lista desactivada', list.name)
     } catch (error) {
       toast.apiError(error)
     }
   }
+
+  async function onSubmitListSettings(values: ListSettingsForm) {
+    const payload = {
+      name: values.name.trim(),
+      segment_id: Number(values.segment_id),
+      currency: values.currency,
+      valid_from: values.valid_from,
+      valid_until: values.valid_until?.trim() ? values.valid_until.trim() : null,
+      is_default: values.is_default,
+      is_active: values.is_active,
+    }
+    try {
+      if (isEditingListSettings && configuringListId !== null) {
+        await updatePriceList({ id: configuringListId, data: payload })
+        toast.success(
+          'Lista actualizada',
+          payload.is_default
+            ? `${payload.name} quedó como predeterminada (Default).`
+            : `${payload.name} guardada correctamente.`,
+        )
+      } else {
+        await createPriceList(payload)
+        toast.success(
+          'Lista creada',
+          payload.is_default
+            ? `${payload.name} marcada como predeterminada (Default).`
+            : payload.name,
+        )
+        setPage(1)
+      }
+      setListSettingsOpen(false)
+      setConfiguringListId(null)
+    } catch (error) {
+      toast.apiError(error)
+    }
+  }
+
+  const directoryColumns = useMemo<Array<ColumnDef<typeof priceListsTableFeatures, PriceList>>>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Lista de precios',
+        cell: ({ row }) => (
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className="font-medium">{row.original.name}</span>
+            {row.original.is_default ? (
+              <AppBadge label="Default" tone="warning" />
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'segment_name',
+        header: 'Segmento',
+        cell: ({ row }) => (
+          <AppBadge label={row.original.segment_name || '—'} tone="info" />
+        ),
+      },
+      {
+        accessorKey: 'currency',
+        header: 'Moneda',
+        cell: ({ row }) => (
+          <AppBadge label={row.original.currency} tone="neutral" />
+        ),
+      },
+      {
+        id: 'products',
+        header: 'Productos',
+        cell: ({ row }) => {
+          const count = countAssignedProducts(row.original)
+          return (
+            <span className="tabular-nums">
+              {count} {count === 1 ? 'producto' : 'productos'}
+            </span>
+          )
+        },
+      },
+      {
+        accessorKey: 'valid_from',
+        header: 'Vigencia',
+        cell: ({ row }) => (
+          <span className="font-mono text-xs tabular-nums">
+            {row.original.valid_from.slice(0, 10)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: 'is_active',
+        header: 'Estado',
+        cell: ({ row }) => (
+          <AppSwitch
+            checked={row.original.is_active}
+            caption={row.original.is_active ? 'Activa' : 'Inactiva'}
+            disabled={!canEdit('config_prices')}
+            onCheckedChange={(next) => void onToggleActive(row.original, next)}
+          />
+        ),
+      },
+      {
+        id: 'actions',
+        header: () => <AppActionsColumnHeader />,
+        cell: ({ row }) => (
+          <div className="flex justify-end">
+            <AppRowActionsMenu
+              actions={[
+                {
+                  label: 'Administrar productos y precios',
+                  icon: <ListChecks className="h-4 w-4" />,
+                  onClick: () => setEditingListId(row.original.id),
+                },
+                {
+                  label: 'Configurar lista',
+                  icon: <Pencil className="h-4 w-4" />,
+                  onClick: () => openConfigureList(row.original),
+                  hidden: !canEdit('config_prices'),
+                },
+              ]}
+            />
+          </div>
+        ),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canEdit],
+  )
+
+  const directoryTable = useTable({
+    features: priceListsTableFeatures,
+    data: pageRows,
+    columns: directoryColumns,
+  })
 
   const itemForm = useForm<AddItemForm>({
     resolver: zodResolver(addItemSchema),
@@ -372,6 +621,7 @@ export function PriceListsPage() {
         }
 
         const template = last ?? sorted[0]
+        const oneTime = isOneTimeOrConsumption(g.serviceType)
         const newTier: ScaleTier = {
           localKey: `new-${servicioId}-${Date.now()}`,
           min_quantity: nextMin,
@@ -379,12 +629,14 @@ export function PriceListsPage() {
           mensualId: null,
           anualId: null,
           unicoId: null,
-          mensual: template?.mensual || '0.00',
-          anual: template?.anual || '0.00',
-          unico: template?.unico || '0.00',
-          hasMensual: template?.hasMensual ?? true,
-          hasAnual: template?.hasAnual ?? false,
-          hasUnico: template?.hasUnico ?? false,
+          mensual: oneTime ? '' : template?.mensual || '0.00',
+          anual: oneTime ? '' : template?.anual || '0.00',
+          unico: oneTime
+            ? template?.unico || template?.mensual || '0.00'
+            : template?.unico || '0.00',
+          hasMensual: oneTime ? false : (template?.hasMensual ?? true),
+          hasAnual: oneTime ? false : (template?.hasAnual ?? false),
+          hasUnico: oneTime ? true : (template?.hasUnico ?? false),
         }
         return {
           ...g,
@@ -460,9 +712,17 @@ export function PriceListsPage() {
           }
         }
 
-        pushFreq('monthly', tier.mensualId, tier.mensual, tier.hasMensual)
-        pushFreq('annual', tier.anualId, tier.anual, tier.hasAnual)
-        pushFreq('single', tier.unicoId, tier.unico, tier.hasUnico)
+        const oneTime = isOneTimeOrConsumption(group.serviceType)
+        if (oneTime) {
+          // Pago único / consumo: siempre frequency=single (sin exigir anual).
+          const priceRaw = tier.hasUnico ? tier.unico : tier.mensual
+          const id = tier.unicoId ?? tier.mensualId
+          pushFreq('single', id, priceRaw, true)
+        } else {
+          pushFreq('monthly', tier.mensualId, tier.mensual, tier.hasMensual)
+          pushFreq('annual', tier.anualId, tier.anual, tier.hasAnual)
+          pushFreq('single', tier.unicoId, tier.unico, tier.hasUnico)
+        }
       }
     }
 
@@ -571,12 +831,14 @@ export function PriceListsPage() {
           </div>
         </header>
 
-        <AppSearchInput
-          value={productSearch}
-          onChange={(e) => setProductSearch(e.target.value)}
-          onClear={() => setProductSearch('')}
-          placeholder="Buscar producto en esta lista…"
-          aria-label="Buscar producto en esta lista"
+        <AppFilterBar
+          searchValue={productSearch}
+          onSearchChange={setProductSearch}
+          onSearchClear={() => setProductSearch('')}
+          searchPlaceholder="Buscar producto en esta lista…"
+          searchLabel="BUSCAR"
+          hasActiveFilters={productSearch.trim() !== ''}
+          onClearFilters={() => setProductSearch('')}
         />
 
         <AppCard className="overflow-hidden p-0">
@@ -597,6 +859,8 @@ export function PriceListsPage() {
                   const showVolume =
                     group.forceVolumeUi || !isStandardSingleTier(group.tiers)
                   const single = group.tiers[0]
+                  const oneTime = isOneTimeOrConsumption(group.serviceType)
+                  const openEndedWarn = lastTierFiniteMaxWarning(group.tiers)
 
                   if (!showVolume && single) {
                     return (
@@ -627,7 +891,24 @@ export function PriceListsPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3 align-top">
-                          {single.hasMensual ? (
+                          {oneTime || single.hasUnico ? (
+                            <>
+                              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                                Precio unitario (único / consumo)
+                              </p>
+                              <MoneyInput
+                                value={single.hasUnico ? single.unico : single.mensual}
+                                currency={selected.currency}
+                                onChange={(v) =>
+                                  updateTier(group.servicioId, single.localKey, {
+                                    unico: v,
+                                    hasUnico: true,
+                                    hasMensual: false,
+                                  })
+                                }
+                              />
+                            </>
+                          ) : single.hasMensual ? (
                             <MoneyInput
                               value={single.mensual}
                               currency={selected.currency}
@@ -637,25 +918,14 @@ export function PriceListsPage() {
                                 })
                               }
                             />
-                          ) : single.hasUnico ? (
-                            <MoneyInput
-                              value={single.unico}
-                              currency={selected.currency}
-                              onChange={(v) =>
-                                updateTier(group.servicioId, single.localKey, {
-                                  unico: v,
-                                })
-                              }
-                            />
                           ) : (
                             '—'
                           )}
-                          {single.hasUnico && !single.hasMensual && (
-                            <p className="mt-1 text-[10px] text-slate-400">Pago único</p>
-                          )}
                         </td>
                         <td className="px-4 py-3 align-top">
-                          {single.hasAnual ? (
+                          {oneTime ? (
+                            <span className="text-xs text-slate-400">No aplica (único)</span>
+                          ) : single.hasAnual ? (
                             <MoneyInput
                               value={single.anual}
                               currency={selected.currency}
@@ -777,9 +1047,32 @@ export function PriceListsPage() {
                         <p className="mt-1 font-mono text-[10px] text-slate-400 tabular-nums">
                           {formatRangeLabel(tier.min_quantity, tier.max_quantity)}
                         </p>
+                        {idx === group.tiers.length - 1 && openEndedWarn ? (
+                          <p className="mt-1.5 max-w-[16rem] text-[11px] text-[#F59E0B]">
+                            {openEndedWarn}
+                          </p>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3 align-top">
-                        {tier.hasMensual ? (
+                        {oneTime || tier.hasUnico ? (
+                          <>
+                            <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                              Precio unitario (único / consumo)
+                            </p>
+                            <MoneyInput
+                              value={tier.hasUnico ? tier.unico : tier.mensual}
+                              currency={selected.currency}
+                              invalid={Boolean(err)}
+                              onChange={(v) =>
+                                updateTier(group.servicioId, tier.localKey, {
+                                  unico: v,
+                                  hasUnico: true,
+                                  hasMensual: false,
+                                })
+                              }
+                            />
+                          </>
+                        ) : tier.hasMensual ? (
                           <MoneyInput
                             value={tier.mensual}
                             currency={selected.currency}
@@ -788,21 +1081,14 @@ export function PriceListsPage() {
                               updateTier(group.servicioId, tier.localKey, { mensual: v })
                             }
                           />
-                        ) : tier.hasUnico ? (
-                          <MoneyInput
-                            value={tier.unico}
-                            currency={selected.currency}
-                            invalid={Boolean(err)}
-                            onChange={(v) =>
-                              updateTier(group.servicioId, tier.localKey, { unico: v })
-                            }
-                          />
                         ) : (
                           '—'
                         )}
                       </td>
                       <td className="px-4 py-3 align-top">
-                        {tier.hasAnual ? (
+                        {oneTime ? (
+                          <span className="text-xs text-slate-400">No aplica</span>
+                        ) : tier.hasAnual ? (
                           <MoneyInput
                             value={tier.anual}
                             currency={selected.currency}
@@ -866,7 +1152,7 @@ export function PriceListsPage() {
                     )}
                   </div>
                   {err && <p className="mt-2 text-[11px] text-[#EF4444]">{err}</p>}
-                  {group.tiers.map((tier) => (
+                  {group.tiers.map((tier, idx) => (
                     <div
                       key={tier.localKey}
                       className="mt-3 space-y-2 rounded-xl border border-slate-200/70 p-2 dark:border-white/[0.06]"
@@ -914,48 +1200,61 @@ export function PriceListsPage() {
                           {formatRangeLabel(tier.min_quantity, tier.max_quantity)}
                         </p>
                       )}
-                      {tier.hasMensual && (
+                      {isOneTimeOrConsumption(group.serviceType) || tier.hasUnico ? (
                         <label className="block text-xs text-slate-500">
-                          Mensual
+                          Precio unitario (único / consumo)
                           <MoneyInput
                             className="mt-1"
-                            value={tier.mensual}
+                            value={tier.hasUnico ? tier.unico : tier.mensual}
                             currency={selected.currency}
                             invalid={Boolean(err)}
                             onChange={(v) =>
-                              updateTier(group.servicioId, tier.localKey, { mensual: v })
+                              updateTier(group.servicioId, tier.localKey, {
+                                unico: v,
+                                hasUnico: true,
+                                hasMensual: false,
+                              })
                             }
                           />
                         </label>
+                      ) : (
+                        <>
+                          {tier.hasMensual && (
+                            <label className="block text-xs text-slate-500">
+                              Mensual
+                              <MoneyInput
+                                className="mt-1"
+                                value={tier.mensual}
+                                currency={selected.currency}
+                                invalid={Boolean(err)}
+                                onChange={(v) =>
+                                  updateTier(group.servicioId, tier.localKey, { mensual: v })
+                                }
+                              />
+                            </label>
+                          )}
+                          {tier.hasAnual && (
+                            <label className="block text-xs text-slate-500">
+                              Anual
+                              <MoneyInput
+                                className="mt-1"
+                                value={tier.anual}
+                                currency={selected.currency}
+                                invalid={Boolean(err)}
+                                onChange={(v) =>
+                                  updateTier(group.servicioId, tier.localKey, { anual: v })
+                                }
+                              />
+                            </label>
+                          )}
+                        </>
                       )}
-                      {tier.hasAnual && (
-                        <label className="block text-xs text-slate-500">
-                          Anual
-                          <MoneyInput
-                            className="mt-1"
-                            value={tier.anual}
-                            currency={selected.currency}
-                            invalid={Boolean(err)}
-                            onChange={(v) =>
-                              updateTier(group.servicioId, tier.localKey, { anual: v })
-                            }
-                          />
-                        </label>
-                      )}
-                      {tier.hasUnico && (
-                        <label className="block text-xs text-slate-500">
-                          Único
-                          <MoneyInput
-                            className="mt-1"
-                            value={tier.unico}
-                            currency={selected.currency}
-                            invalid={Boolean(err)}
-                            onChange={(v) =>
-                              updateTier(group.servicioId, tier.localKey, { unico: v })
-                            }
-                          />
-                        </label>
-                      )}
+                      {idx === group.tiers.length - 1 &&
+                      lastTierFiniteMaxWarning(group.tiers) ? (
+                        <p className="text-[11px] text-[#F59E0B]">
+                          {lastTierFiniteMaxWarning(group.tiers)}
+                        </p>
+                      ) : null}
                     </div>
                   ))}
                   {canEdit('config_prices') && (
@@ -1031,9 +1330,17 @@ export function PriceListsPage() {
                 <AppSelect
                   withLabelSpacing
                   value={itemForm.watch('service_id')}
-                  onValueChange={(value) =>
+                  onValueChange={(value) => {
                     itemForm.setValue('service_id', value, { shouldValidate: true })
-                  }
+                    const svc = services.find((s) => String(s.id) === value)
+                    // Pago único / consumo → frequency=single (sin exigir anual).
+                    if (
+                      svc &&
+                      (svc.service_type === 'single' || svc.service_type === 'consumption')
+                    ) {
+                      itemForm.setValue('frequency', 'single', { shouldValidate: true })
+                    }
+                  }}
                   options={services.map((service) => ({
                     value: String(service.id),
                     label: service.name,
@@ -1053,8 +1360,16 @@ export function PriceListsPage() {
                   options={[
                     { value: 'monthly', label: 'Mensual' },
                     { value: 'annual', label: 'Anual' },
-                    { value: 'single', label: 'Único' },
+                    { value: 'single', label: 'Único / consumo' },
                   ]}
+                  disabled={(() => {
+                    const sid = itemForm.watch('service_id')
+                    const svc = services.find((s) => String(s.id) === sid)
+                    return Boolean(
+                      svc &&
+                        (svc.service_type === 'single' || svc.service_type === 'consumption'),
+                    )
+                  })()}
                 />
               </label>
               <label className="block text-sm">
@@ -1126,148 +1441,218 @@ export function PriceListsPage() {
           </p>
         </div>
         {canCreate('config_prices') && (
-          <AppButton className="rounded-xl" onClick={() => setNewListOpen(true)}>
+          <AppButton className="rounded-xl" onClick={openCreateList}>
             <Plus className="mr-1 h-4 w-4" /> Nueva lista
           </AppButton>
         )}
       </header>
 
-      <AppCard className="space-y-3 p-4">
-        <AppSearchInput
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value)
-            setPage(1)
-          }}
-          onClear={() => {
-            setSearch('')
-            setPage(1)
-          }}
-          placeholder="Buscar lista por nombre…"
-          aria-label="Buscar lista por nombre"
-        />
-        <div className="flex flex-wrap items-end gap-3">
-          <PillFilter
-            label="Segmento"
-            value={segment}
-            options={segmentOptions}
-            disabled={isSegmentLocked}
-            onChange={(v) => {
+      <AppFilterBar
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value)
+          setPage(1)
+        }}
+        onSearchClear={() => {
+          setSearch('')
+          setPage(1)
+        }}
+        searchPlaceholder="Buscar lista por nombre…"
+        searchLabel="BUSCAR"
+        filters={[
+          {
+            id: 'segment',
+            label: 'SEGMENTO',
+            value: segment,
+            onValueChange: (value) => {
               if (isSegmentLocked) return
-              setSegment(v)
+              setSegment(value)
               setPage(1)
-            }}
-          />
-          <PillFilter
-            label="Moneda"
-            value={moneda}
-            options={['Todas', 'MXN', 'USD']}
-            onChange={(v) => {
-              setMoneda(v)
+            },
+            options: segmentOptions,
+            disabled: isSegmentLocked,
+          },
+          {
+            id: 'currency',
+            label: 'MONEDA',
+            value: moneda,
+            onValueChange: (value) => {
+              setMoneda(value)
               setPage(1)
-            }}
-          />
-          <PillFilter
-            label="Vigencia"
-            value={vigencia}
-            options={['Todas', 'Vigentes', 'Inactivas']}
-            onChange={(v) => {
-              setVigencia(v)
+            },
+            options: [
+              { value: 'Todas', label: 'Todas' },
+              { value: 'MXN', label: 'MXN' },
+              { value: 'USD', label: 'USD' },
+            ],
+          },
+          {
+            id: 'validity',
+            label: 'VIGENCIA',
+            value: vigencia,
+            onValueChange: (value) => {
+              setVigencia(value)
               setPage(1)
-            }}
+            },
+            options: [
+              { value: 'Todas', label: 'Todas' },
+              { value: 'Vigentes', label: 'Vigentes' },
+              { value: 'Inactivas', label: 'Inactivas' },
+            ],
+          },
+        ]}
+        hasActiveFilters={
+          search.trim() !== '' ||
+          (!isSegmentLocked && segment !== 'Todos') ||
+          moneda !== 'Todas' ||
+          vigencia !== 'Todas'
+        }
+        onClearFilters={() => {
+          setSearch('')
+          if (!isSegmentLocked) setSegment('Todos')
+          setMoneda('Todas')
+          setVigencia('Todas')
+          setPage(1)
+        }}
+      />
+
+      <AppTableWrapper
+        isEmpty={filteredLists.length === 0}
+        emptyState={
+          <p className="px-4 py-10 text-center text-sm text-slate-500">
+            No hay listas con esos filtros.
+          </p>
+        }
+        footer={
+          <PaginationBar
+            page={page}
+            total={filteredLists.length}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
           />
+        }
+      >
+        <div className="hidden overflow-x-auto lg:block">
+          <table className="w-full text-sm">
+            <thead>
+              {directoryTable.getHeaderGroups().map((hg) => (
+                <AppTableHeadRow key={hg.id}>
+                  {hg.headers.map((h) => (
+                    <th
+                      key={h.id}
+                      className={cn(
+                        rowPaddingClass,
+                        'font-medium',
+                        h.column.id === 'actions' && 'text-right',
+                      )}
+                    >
+                      {h.isPlaceholder ? null : <directoryTable.FlexRender header={h} />}
+                    </th>
+                  ))}
+                </AppTableHeadRow>
+              ))}
+            </thead>
+            <tbody>
+              {directoryTable.getRowModel().rows.map((row) => (
+                <tr
+                  key={row.id}
+                  className="border-b border-slate-100 dark:border-white/[0.04]"
+                >
+                  {row.getAllCells().map((cell) => (
+                    <td
+                      key={cell.id}
+                      className={cn(
+                        rowPaddingClass,
+                        cell.column.id === 'actions' && 'text-right',
+                      )}
+                    >
+                      <directoryTable.FlexRender cell={cell} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </AppCard>
 
-      <AppCard className="space-y-3 p-4">
-        {pageRows.map((list) => {
-          const products = countAssignedProducts(list)
-          return (
-            <AppCard
-              key={list.id}
-              className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div>
-                <p className="font-heading font-semibold">{list.name}</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  {list.segment_name || '—'} · {list.currency} · vigente desde {list.valid_from.slice(0, 10)}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <AppBadge
-                    label={`${products} ${
-                      products === 1 ? 'producto en esta lista' : 'productos en esta lista'
-                    }`}
-                    tone="info"
+        <div className="space-y-3 p-4 lg:hidden">
+          {pageRows.map((list) => {
+            const products = countAssignedProducts(list)
+            return (
+              <AppCard key={list.id} className="p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="font-heading font-semibold">{list.name}</p>
+                      {list.is_default ? (
+                        <AppBadge label="Default" tone="warning" />
+                      ) : null}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <AppBadge label={list.segment_name || '—'} tone="info" />
+                      <AppBadge label={list.currency} tone="neutral" />
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500">
+                      <span className="tabular-nums">
+                        {products} {products === 1 ? 'producto' : 'productos'}
+                      </span>
+                      {' · '}
+                      vigente desde{' '}
+                      <span className="font-mono tabular-nums">
+                        {list.valid_from.slice(0, 10)}
+                      </span>
+                    </p>
+                  </div>
+                  <AppRowActionsMenu
+                    actions={[
+                      {
+                        label: 'Administrar productos y precios',
+                        icon: <ListChecks className="h-4 w-4" />,
+                        onClick: () => setEditingListId(list.id),
+                      },
+                      {
+                        label: 'Configurar lista',
+                        icon: <Pencil className="h-4 w-4" />,
+                        onClick: () => openConfigureList(list),
+                        hidden: !canEdit('config_prices'),
+                      },
+                    ]}
                   />
-                  <AppBadge
-                    label={list.is_active ? 'Activa' : 'Inactiva'}
-                    tone={list.is_active ? 'success' : 'neutral'}
-                  />
-                  {list.is_default && (
-                    <AppBadge label="★ Default" tone="warning" />
-                  )}
                 </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {canEdit('config_prices') && !list.is_default && (
-                  <AppButton
-                    type="button"
-                    variant="outline"
-                    className="rounded-xl"
-                    onClick={() => void markAsDefault(list)}
-                  >
-                    Predeterminada (Default)
-                  </AppButton>
-                )}
-                <AppButton className="rounded-xl" onClick={() => setEditingListId(list.id)}>
-                  Ver / Editar precios
-                </AppButton>
-              </div>
-            </AppCard>
-          )
-        })}
-        {filteredLists.length === 0 && (
-          <p className="text-sm text-slate-500">No hay listas con esos filtros.</p>
-        )}
-        <PaginationBar
-          page={page}
-          total={filteredLists.length}
-          pageSize={pageSize}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-        />
-      </AppCard>
+                <div className="mt-3">
+                  <AppSwitch
+                    checked={list.is_active}
+                    caption={list.is_active ? 'Activa' : 'Inactiva'}
+                    disabled={!canEdit('config_prices')}
+                    onCheckedChange={(next) => void onToggleActive(list, next)}
+                  />
+                </div>
+              </AppCard>
+            )
+          })}
+        </div>
+      </AppTableWrapper>
 
-      <AppModal open={newListOpen} onOpenChange={setNewListOpen}>
-        <AppModalContent>
+      <AppModal
+        open={listSettingsOpen}
+        onOpenChange={(open) => {
+          setListSettingsOpen(open)
+          if (!open) setConfiguringListId(null)
+        }}
+      >
+        <AppModalContent className="sm:max-w-lg">
           <AppModalHeader>
-            <AppModalTitle>Nueva lista de precios</AppModalTitle>
-            <AppModalDescription>Se guarda en MySQL de inmediato.</AppModalDescription>
+            <AppModalTitle>
+              {isEditingListSettings ? 'Configurar lista' : 'Nueva lista de precios'}
+            </AppModalTitle>
+            <AppModalDescription>
+              {isEditingListSettings
+                ? `Datos comerciales de ${configuringList?.name ?? 'la lista'}.`
+                : 'Se guarda en MySQL de inmediato.'}
+            </AppModalDescription>
           </AppModalHeader>
-          <form
-            className="space-y-3"
-            onSubmit={listForm.handleSubmit(async (values) => {
-              try {
-                await createPriceList({
-                  name: values.name,
-                  segment_id: Number(values.segment_id),
-                  currency: values.currency,
-                  valid_from: values.valid_from,
-                  is_default: values.is_default,
-                  is_active: true,
-                })
-                toast.success(
-                  'Lista creada',
-                  values.is_default
-                    ? `${values.name} marcada como ★ Default.`
-                    : values.name,
-                )
-                setNewListOpen(false)
-              } catch (error) {
-                toast.apiError(error)
-              }
-            })}
-          >
+          <form className="space-y-4" onSubmit={listForm.handleSubmit(onSubmitListSettings)}>
             <label className="block text-sm">
               Nombre
               <AppInput withLabelSpacing {...listForm.register('name')} />
@@ -1284,6 +1669,7 @@ export function PriceListsPage() {
                   value: String(segmentOption.id),
                   label: segmentOption.name,
                 }))}
+                disabled={isSegmentLocked}
               />
             </label>
             <label className="block text-sm">
@@ -1292,7 +1678,7 @@ export function PriceListsPage() {
                 withLabelSpacing
                 value={listForm.watch('currency')}
                 onValueChange={(value) =>
-                  listForm.setValue('currency', value as NewListForm['currency'], {
+                  listForm.setValue('currency', value as ListSettingsForm['currency'], {
                     shouldValidate: true,
                   })
                 }
@@ -1302,71 +1688,69 @@ export function PriceListsPage() {
                 ]}
               />
             </label>
-            <label className="block text-sm">
-              Vigente desde
-              <AppInput type="date" withLabelSpacing {...listForm.register('valid_from')} />
-            </label>
-            <label className="flex items-center gap-3 text-sm">
-              <AppSwitch
-                checked={listForm.watch('is_default')}
-                onCheckedChange={(next) =>
-                  listForm.setValue('is_default', next, { shouldValidate: true })
-                }
-                label="Predeterminada (Default) para este segmento y moneda"
-              />
-              Predeterminada (Default) para este segmento y moneda
-            </label>
-            <AppButton type="submit" className="w-full rounded-xl">
-              Crear lista
-            </AppButton>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                Vigencia desde
+                <AppInput type="date" withLabelSpacing {...listForm.register('valid_from')} />
+              </label>
+              <label className="block text-sm">
+                Vigencia hasta
+                <AppInput
+                  type="date"
+                  withLabelSpacing
+                  {...listForm.register('valid_until')}
+                />
+              </label>
+            </div>
+            <div className="space-y-3 rounded-2xl border border-slate-200/80 p-3 dark:border-white/[0.08]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Lista predeterminada (Default)</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-zinc-400">
+                    Si activas esta lista como predeterminada, reemplazará automáticamente a la
+                    predeterminada actual del mismo segmento y moneda.
+                  </p>
+                </div>
+                <AppSwitch
+                  checked={listForm.watch('is_default')}
+                  onCheckedChange={(next) =>
+                    listForm.setValue('is_default', next, { shouldValidate: true })
+                  }
+                  label="Lista predeterminada (Default)"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-slate-200/70 pt-3 dark:border-white/[0.06]">
+                <p className="text-sm font-medium">Lista activa</p>
+                <AppSwitch
+                  checked={listForm.watch('is_active')}
+                  onCheckedChange={(next) =>
+                    listForm.setValue('is_active', next, { shouldValidate: true })
+                  }
+                  caption={listForm.watch('is_active') ? 'Activa' : 'Inactiva'}
+                  label="Lista activa"
+                />
+              </div>
+            </div>
+            <AppModalFooter>
+              <AppButton
+                type="button"
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => {
+                  setListSettingsOpen(false)
+                  setConfiguringListId(null)
+                }}
+              >
+                Cancelar
+              </AppButton>
+              <AppButton type="submit" className="rounded-xl">
+                {isEditingListSettings ? 'Guardar cambios' : 'Crear lista'}
+              </AppButton>
+            </AppModalFooter>
           </form>
         </AppModalContent>
       </AppModal>
     </div>
-  )
-}
-
-function PillFilter({
-  label,
-  value,
-  options,
-  onChange,
-  disabled = false,
-}: {
-  label: string
-  value: string
-  options: Array<string | { value: string; label: string }>
-  onChange: (v: string) => void
-  disabled?: boolean
-}) {
-  return (
-    <AppFilterField label={label}>
-      <div className="ios-pill-track" role="group" aria-label={label}>
-        {options.map((opt) => {
-          const item = typeof opt === 'string' ? { value: opt, label: opt } : opt
-          const active = value === item.value
-          return (
-            <AppButton
-              key={item.value}
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={disabled}
-              onClick={() => onChange(item.value)}
-              className={cn(
-                'h-auto rounded-xl px-2.5 py-1 text-xs font-normal',
-                active
-                  ? 'bg-[#0066FF] font-medium text-white hover:bg-[#0055DD] hover:text-white dark:bg-[#0A84FF] dark:text-white dark:hover:bg-[#0A74E0]'
-                  : 'text-slate-600 dark:text-slate-300',
-                disabled && 'cursor-not-allowed opacity-80',
-              )}
-            >
-              {item.label}
-            </AppButton>
-          )
-        })}
-      </div>
-    </AppFilterField>
   )
 }
 

@@ -119,8 +119,13 @@ final class PriceListsService extends ModelService
                 }
 
                 $row = Capsule::table('price_lists')->where('id', $savedId)->first();
-                if ($row !== null && (bool) (int) $row->is_default) {
-                    // Solo se auditan hermanas que sí eran predeterminadas; el UPDATE sigue tocando al resto.
+                if ($row === null) {
+                    return $result;
+                }
+
+                // is_default = 0 se guarda tal cual (sin error). is_default = 1 demota hermanas
+                // del mismo segmento+moneda en la misma transacción — nunca conflicto 422.
+                if ((bool) (int) $row->is_default) {
                     $demoted = Capsule::table('price_lists')
                         ->where('segment_id', (int) $row->segment_id)
                         ->where('currency', (string) $row->currency)
@@ -142,7 +147,7 @@ final class PriceListsService extends ModelService
                         ->where('currency', (string) $row->currency)
                         ->where('id', '!=', $savedId)
                         ->update([
-                            'is_default' => false,
+                            'is_default' => 0,
                             'updated_at' => gmdate('Y-m-d H:i:s'),
                         ]);
 
@@ -215,7 +220,8 @@ final class PriceListsService extends ModelService
         }
 
         $lists = $builder
-            ->orderBy('lp.id')
+            ->orderByRaw('COALESCE(lp.updated_at, lp.created_at) DESC')
+            ->orderByDesc('lp.id')
             ->get([
                 'lp.id',
                 'lp.name',
@@ -241,6 +247,7 @@ final class PriceListsService extends ModelService
                 'lpi.service_id',
                 's.code as service_code',
                 's.name as service_name',
+                's.service_type as service_type',
                 'lpi.frequency',
                 'lpi.min_quantity',
                 'lpi.max_quantity',
@@ -255,6 +262,7 @@ final class PriceListsService extends ModelService
                     'service_id' => (int) $item->service_id,
                     'service_code' => (string) ($item->service_code ?? ''),
                     'service_name' => (string) ($item->service_name ?? ''),
+                    'service_type' => (string) ($item->service_type ?? 'recurring'),
                     'frequency' => (string) $item->frequency,
                     'min_quantity' => (int) $item->min_quantity,
                     'max_quantity' => $item->max_quantity !== null ? (int) $item->max_quantity : null,
