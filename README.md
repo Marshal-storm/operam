@@ -226,6 +226,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `tests/Unit/ContractPricingEngineTest.php` | Motor BCMath de contrato: RF-2, anual/12, USD→MXN y promo %. |
 | `tests/Unit/ContractLifecycleEngineTest.php` | Deltas BCMath de ciclo de vida: expansión, contracción, precio, frecuencia, transfer=0, churn, reactivación. |
 | `tests/Unit/BurnedCouponLifecycleTest.php` | Cupón quemado: alta 10% + ajuste/contracción → `discount_amount=0`, delta BCMath exacto, sin subtotales negativos. |
+| `tests/Unit/MovementReversalRulesTest.php` | Reversión contable RNF-3: delta inverso BCMath, impacto vs MRR del contrato, bloqueo MRR negativo y doble reversión. |
 | `scripts/reset_contracts_only.php` | TRUNCATE solo tablas de contratos + `promotions.current_uses=0`; verifica triggers RNF-3. |
 | `index.html` | Entrada Vite + Google Fonts (Ubuntu / DM Sans / DM Mono). |
 | `tailwind.config.js` | Referencia `fontFamily` oficial (Tailwind v4 usa `@theme` en CSS). |
@@ -282,16 +283,17 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `pages/ClientsPage.tsx` | `/clientes` — directorio CRUD (KPIs, filtros dinámicos, tabla paginada, modales crear/editar/detalle) con Kit Atómico (`clients`). |
 | `pages/ContractsPage.tsx` | `/contratos` — listado paginado servidor, 4 KPIs, `AppFilterBar`, tabla/tarjetas UI-4 (`contracts`). |
 | `pages/NewContractPage.tsx` | `/contratos/nuevo` — formulario 2 columnas + panel sticky MRR (UI-9), RF-2 en vivo, promo y alta atómica. |
-| `pages/ContractDetailPage.tsx` | `/contratos/:id` — detalle, KPIs, líneas, bitácora movements y menú de ciclo de vida (`contracts`). |
+| `pages/ContractDetailPage.tsx` | `/contratos/:id` — detalle, KPIs, líneas, bitácora movements, ciclo de vida y reversión contable RNF-3 (`contracts`). |
 | `components/contracts/LifecycleOperationModal.tsx` | Modales RHF+Zod de operaciones con preview de impacto MRR (UI-9). |
+| `components/contracts/ReverseMovementModal.tsx` | Modal RHF+Zod de reversión contable con preview UI-9 (asiento inverso inmutable). |
 | `components/contracts/MrrImpactPreview.tsx` | Caja destacada MRR actual → Delta → Nuevo MRR (neutral en transfer). |
 | `types/client.ts` | Tipos `Client`, `ClientsSummary`, `ClientWriteInput`. |
-| `types/contract.ts` | Tipos listado/detalle/líneas/movimientos + `ContractLifecycleInput`. |
+| `types/contract.ts` | Tipos listado/detalle/líneas/movimientos + lifecycle + `ContractMovementReversalInput` / `is_reversed`. |
 | `services/clientsService.ts` | HTTP JWT contra `/api/clients` (paginación, summary, CRUD, toggle). |
-| `services/contractsService.ts` | HTTP JWT contra `/api/contracts` (listado, detalle, create, lifecycle). |
+| `services/contractsService.ts` | HTTP JWT contra `/api/contracts` (listado, detalle, create, lifecycle, reverse movement). |
 | `hooks/useClients.ts` | TanStack Query + mutaciones con `useLoadingLock` para el directorio. |
 | `hooks/useContracts.ts` | TanStack Query + mutación de alta con candado Operam. |
-| `hooks/useContractDetail.ts` | Detalle + mutación lifecycle con invalidación de `contract` / `contracts` / `dashboard`. |
+| `hooks/useContractDetail.ts` | Detalle + mutaciones lifecycle/reversión con invalidación de `contract` / `contracts` / `dashboard`. |
 | `pages/config/CatalogServicesPage.tsx` | `/configuracion/catalogo` — tabla paginada API + filtros + CRUD (`config_catalog`). |
 | `pages/config/PriceListsPage.tsx` | `/configuracion/precios` — directorio → detalle con columna Rango/Escala (RF-2), validación de traslapes y `saveVolumeMatrix` (`config_prices`). |
 | `pages/config/PromotionsPage.tsx` | `/configuracion/promociones` — cards verde/ámbar + filtros (`config_promotions`). |
@@ -329,7 +331,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `System/Support/FinancialCalculator.php` | Calculadora BCMath pura: `optimizeUserPackages`, `calculateMrrBridge`, `buildReversalPayload`, `accumulateMonthlyMrrAmount`. Categorías en inglés; ignora `transfer`; `movement_type` = `reversal`. |
 | `System/Services/*` | Login, App, RbacAuthHelper, Roles, Users, Segments (RF-1), Issuers (refs enmascaradas), Clients (Módulo 3 Paso 1), Movements (RNF-3 + sync RF-10), SystemSettings, AuditLogs + catálogo. Escrituras llaman `AuditLogger`. |
 | `System/Services/ClientsService.php` | CRUD `/api/clients`: paginación servidor, summary KPI, RBAC `clients`, alcance de segmento, herencia de crédito, anti-borrado con contratos. |
-| `System/Services/ContractsService.php` | `/api/contracts`: listado, detalle enriquecido, POST alta y `POST /{id}/lifecycle` (7 operaciones BCMath + movements + audit). |
+| `System/Services/ContractsService.php` | `/api/contracts`: listado, detalle enriquecido, POST alta, `POST /{id}/lifecycle` y `POST /{id}/movements/{mid}/reverse` (RNF-3 + audit). |
 | `System/Services/DashboardMetricsService.php` | `GET /api/dashboard` (alias `/api/dashboard/mrr`): Puente MRR + KPIs + movimientos del mes (`month=YYYY-MM`). |
 | `System/Support/ContractPricingEngine.php` | Motor puro BCMath: escalones, RF-2, promo, `lineMrrMxn`. |
 | `System/Support/ContractLifecycleEngine.php` | Motor puro BCMath de deltas de ciclo de vida (expansion…reactivation, transfer=0.00). |
@@ -355,7 +357,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `database/seeds/*` | Sep 2026 + EnterpriseUsers + CatalogAndPricing + RbacRolesAndPermissions (18 `module_key` en inglés, `segment_profitability`, matriz aplicable por módulo, + Gestor de Promociones). |
 | `backend/src/Models/*` | Movement, Client, Contract, Segment, Issuer, MonthlyMrr, CollectionStatus. |
 | `backend/src/Services/MovementService.php` | Alta inmutable auxiliar (Operam\Services) + Money. |
-| `System/Services/MovementsService.php` | API `operam/servicios`: INSERT + reversión + sync transaccional `monthly_mrr` (bcadd); bloqueo UPDATE/DELETE. |
+| `System/Services/MovementsService.php` | API `operam/servicios`: INSERT + reversión contable (BCMath, `contracts.mrr_mxn`, `monthly_mrr`); bloqueo UPDATE/DELETE. |
 | `System/Services/SegmentsService.php` | GET/PATCH `default_credit_days` y `usd_exchange_rate` por segmento (RF-1) con alcance RBAC. |
 | `System/Models/MovementsModel.php` | Eloquent `movements` con eventos `updating`/`deleting` (RNF-3). |
 | `System/Models/SegmentsModel.php` | Eloquent `segments` (`default_credit_days`, `usd_exchange_rate`). |

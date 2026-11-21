@@ -103,7 +103,14 @@ export type ContractMovement = {
   reason: string | null
   has_exception: boolean
   reversed_movement_id: number | null
+  /** True si ya existe otro asiento con reversed_movement_id = este id. */
+  is_reversed: boolean
   created_at: string
+}
+
+export type ContractMovementReversalInput = {
+  reason: string
+  effective_date?: string
 }
 
 export type ContractDetail = ContractListItem & {

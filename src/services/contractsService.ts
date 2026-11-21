@@ -6,6 +6,7 @@ import type {
   ContractLine,
   ContractListItem,
   ContractMovement,
+  ContractMovementReversalInput,
   ContractSummary,
 } from '@/types/contract'
 
@@ -184,7 +185,37 @@ function mapMovement(raw: Partial<ContractMovement>): ContractMovement {
     has_exception: Boolean(raw.has_exception),
     reversed_movement_id:
       raw.reversed_movement_id != null ? Number(raw.reversed_movement_id) : null,
+    is_reversed: Boolean(raw.is_reversed),
     created_at: String(raw.created_at ?? ''),
+  }
+}
+
+function mapContractDetail(
+  raw: Partial<ContractListItem> & {
+    lines?: Partial<ContractLine>[]
+    movements?: Partial<ContractMovement>[]
+    active_lines_count?: number
+    active_recurring_count?: number
+    active_one_time_count?: number
+  },
+): ContractDetail {
+  const base = mapContract(raw)
+  const lines = Array.isArray(raw.lines) ? raw.lines.map(mapLine) : []
+  const movements = Array.isArray(raw.movements) ? raw.movements.map(mapMovement) : []
+
+  return {
+    ...base,
+    lines,
+    movements,
+    active_lines_count: Number(raw.active_lines_count ?? lines.filter((l) => l.active).length),
+    active_recurring_count: Number(
+      raw.active_recurring_count ??
+        lines.filter((l) => l.active && l.service_type === 'recurring').length,
+    ),
+    active_one_time_count: Number(
+      raw.active_one_time_count ??
+        lines.filter((l) => l.active && l.service_type !== 'recurring').length,
+    ),
   }
 }
 
@@ -231,69 +262,33 @@ export async function createContract(input: ContractCreateInput): Promise<Contra
 }
 
 export async function fetchContractDetail(id: number): Promise<ContractDetail> {
-  const raw = await apiRequest<
-    Partial<ContractListItem> & {
-      lines?: Partial<ContractLine>[]
-      movements?: Partial<ContractMovement>[]
-      active_lines_count?: number
-      active_recurring_count?: number
-      active_one_time_count?: number
-    }
-  >(`contracts/${id}`)
-
-  const base = mapContract(raw)
-  const lines = Array.isArray(raw.lines) ? raw.lines.map(mapLine) : []
-  const movements = Array.isArray(raw.movements) ? raw.movements.map(mapMovement) : []
-
-  return {
-    ...base,
-    lines,
-    movements,
-    active_lines_count: Number(raw.active_lines_count ?? lines.filter((l) => l.active).length),
-    active_recurring_count: Number(
-      raw.active_recurring_count ??
-        lines.filter((l) => l.active && l.service_type === 'recurring').length,
-    ),
-    active_one_time_count: Number(
-      raw.active_one_time_count ??
-        lines.filter((l) => l.active && l.service_type !== 'recurring').length,
-    ),
-  }
+  return mapContractDetail(
+    await apiRequest(`contracts/${id}`),
+  )
 }
 
 export async function runContractLifecycle(
   id: number,
   input: ContractLifecycleInput,
 ): Promise<ContractDetail> {
-  const raw = await apiRequest<
-    Partial<ContractListItem> & {
-      lines?: Partial<ContractLine>[]
-      movements?: Partial<ContractMovement>[]
-      active_lines_count?: number
-      active_recurring_count?: number
-      active_one_time_count?: number
-    }
-  >(`contracts/${id}/lifecycle`, {
-    method: 'POST',
-    body: JSON.stringify(input),
-  })
+  return mapContractDetail(
+    await apiRequest(`contracts/${id}/lifecycle`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  )
+}
 
-  const base = mapContract(raw)
-  const lines = Array.isArray(raw.lines) ? raw.lines.map(mapLine) : []
-  const movements = Array.isArray(raw.movements) ? raw.movements.map(mapMovement) : []
-
-  return {
-    ...base,
-    lines,
-    movements,
-    active_lines_count: Number(raw.active_lines_count ?? lines.filter((l) => l.active).length),
-    active_recurring_count: Number(
-      raw.active_recurring_count ??
-        lines.filter((l) => l.active && l.service_type === 'recurring').length,
-    ),
-    active_one_time_count: Number(
-      raw.active_one_time_count ??
-        lines.filter((l) => l.active && l.service_type !== 'recurring').length,
-    ),
-  }
+/** POST /api/contracts/{id}/movements/{movementId}/reverse — RNF-3. */
+export async function reverseContractMovement(
+  contractId: number,
+  movementId: number,
+  input: ContractMovementReversalInput,
+): Promise<ContractDetail> {
+  return mapContractDetail(
+    await apiRequest(`contracts/${contractId}/movements/${movementId}/reverse`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  )
 }

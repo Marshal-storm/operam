@@ -4,14 +4,18 @@ import { CONTRACTS_QUERY_KEY } from '@/hooks/useContracts'
 import {
   ContractsApiError,
   fetchContractDetail,
+  reverseContractMovement,
   runContractLifecycle,
 } from '@/services/contractsService'
-import type { ContractLifecycleInput } from '@/types/contract'
+import type {
+  ContractLifecycleInput,
+  ContractMovementReversalInput,
+} from '@/types/contract'
 
 export const CONTRACT_DETAIL_QUERY_KEY = ['contract'] as const
 
 /**
- * Detalle de contrato + mutación de ciclo de vida con candado Operam Aura.
+ * Detalle de contrato + mutaciones de ciclo de vida y reversión contable (RNF-3).
  */
 export function useContractDetail(contractId: number | null) {
   const queryClient = useQueryClient()
@@ -24,6 +28,14 @@ export function useContractDetail(contractId: number | null) {
     staleTime: 10_000,
   })
 
+  const invalidateRelated = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: [...CONTRACT_DETAIL_QUERY_KEY, contractId] }),
+      queryClient.invalidateQueries({ queryKey: [...CONTRACTS_QUERY_KEY] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+    ])
+  }
+
   const lifecycle = useMutation({
     mutationFn: (input: ContractLifecycleInput) =>
       withScreenLock(
@@ -31,11 +43,22 @@ export function useContractDetail(contractId: number | null) {
         'Aplicando operación de ciclo de vida…',
       ),
     onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: [...CONTRACT_DETAIL_QUERY_KEY, contractId] }),
-        queryClient.invalidateQueries({ queryKey: [...CONTRACTS_QUERY_KEY] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
-      ])
+      await invalidateRelated()
+    },
+  })
+
+  const reversal = useMutation({
+    mutationFn: (input: { movementId: number } & ContractMovementReversalInput) =>
+      withScreenLock(
+        () =>
+          reverseContractMovement(contractId as number, input.movementId, {
+            reason: input.reason,
+            effective_date: input.effective_date,
+          }),
+        'Registrando reversión contable…',
+      ),
+    onSuccess: async () => {
+      await invalidateRelated()
     },
   })
 
@@ -50,5 +73,7 @@ export function useContractDetail(contractId: number | null) {
     refetch: query.refetch,
     runLifecycle: lifecycle.mutateAsync,
     isLifecyclePending: lifecycle.isPending,
+    runReversal: reversal.mutateAsync,
+    isReversalPending: reversal.isPending,
   }
 }

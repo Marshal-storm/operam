@@ -14,10 +14,12 @@ import {
   Ban,
   DollarSign,
   Building2,
+  RotateCcw,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { LifecycleOperationModal } from '@/components/contracts/LifecycleOperationModal'
+import { ReverseMovementModal } from '@/components/contracts/ReverseMovementModal'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
@@ -109,11 +111,15 @@ export function ContractDetailPage() {
     refetch,
     runLifecycle,
     isLifecyclePending,
+    runReversal,
+    isReversalPending,
   } = useContractDetail(Number.isFinite(contractId) && contractId > 0 ? contractId : null)
 
   const [lifecycleOp, setLifecycleOp] = useState<ContractLifecycleOperation | null>(null)
   const [preselectedLineId, setPreselectedLineId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [reversalMovement, setReversalMovement] = useState<ContractMovement | null>(null)
+  const [reversalOpen, setReversalOpen] = useState(false)
 
   const servicesQuery = useQuery({
     queryKey: ['catalog', 'services', 'active', contract?.segment_id],
@@ -188,6 +194,40 @@ export function ContractDetailPage() {
         'Operación aplicada',
         `${updated.folio}: ${CATEGORY_LABEL[input.operation] ?? input.operation} registrada.`,
       )
+      setModalOpen(false)
+    } catch (error) {
+      toast.apiError(error)
+      throw error
+    }
+  }
+
+  function isMovementReversible(mov: ContractMovement): boolean {
+    return (
+      !mov.is_reversed &&
+      mov.reversed_movement_id == null &&
+      Number(mov.mrr_delta_mxn) !== 0
+    )
+  }
+
+  function openReversal(mov: ContractMovement) {
+    setReversalMovement(mov)
+    setReversalOpen(true)
+  }
+
+  async function handleConfirmReversal(input: { reason: string; effective_date: string }) {
+    if (!reversalMovement) return
+    try {
+      const updated = await runReversal({
+        movementId: reversalMovement.id,
+        reason: input.reason,
+        effective_date: input.effective_date,
+      })
+      toast.success(
+        'Reversión contable registrada',
+        `${updated.folio}: se agregó el asiento inverso del movimiento #${reversalMovement.id}.`,
+      )
+      setReversalOpen(false)
+      setReversalMovement(null)
     } catch (error) {
       toast.apiError(error)
       throw error
@@ -332,12 +372,26 @@ export function ContractDetailPage() {
       {
         accessorKey: 'mrr_category',
         header: 'CATEGORÍA',
-        cell: ({ row }) => (
-          <AppBadge
-            label={CATEGORY_LABEL[row.original.mrr_category] ?? row.original.mrr_category}
-            tone={CATEGORY_TONE[row.original.mrr_category] ?? 'neutral'}
-          />
-        ),
+        cell: ({ row }) => {
+          const mov = row.original
+          return (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <AppBadge
+                label={CATEGORY_LABEL[mov.mrr_category] ?? mov.mrr_category}
+                tone={CATEGORY_TONE[mov.mrr_category] ?? 'neutral'}
+              />
+              {mov.is_reversed ? (
+                <AppBadge label="Revertido" variant="neutral" />
+              ) : null}
+              {mov.reversed_movement_id != null ? (
+                <AppBadge
+                  label={`Reversión #${mov.reversed_movement_id}`}
+                  variant="warning"
+                />
+              ) : null}
+            </div>
+          )
+        },
       },
       {
         accessorKey: 'reason',
@@ -386,8 +440,36 @@ export function ContractDetailPage() {
           <span className="text-sm">{row.original.user_name || '—'}</span>
         ),
       },
+      {
+        id: 'actions',
+        header: () => <AppActionsColumnHeader />,
+        cell: ({ row }) => {
+          if (!canEdit('contracts')) {
+            return <span className="block text-right text-slate-400">—</span>
+          }
+          const mov = row.original
+          const eligible = isMovementReversible(mov)
+          if (!eligible) {
+            return <span className="block text-right text-slate-400">—</span>
+          }
+          return (
+            <div className="flex justify-end">
+              <AppRowActionsMenu
+                actions={[
+                  {
+                    label: 'Revertir movimiento',
+                    icon: <RotateCcw className="h-4 w-4" />,
+                    variant: 'danger',
+                    onClick: () => openReversal(mov),
+                  },
+                ]}
+              />
+            </div>
+          )
+        },
+      },
     ],
-    [],
+    [canEdit],
   )
 
   const linesTable = useTable({
@@ -717,7 +799,8 @@ export function ContractDetailPage() {
                         className={cn(
                           rowPaddingClass,
                           'font-medium',
-                          h.column.id === 'mrr_delta_mxn' && 'text-right',
+                          (h.column.id === 'mrr_delta_mxn' || h.column.id === 'actions') &&
+                            'text-right',
                         )}
                       >
                         {h.isPlaceholder ? null : <movementsTable.FlexRender header={h} />}
@@ -737,7 +820,8 @@ export function ContractDetailPage() {
                         key={cell.id}
                         className={cn(
                           rowPaddingClass,
-                          cell.column.id === 'mrr_delta_mxn' && 'text-right',
+                          (cell.column.id === 'mrr_delta_mxn' || cell.column.id === 'actions') &&
+                            'text-right',
                         )}
                       >
                         <movementsTable.FlexRender cell={cell} />
@@ -753,10 +837,21 @@ export function ContractDetailPage() {
             {contract.movements.map((mov) => (
               <AppCard key={mov.id} className="p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <AppBadge
-                    label={CATEGORY_LABEL[mov.mrr_category] ?? mov.mrr_category}
-                    tone={CATEGORY_TONE[mov.mrr_category] ?? 'neutral'}
-                  />
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <AppBadge
+                      label={CATEGORY_LABEL[mov.mrr_category] ?? mov.mrr_category}
+                      tone={CATEGORY_TONE[mov.mrr_category] ?? 'neutral'}
+                    />
+                    {mov.is_reversed ? (
+                      <AppBadge label="Revertido" variant="neutral" />
+                    ) : null}
+                    {mov.reversed_movement_id != null ? (
+                      <AppBadge
+                        label={`Reversión #${mov.reversed_movement_id}`}
+                        variant="warning"
+                      />
+                    ) : null}
+                  </div>
                   <span className="text-xs text-slate-500">
                     {formatDateEsMx(mov.effective_date)}
                   </span>
@@ -778,7 +873,23 @@ export function ContractDetailPage() {
                     {formatCurrencyMx(mov.mrr_delta_mxn, { fractionDigits: 2 })}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-slate-400">{mov.user_name || '—'}</p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <p className="text-xs text-slate-400">{mov.user_name || '—'}</p>
+                  {canOperate && isMovementReversible(mov) ? (
+                    <AppRowActionsMenu
+                      actions={[
+                        {
+                          label: 'Revertir movimiento',
+                          icon: <RotateCcw className="h-4 w-4" />,
+                          variant: 'danger',
+                          onClick: () => openReversal(mov),
+                        },
+                      ]}
+                    />
+                  ) : (
+                    <span className="text-xs text-slate-400">—</span>
+                  )}
+                </div>
               </AppCard>
             ))}
           </div>
@@ -795,6 +906,18 @@ export function ContractDetailPage() {
         preselectedLineId={preselectedLineId}
         isSubmitting={isLifecyclePending}
         onConfirm={handleConfirm}
+      />
+
+      <ReverseMovementModal
+        open={reversalOpen}
+        onOpenChange={(open) => {
+          setReversalOpen(open)
+          if (!open) setReversalMovement(null)
+        }}
+        contract={contract}
+        movement={reversalMovement}
+        isSubmitting={isReversalPending}
+        onConfirm={handleConfirmReversal}
       />
     </div>
   )

@@ -20,6 +20,7 @@ use Throwable;
  * Listado, detalle y motor de ciclo de vida — `/api/contracts` (alias `/api/contratos`).
  * Motor BCMath (RF-2 + promociones + MRR MXN) + bitácora inmutable + auditoría.
  * POST `/api/contracts/{id}/lifecycle` — operaciones expansion…reactivation.
+ * POST `/api/contracts/{id}/movements/{movementId}/reverse` — reversión contable RNF-3.
  */
 final class ContractsService extends ModelService
 {
@@ -62,8 +63,24 @@ final class ContractsService extends ModelService
 
         $uri = strtolower(trim($context->getUri(), '/'));
         $parts = $uri === '' ? [] : explode('/', $uri);
-        // Soporta alias `contratos/{id}/lifecycle`.
+        // Soporta alias `contratos/{id}/lifecycle` y `contratos/{id}/movements/{mid}/reverse`.
         $action = isset($parts[2]) ? strtolower((string) $parts[2]) : null;
+
+        // POST /api/contracts/{id}/movements/{movementId}/reverse — Reversión contable RNF-3.
+        if (
+            $method === 'POST'
+            && $id !== null
+            && $action === 'movements'
+            && isset($parts[3], $parts[4])
+            && ctype_digit((string) $parts[3])
+            && strtolower((string) $parts[4]) === 'reverse'
+        ) {
+            if (!RbacAuthHelper::can($this->authContext, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para revertir movimientos del contrato.', 403);
+            }
+
+            return $this->reverseContractMovement((int) $id, (int) $parts[3], $request);
+        }
 
         // POST /api/contracts/{id}/lifecycle — Motor de ciclo de vida.
         if ($method === 'POST' && $id !== null && $action === 'lifecycle') {
@@ -377,6 +394,15 @@ final class ContractsService extends ModelService
      */
     private function listContractMovements(int $contractId): array
     {
+        // IDs ya revertidos: existe otro asiento con reversed_movement_id = este id.
+        $reversedIds = Capsule::table('movements')
+            ->where('contract_id', $contractId)
+            ->whereNotNull('reversed_movement_id')
+            ->pluck('reversed_movement_id')
+            ->map(static fn ($value): int => (int) $value)
+            ->all();
+        $reversedSet = array_fill_keys($reversedIds, true);
+
         return Capsule::table('movements as m')
             ->leftJoin('users as u', 'u.id', '=', 'm.user_id')
             ->where('m.contract_id', $contractId)
@@ -403,9 +429,11 @@ final class ContractsService extends ModelService
                 'm.created_at',
                 'u.name as user_name',
             ])
-            ->map(static function (object $row): array {
+            ->map(static function (object $row) use ($reversedSet): array {
+                $id = (int) $row->id;
+
                 return [
-                    'id' => (int) $row->id,
+                    'id' => $id,
                     'contract_id' => (int) $row->contract_id,
                     'contract_line_id' => $row->contract_line_id !== null ? (int) $row->contract_line_id : null,
                     'service_id' => $row->service_id !== null ? (int) $row->service_id : null,
@@ -425,10 +453,84 @@ final class ContractsService extends ModelService
                     'reversed_movement_id' => $row->reversed_movement_id !== null
                         ? (int) $row->reversed_movement_id
                         : null,
+                    'is_reversed' => isset($reversedSet[$id]),
                     'created_at' => (string) $row->created_at,
                 ];
             })
             ->all();
+    }
+
+    /**
+     * Reversión contable RNF-3 desde el detalle del contrato.
+     * Delega el INSERT inmutable + sync MRR a MovementsService y audita el evento.
+     *
+     * @param array<string, mixed> $request
+     */
+    private function reverseContractMovement(int $contractId, int $movementId, array $request): Result
+    {
+        $contract = Capsule::table('contracts')->where('id', $contractId)->first();
+        if ($contract === null) {
+            return Result::fail('Contrato no encontrado.', 404);
+        }
+        if (!$this->isWithinSegmentScope((int) $contract->segment_id)) {
+            return Result::fail('Contrato fuera de tu alcance de segmento.', 403);
+        }
+
+        $reason = trim((string) ($request['reason'] ?? ''));
+        $effectiveDate = isset($request['effective_date'])
+            ? trim((string) $request['effective_date'])
+            : '';
+        if ($effectiveDate === '') {
+            $effectiveDate = $this->todayInMexicoCity();
+        }
+
+        $userId = (int) ($this->authContext['user_id'] ?? $request['user_id'] ?? 0);
+        if ($userId < 1) {
+            return Result::fail('Sesión inválida: no se pudo resolver el usuario autenticado.', 401);
+        }
+
+        $mrrBefore = FinancialCalculator::normalizeMoney((string) $contract->mrr_mxn);
+
+        $movements = new MovementsService();
+        $result = $movements->createReversalMovement(
+            $movementId,
+            $userId,
+            $reason,
+            $effectiveDate,
+            $contractId,
+        );
+
+        if (!$result->isSuccess()) {
+            return $result;
+        }
+
+        $enriched = $this->findEnriched($contractId, true) ?? ['id' => $contractId];
+        $movementData = is_array($result->getData()) ? $result->getData() : [];
+
+        AuditLogger::log(
+            $this->authContext,
+            self::MODULE_KEY,
+            'contracts',
+            (string) $contractId,
+            'status_change',
+            'Reversión contable del movimiento #' . $movementId
+                . ' en contrato ' . ($enriched['folio'] ?? ('#' . $contractId)),
+            [
+                'mrr_mxn' => $mrrBefore,
+                'movement_id' => $movementId,
+            ],
+            [
+                'operation' => 'movement_reversal',
+                'original_movement_id' => $movementId,
+                'reversal_movement_id' => $movementData['id'] ?? null,
+                'mrr_mxn' => $enriched['mrr_mxn'] ?? null,
+                'mrr_delta_mxn' => $movementData['mrr_delta_mxn'] ?? null,
+                'reason' => $reason,
+                'effective_date' => $effectiveDate,
+            ],
+        );
+
+        return Result::ok($enriched, 'Reversión contable registrada');
     }
 
     /**

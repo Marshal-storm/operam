@@ -92,16 +92,24 @@ final class MovementsService extends ModelService
             return Result::ok($this->mapRow($row), 'Movimiento');
         }
 
-        // POST /api/movements con reversal_of → reversión contable.
+        // POST /api/movements con reversal_of → reversión contable (preferir ruta anidada en contracts).
         if ($method === 'POST' && $id === null && isset($request['reversal_of'])) {
             $auth = $context->getData('auth', []);
             $userId = (int) ($request['user_id'] ?? $auth['user_id'] ?? 0);
-            $reason = trim((string) ($request['reason'] ?? 'Reversión contable'));
+            $reason = trim((string) ($request['reason'] ?? ''));
+            $effectiveDate = isset($request['effective_date'])
+                ? trim((string) $request['effective_date'])
+                : null;
             if ($userId < 1) {
                 return Result::fail('user_id es requerido para la reversión.', 422);
             }
 
-            return $this->createReversalMovement((int) $request['reversal_of'], $userId, $reason);
+            return $this->createReversalMovement(
+                (int) $request['reversal_of'],
+                $userId,
+                $reason,
+                $effectiveDate !== '' ? $effectiveDate : null,
+            );
         }
 
         if ($method === 'POST' && $id === null) {
@@ -122,11 +130,19 @@ final class MovementsService extends ModelService
 
     /**
      * Inserta un movimiento inverso que referencia al original (RNF-3).
-     * Invierte mrr_delta_mxn y cantidad/mrr antes↔después con bcmath.
-     * Sincroniza `monthly_mrr` en la misma transacción (RF-10).
+     * Calcula el impacto contra el MRR actual del contrato (BCMath), sincroniza
+     * `monthly_mrr` y actualiza `contracts.mrr_mxn` en la misma transacción.
+     *
+     * @param string|null $effectiveDate Fecha YYYY-MM-DD (default hoy America/Mexico_City)
+     * @param int|null    $expectedContractId Si se indica, el movimiento debe pertenecer a ese contrato
      */
-    public function createReversalMovement(int $originalMovementId, int $userId, string $reason): Result
-    {
+    public function createReversalMovement(
+        int $originalMovementId,
+        int $userId,
+        string $reason,
+        ?string $effectiveDate = null,
+        ?int $expectedContractId = null,
+    ): Result {
         if ($originalMovementId < 1) {
             return Result::fail('Identificador de movimiento original inválido.', 422);
         }
@@ -134,48 +150,134 @@ final class MovementsService extends ModelService
             return Result::fail('user_id es requerido.', 422);
         }
 
+        $reason = trim($reason);
+        if (mb_strlen($reason) < 5) {
+            return Result::fail('El motivo (reason) es obligatorio (mínimo 5 caracteres).', 422);
+        }
+        $reason = mb_substr($reason, 0, 255);
+
+        $effective = $effectiveDate !== null ? trim($effectiveDate) : '';
+        if ($effective === '') {
+            $effective = (new \DateTimeImmutable('now', new \DateTimeZone('America/Mexico_City')))
+                ->format('Y-m-d');
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $effective)) {
+            return Result::fail('effective_date inválida (YYYY-MM-DD).', 422);
+        }
+
         $original = Capsule::table('movements')->where('id', $originalMovementId)->first();
         if ($original === null) {
             return Result::fail('Movimiento original no encontrado.', 404);
+        }
+
+        $contractId = (int) $original->contract_id;
+        if ($expectedContractId !== null && $contractId !== $expectedContractId) {
+            return Result::fail('El movimiento no pertenece al contrato indicado.', 422);
+        }
+
+        // No se permite revertir un asiento que ya es una reversión.
+        if ($original->reversed_movement_id !== null) {
+            return Result::fail(
+                'No se puede revertir un movimiento que ya es una reversión contable.',
+                422,
+            );
         }
 
         $already = Capsule::table('movements')
             ->where('reversed_movement_id', $originalMovementId)
             ->exists();
         if ($already) {
-            return Result::fail('Este movimiento ya tiene una reversión registrada.', 422);
+            return Result::fail('Este movimiento ya fue revertido anteriormente.', 422);
         }
 
+        $originalDelta = FinancialCalculator::normalizeMoney((string) $original->mrr_delta_mxn);
+        if (bccomp($originalDelta, '0.00', 2) === 0) {
+            return Result::fail(
+                'No se puede revertir un movimiento con delta MRR neutral (0.00).',
+                422,
+            );
+        }
+
+        $contract = Capsule::table('contracts')->where('id', $contractId)->first();
+        if ($contract === null) {
+            return Result::fail('Contrato asociado al movimiento no encontrado.', 404);
+        }
+
+        $inverseDelta = bcmul($originalDelta, '-1', 2);
+        $mrrBefore = FinancialCalculator::normalizeMoney((string) $contract->mrr_mxn);
+        $mrrAfter = bcadd($mrrBefore, $inverseDelta, 2);
+        if (bccomp($mrrAfter, '0.00', 2) < 0) {
+            return Result::fail(
+                'La reversión dejaría el MRR del contrato en negativo (' . $mrrAfter . ').',
+                422,
+            );
+        }
+
+        $fullReason = mb_substr(
+            'Reversión de movimiento #' . $originalMovementId . ': ' . $reason,
+            0,
+            255,
+        );
+
         try {
-            $payload = FinancialCalculator::buildReversalPayload(
+            // Valida inmutabilidad / payload base (tipo reversal + reversed_movement_id).
+            $base = FinancialCalculator::buildReversalPayload(
                 [
                     'id' => (int) $original->id,
                     'mrr_category' => (string) $original->mrr_category,
                     'mrr_before' => (string) $original->mrr_before,
                     'mrr_after' => (string) $original->mrr_after,
-                    'mrr_delta_mxn' => (string) $original->mrr_delta_mxn,
+                    'mrr_delta_mxn' => $originalDelta,
                     'quantity_before' => (string) $original->quantity_before,
                     'quantity_after' => (string) $original->quantity_after,
                 ],
                 $userId,
-                $reason,
+                $fullReason,
             );
         } catch (Throwable $exception) {
             return Result::fail($exception->getMessage(), 500);
         }
 
-        $payload['contract_id'] = (int) $original->contract_id;
-        $payload['contract_line_id'] = $original->contract_line_id !== null
-            ? (int) $original->contract_line_id
-            : null;
-        $payload['service_id'] = $original->service_id !== null ? (int) $original->service_id : null;
-        $payload['effective_date'] = (string) $original->effective_date;
-        $payload['exchange_rate'] = (string) ($original->exchange_rate ?? '1.000000');
-        $payload['request_id'] = null;
-        $payload['has_exception'] = false;
-        $payload['created_at'] = gmdate('Y-m-d H:i:s');
+        // Impacto contable contra el MRR vigente del contrato (no el histórico del asiento).
+        $payload = array_merge($base, [
+            'contract_id' => $contractId,
+            'contract_line_id' => $original->contract_line_id !== null
+                ? (int) $original->contract_line_id
+                : null,
+            'service_id' => $original->service_id !== null ? (int) $original->service_id : null,
+            'effective_date' => $effective,
+            'mrr_before' => $mrrBefore,
+            'mrr_after' => $mrrAfter,
+            'mrr_delta_mxn' => $inverseDelta,
+            'exchange_rate' => (string) ($original->exchange_rate ?? '1.000000'),
+            'request_id' => null,
+            'has_exception' => false,
+            'excepted_policy' => null,
+            'created_at' => gmdate('Y-m-d H:i:s'),
+        ]);
 
-        return $this->insertMovementAndSyncMrr($payload, 'Reversión contable registrada');
+        try {
+            $row = Capsule::connection()->transaction(function () use ($payload, $contractId, $mrrAfter) {
+                $inserted = $this->insertMovementRowAndSync($payload);
+                Capsule::table('contracts')->where('id', $contractId)->update([
+                    'mrr_mxn' => $mrrAfter,
+                    'updated_at' => gmdate('Y-m-d H:i:s'),
+                ]);
+
+                return $inserted;
+            });
+        } catch (Throwable $exception) {
+            return Result::fail(
+                'No se pudo registrar la reversión contable: ' . $exception->getMessage(),
+                500,
+            );
+        }
+
+        $mapped = $this->mapRow($row);
+        $mapped['contract_mrr_mxn'] = $mrrAfter;
+        $mapped['is_reversed'] = false;
+
+        return Result::ok($mapped, 'Reversión contable registrada', 201);
     }
 
     /**
