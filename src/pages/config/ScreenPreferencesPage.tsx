@@ -1,22 +1,71 @@
-import { Check, LayoutList, Rows3 } from 'lucide-react'
+import { BellRing, Check, LayoutList, Rows3 } from 'lucide-react'
+import { useRef } from 'react'
 import {
   PAGE_SIZE_OPTIONS,
+  TOAST_POSITION_LABELS,
   useScreenPreferences,
   type PageSizeOption,
   type TableDensity,
+  type ToastPosition,
 } from '@/context/ScreenPreferencesContext'
-import { useToast } from '@/context/ToastContext'
+import { useToast, type ToastVariant } from '@/context/ToastContext'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
 import { cn } from '@/lib/utils'
 
+/** Orden visual de la mini-pantalla 3×2 (arriba → abajo). */
+const TOAST_GRID: ToastPosition[] = [
+  'top-left',
+  'top-center',
+  'top-right',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right',
+]
+
+/** Secuencia de demo para probar la baraja apilada (clics sucesivos). */
+const PREVIEW_TOASTS: ReadonlyArray<{
+  variant: ToastVariant
+  title: string
+  description: string
+}> = [
+  {
+    variant: 'success',
+    title: 'Operación exitosa',
+    description: 'El cristal Liquid Glass quedó anclado en la posición elegida.',
+  },
+  {
+    variant: 'info',
+    title: 'Dato actualizado',
+    description: 'Pasa el cursor sobre la pila para expandir y leer cada tarjeta.',
+  },
+  {
+    variant: 'warning',
+    title: 'Revisa este detalle',
+    description: 'Hasta 3 toasts se ven apilados; el resto queda detrás.',
+  },
+  {
+    variant: 'error',
+    title: 'Algo no cuadra',
+    description: 'Cierra individualmente o espera el auto-cierre al salir del hover.',
+  },
+]
+
 /**
- * Preferencias de pantalla — solo UI del usuario (pageSize + densidad).
+ * Preferencias de pantalla — pageSize, densidad y posición de toasts.
  * Parámetros comerciales viven en `/configuracion/empresa`.
  */
 export function ScreenPreferencesPage() {
-  const { pageSize, density, setPageSize, setDensity } = useScreenPreferences()
+  const {
+    pageSize,
+    density,
+    toastPosition,
+    setPageSize,
+    setDensity,
+    setToastPosition,
+  } = useScreenPreferences()
   const toast = useToast()
+  const previewSeqRef = useRef(0)
 
   function savePageSize(n: PageSizeOption) {
     setPageSize(n)
@@ -31,6 +80,21 @@ export function ScreenPreferencesPage() {
     )
   }
 
+  function saveToastPosition(position: ToastPosition) {
+    setToastPosition(position)
+    toast.success(
+      'Posición de notificaciones',
+      TOAST_POSITION_LABELS[position],
+    )
+  }
+
+  /** Rota success → info → warning → error para demostrar el apilamiento. */
+  function previewToast() {
+    const sample = PREVIEW_TOASTS[previewSeqRef.current % PREVIEW_TOASTS.length]
+    previewSeqRef.current += 1
+    toast[sample.variant](sample.title, sample.description)
+  }
+
   return (
     <div className="space-y-6">
       <header>
@@ -38,8 +102,8 @@ export function ScreenPreferencesPage() {
           Preferencias de pantalla
         </h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Define cuántos registros ves por página y qué tan compactas lucen las tablas. Se guarda
-          en este navegador.
+          Define cuántos registros ves por página, la densidad de tablas y dónde aparecen las
+          notificaciones. Se guarda en este navegador.
         </p>
       </header>
 
@@ -135,6 +199,80 @@ export function ScreenPreferencesPage() {
               </div>
             </AppButton>
           ))}
+        </div>
+      </AppCard>
+
+      <AppCard className="space-y-4 p-5 md:p-6">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#0066FF]/10 text-[#0066FF] dark:bg-[#0A84FF]/15 dark:text-[#0A84FF]">
+            <BellRing className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="font-heading text-base font-semibold">
+              Posición de notificaciones (Toast)
+            </h2>
+            <p className="text-xs text-slate-500">
+              Elige dónde cae el cristal líquido. La selección se guarda al instante en este
+              navegador.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label
+            htmlFor="toast-position-grid"
+            className="block text-sm font-medium text-slate-700 dark:text-slate-200"
+          >
+            Ancla en pantalla
+          </label>
+
+          {/* Mini-pantalla 3×2 interactiva */}
+          <div
+            id="toast-position-grid"
+            role="radiogroup"
+            aria-label="Posición de notificaciones Toast"
+            className="mx-auto grid w-full max-w-sm grid-cols-3 gap-2 rounded-[22px] border border-slate-200/80 bg-slate-50/80 p-3 dark:border-white/[0.09] dark:bg-white/[0.03]"
+          >
+            {TOAST_GRID.map((position) => {
+              const selected = toastPosition === position
+              return (
+                <AppButton
+                  key={position}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={TOAST_POSITION_LABELS[position]}
+                  variant="ghost"
+                  onClick={() => saveToastPosition(position)}
+                  className={cn(
+                    'h-14 rounded-xl border font-normal transition-all',
+                    selected
+                      ? 'border-[#0066FF]/50 bg-[#0066FF] text-white shadow-[0_0_18px_rgba(0,102,255,0.35)] hover:bg-[#0066FF] dark:border-[#0A84FF]/50 dark:bg-[#0A84FF] dark:shadow-[0_0_20px_rgba(10,132,255,0.4)] dark:hover:bg-[#0A84FF]'
+                      : 'border-slate-200/90 bg-white/90 text-slate-500 hover:border-[#0066FF]/30 hover:bg-white dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-zinc-400 dark:hover:border-[#0A84FF]/35 dark:hover:bg-white/[0.07]',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'block h-2.5 w-2.5 rounded-full',
+                      selected
+                        ? 'bg-white'
+                        : 'bg-slate-300 dark:bg-white/25',
+                    )}
+                  />
+                </AppButton>
+              )
+            })}
+          </div>
+
+          <p className="text-center text-xs text-slate-500 dark:text-zinc-400">
+            Seleccionada: <span className="font-medium text-slate-700 dark:text-zinc-200">{TOAST_POSITION_LABELS[toastPosition]}</span>
+          </p>
+        </div>
+
+        <div className="flex justify-center pt-1">
+          <AppButton type="button" variant="secondary" onClick={previewToast}>
+            Probar notificación
+          </AppButton>
         </div>
       </AppCard>
     </div>

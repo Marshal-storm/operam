@@ -134,13 +134,23 @@
   }
 }
 
-/* Spinner central Operam — anillo interior en sentido inverso */
-@keyframes operam-spin-reverse {
+/* Spinner Aura Operam — rotación continua del conic-gradient */
+@keyframes operam-aura-spin {
   from {
-    transform: rotate(360deg);
+    transform: rotate(0deg);
   }
   to {
-    transform: rotate(0deg);
+    transform: rotate(360deg);
+  }
+}
+
+/* Toast Liquid Glass — barra de auto-cierre (scaleX 1 → 0) */
+@keyframes operam-toast-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
   }
 }
 
@@ -181,8 +191,58 @@
     opacity: 0.35;
   }
 
-  .operam-spinner-inner {
-    animation: operam-spin-reverse 1.1s linear infinite;
+  /*
+   * Spinner Aura Operam — misma paleta que .operam-rainbow-bar.
+   * Halo difuso + anillo nítido con máscara radial (centro 100% transparente).
+   */
+  .operam-aura-halo {
+    background: conic-gradient(
+      from 0deg,
+      #2060d0,
+      #7a3fc4,
+      #e0307a,
+      #f07010,
+      #f0b000,
+      #20a050,
+      #2060d0
+    );
+    animation: operam-aura-spin 1.35s linear infinite;
+  }
+
+  .operam-aura-ring {
+    background: conic-gradient(
+      from 0deg,
+      #2060d0,
+      #7a3fc4,
+      #e0307a,
+      #f07010,
+      #f0b000,
+      #20a050,
+      #2060d0
+    );
+    -webkit-mask: radial-gradient(
+      farthest-side,
+      transparent calc(100% - 4px),
+      #000 calc(100% - 3.5px)
+    );
+    mask: radial-gradient(
+      farthest-side,
+      transparent calc(100% - 4px),
+      #000 calc(100% - 3.5px)
+    );
+    animation: operam-aura-spin 1s linear infinite;
+  }
+
+  /* Mini barra de progreso del toast (se pausa con .operam-toast-progress-paused) */
+  .operam-toast-progress {
+    transform-origin: left center;
+    animation-name: operam-toast-progress;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+  }
+
+  .operam-toast-progress-paused {
+    animation-play-state: paused;
   }
 
   /* Activa: shimmer infinito + resplandor */

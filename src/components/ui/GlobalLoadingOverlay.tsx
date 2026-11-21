@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 /**
  * Indicador global Operam:
  * - Barra arcoíris fija (fetching / mutating / lock).
- * - Velo + spinner central limpio en mutaciones y candado (sin modal).
+ * - Velo + Spinner Aura Operam (misma paleta que la barra) en mutaciones/candado.
  */
 export function GlobalLoadingOverlay() {
   const fetching = useIsFetching()
@@ -34,11 +34,18 @@ export function GlobalLoadingOverlay() {
           aria-live="polite"
           aria-label="Procesando petición"
         >
-          {/* Spinner circular limpio — sin tarjeta/modal de fondo */}
-          <div className="relative h-11 w-11 drop-shadow-[0_0_18px_rgba(10,132,255,0.45)]">
-            <span className="absolute inset-0 rounded-full border-[3px] border-slate-300/50 dark:border-white/15" />
-            <span className="absolute inset-0 animate-spin rounded-full border-[3px] border-transparent border-t-[#0A84FF] border-r-[#0066FF]/70" />
-            <span className="operam-spinner-inner absolute inset-[5px] rounded-full border-[2px] border-transparent border-b-[#20A050] border-l-[#7A3FC4]/80" />
+          {/* Spinner Aura Operam — limpio, sin tarjeta/modal */}
+          <div className="relative flex h-14 w-14 items-center justify-center">
+            {/* Halo difuso (capa trasera) */}
+            <span
+              aria-hidden
+              className="operam-aura-halo absolute inset-0 rounded-full opacity-45 blur-md dark:opacity-60"
+            />
+            {/* Anillo nítido perforado (capa frontal) */}
+            <span
+              aria-hidden
+              className="operam-aura-ring absolute inset-[4px] h-12 w-12 rounded-full"
+            />
           </div>
         </div>
       )}

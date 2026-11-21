@@ -10,16 +10,28 @@ import {
 export type PageSizeOption = 10 | 25 | 50 | 100
 export type TableDensity = 'comfortable' | 'compact'
 
+/** Esquinas y centros donde pueden anclarse los toasts Liquid Glass. */
+export type ToastPosition =
+  | 'top-right'
+  | 'top-center'
+  | 'top-left'
+  | 'bottom-right'
+  | 'bottom-center'
+  | 'bottom-left'
+
 export type ScreenPreferences = {
   /** Filas por página por defecto en tablas del ERP. */
   pageSize: PageSizeOption
   /** Densidad visual de filas. */
   density: TableDensity
+  /** Ancla del contenedor de notificaciones Toast. */
+  toastPosition: ToastPosition
 }
 
 type ScreenPreferencesContextValue = ScreenPreferences & {
   setPageSize: (size: PageSizeOption) => void
   setDensity: (density: TableDensity) => void
+  setToastPosition: (position: ToastPosition) => void
   setPreferences: (next: Partial<ScreenPreferences>) => void
   /** Clases de padding según densidad. */
   rowPaddingClass: string
@@ -27,9 +39,23 @@ type ScreenPreferencesContextValue = ScreenPreferences & {
 
 const STORAGE_KEY = 'operam.screen.preferences'
 
+const TOAST_POSITIONS: readonly ToastPosition[] = [
+  'top-right',
+  'top-center',
+  'top-left',
+  'bottom-right',
+  'bottom-center',
+  'bottom-left',
+] as const
+
 const DEFAULTS: ScreenPreferences = {
   pageSize: 25,
   density: 'comfortable',
+  toastPosition: 'top-right',
+}
+
+function isToastPosition(value: unknown): value is ToastPosition {
+  return typeof value === 'string' && (TOAST_POSITIONS as readonly string[]).includes(value)
 }
 
 function loadStored(): ScreenPreferences {
@@ -44,7 +70,10 @@ function loadStored(): ScreenPreferences {
       parsed.density === 'compact' || parsed.density === 'comfortable'
         ? parsed.density
         : DEFAULTS.density
-    return { pageSize, density }
+    const toastPosition = isToastPosition(parsed.toastPosition)
+      ? parsed.toastPosition
+      : DEFAULTS.toastPosition
+    return { pageSize, density, toastPosition }
   } catch {
     return DEFAULTS
   }
@@ -55,8 +84,8 @@ const ScreenPreferencesContext = createContext<ScreenPreferencesContextValue | n
 )
 
 /**
- * Preferencias de pantalla globales (pageSize + densidad).
- * Persistidas en localStorage; las tablas leen `pageSize` vía `useScreenPreferences()`.
+ * Preferencias de pantalla globales (pageSize + densidad + toastPosition).
+ * Persistidas en localStorage; las tablas y ToastProvider leen vía `useScreenPreferences()`.
  */
 export function ScreenPreferencesProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<ScreenPreferences>(() => loadStored())
@@ -80,6 +109,13 @@ export function ScreenPreferencesProvider({ children }: { children: ReactNode })
     [persist, prefs],
   )
 
+  const setToastPosition = useCallback(
+    (toastPosition: ToastPosition) => {
+      persist({ ...prefs, toastPosition })
+    },
+    [persist, prefs],
+  )
+
   const setPreferences = useCallback(
     (partial: Partial<ScreenPreferences>) => {
       persist({ ...prefs, ...partial })
@@ -92,10 +128,11 @@ export function ScreenPreferencesProvider({ children }: { children: ReactNode })
       ...prefs,
       setPageSize,
       setDensity,
+      setToastPosition,
       setPreferences,
       rowPaddingClass: prefs.density === 'compact' ? 'py-1.5 px-3' : 'py-3 px-4',
     }),
-    [prefs, setPageSize, setDensity, setPreferences],
+    [prefs, setPageSize, setDensity, setToastPosition, setPreferences],
   )
 
   return (
@@ -114,3 +151,15 @@ export function useScreenPreferences(): ScreenPreferencesContextValue {
 }
 
 export const PAGE_SIZE_OPTIONS: PageSizeOption[] = [10, 25, 50, 100]
+
+export const TOAST_POSITION_OPTIONS: readonly ToastPosition[] = TOAST_POSITIONS
+
+/** Etiquetas UI (es-MX) para el selector de posición de toasts. */
+export const TOAST_POSITION_LABELS: Record<ToastPosition, string> = {
+  'top-left': 'Superior izquierda',
+  'top-center': 'Superior centro',
+  'top-right': 'Superior derecha',
+  'bottom-left': 'Inferior izquierda',
+  'bottom-center': 'Inferior centro',
+  'bottom-right': 'Inferior derecha',
+}

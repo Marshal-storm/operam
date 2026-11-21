@@ -240,10 +240,10 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `hooks/useSegments.ts` | Hook central TanStack Query → `GET /api/segments` (mapa id→nombre, opciones de filtro). |
 | `hooks/useSegmentLock.ts` | Filtro de segmento dinámico + bloqueo JWT (sin nombres quemados). |
 | `components/ui/AppFilterField.tsx` | Label visible obligatorio para grupos de filtros en toolbars. |
-| `context/ScreenPreferencesContext.tsx` | pageSize (10/25/50/100) + densidad de tablas (`localStorage`). |
+| `context/ScreenPreferencesContext.tsx` | pageSize (10/25/50/100) + densidad + `toastPosition` (6 anclas) en `localStorage`. |
 | `context/LoadingLockContext.tsx` | Candado global + `withScreenLock` / start/stop. |
-| `context/ToastContext.tsx` | Toasts globales iOS Liquid Glass (`useToast`: success/error/warning/info/apiError). |
-| `components/ui/GlobalLoadingOverlay.tsx` | Barra arcoíris + velo + spinner central limpio en mutaciones. |
+| `context/ToastContext.tsx` | Toasts Liquid Glass apilados (baraja iOS, expand/pause al hover); posición desde ScreenPreferences; `useToast`. |
+| `components/ui/GlobalLoadingOverlay.tsx` | Barra arcoíris + velo + Spinner Aura Operam (conic-gradient sincronizado) en mutaciones. |
 | `components/ui/ThemeToggleSwitch.tsx` | Switch iOS luna/sol (primitivo del kit). |
 | `components/ui/appTokens.ts` | Tokens compartidos de campo/tarjeta/popover (borde, focus, sombra). |
 | `components/ui/AppButton.tsx` | Botón atómico (`primary` / `secondary` / `outline` / `ghost` / `danger` + `isLoading`). |
@@ -274,7 +274,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `pages/config/CompanySettingsPage.tsx` | `/configuracion/empresa` — parámetros comerciales por segmento (`default_credit_days`, `usd_exchange_rate`) vía `config_company`. |
 | `pages/config/SystemSettingsPage.tsx` | `/configuracion/sistema` — bandera `audit_logs_enabled` y depuración irreversible de la bitácora (`config_system`). |
 | `pages/config/AuditLogsPage.tsx` | `/configuracion/auditoria` — bitácora paginada de solo lectura con diff antes/después (`config_audit_logs`). |
-| `pages/config/ScreenPreferencesPage.tsx` | `/configuracion/preferencias` — solo pageSize y densidad visual (`config_preferences`). |
+| `pages/config/ScreenPreferencesPage.tsx` | `/configuracion/preferencias` — pageSize, densidad y posición Toast (`config_preferences`). |
 | `pages/config/UsersManagementPage.tsx` | `/configuracion/usuarios` — cuentas, rol y segmento (`config_users`). |
 | `pages/config/RolesPermissionsPage.tsx` | `/configuracion/roles` — matriz multinivel sin preselección (`config_roles`). |
 | `services/sessionSecurity.ts` / `lib/criticalRelogin.ts` | Interceptor 401 + logout diferido ante cambios críticos propios. |
