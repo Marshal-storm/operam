@@ -1,11 +1,11 @@
-/** Claves multinivel del catálogo RBAC (inglés, alineadas al API). */
+/** Claves multinivel del catálogo RBAC (18 módulos, inglés, alineadas al API). */
 export type ModuleKey =
   | 'dashboard'
   | 'contracts'
   | 'clients'
   | 'requests'
   | 'collections'
-  | 'segment_utility'
+  | 'segment_profitability'
   | 'sales_promotions'
   | 'config_catalog'
   | 'config_prices'
@@ -57,16 +57,18 @@ export type LoginCredentials = {
   password: string
 }
 
+/** Nivel 1 — operativos (`group_key = 'main'`). */
 export const PRINCIPAL_MODULE_KEYS: ModuleKey[] = [
   'dashboard',
   'contracts',
   'clients',
   'requests',
   'collections',
-  'segment_utility',
+  'segment_profitability',
   'sales_promotions',
 ]
 
+/** Nivel 2 — configuración (`group_key = 'configuration'`). */
 export const CONFIG_MODULE_KEYS: ModuleKey[] = [
   'config_catalog',
   'config_prices',
@@ -85,3 +87,36 @@ export const MODULE_KEYS: ModuleKey[] = [
   ...PRINCIPAL_MODULE_KEYS,
   ...CONFIG_MODULE_KEYS,
 ]
+
+/** Módulos de solo lectura: Crear/Editar/Eliminar no aplican en la matriz UI. */
+export const READ_ONLY_MODULE_KEYS: ReadonlySet<ModuleKey> = new Set([
+  'dashboard',
+  'sales_promotions',
+  'segment_profitability',
+  'config_audit_logs',
+])
+
+/** Solo Ver + Editar. */
+export const VIEW_EDIT_MODULE_KEYS: ReadonlySet<ModuleKey> = new Set([
+  'config_company',
+  'config_preferences',
+])
+
+/** Ver + Editar + Eliminar (sin Crear). */
+export const VIEW_EDIT_DELETE_MODULE_KEYS: ReadonlySet<ModuleKey> = new Set([
+  'config_system',
+])
+
+/** Indica si una columna CRUD aplica al module_key en la matriz de roles. */
+export function isCrudActionApplicable(
+  moduleKey: string,
+  action: keyof ModulePermission,
+): boolean {
+  if (action === 'view') return true
+  if (READ_ONLY_MODULE_KEYS.has(moduleKey as ModuleKey)) return false
+  if (VIEW_EDIT_MODULE_KEYS.has(moduleKey as ModuleKey)) return action === 'edit'
+  if (VIEW_EDIT_DELETE_MODULE_KEYS.has(moduleKey as ModuleKey)) {
+    return action === 'edit' || action === 'delete'
+  }
+  return true
+}

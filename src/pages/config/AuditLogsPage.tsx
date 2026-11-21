@@ -29,6 +29,13 @@ import {
 const ALL = 'all'
 
 const MODULE_LABELS: Record<string, string> = {
+  dashboard: 'Dashboard',
+  contracts: 'Contratos',
+  clients: 'Clientes',
+  requests: 'Solicitudes',
+  collections: 'Cobranza',
+  segment_profitability: 'Utilidad por segmento',
+  sales_promotions: 'Promociones vigentes',
   config_catalog: 'Catálogo',
   config_prices: 'Precios',
   config_promotions: 'Promociones',
@@ -40,9 +47,6 @@ const MODULE_LABELS: Record<string, string> = {
   config_system: 'Sistema',
   config_audit_logs: 'Bitácora',
   config_preferences: 'Preferencias',
-  dashboard: 'Dashboard',
-  clients: 'Clientes',
-  contracts: 'Contratos',
   auth: 'Autenticación',
 }
 

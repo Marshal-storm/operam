@@ -165,7 +165,7 @@ function App() {
                         <Route
                           path="utilidad"
                           element={
-                            <ModulePage module="segment_utility">
+                            <ModulePage module="segment_profitability">
                               <Placeholder title="Utilidad por segmento" />
                             </ModulePage>
                           }

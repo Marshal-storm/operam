@@ -18,6 +18,17 @@ use System\Support\AuditLogger;
  */
 final class IssuersService extends ModelService
 {
+    private const MODULE_KEY = 'config_issuers';
+
+    /** Selects de emisor en contratos/clientes/instancias. */
+    private const VIEW_ALIASES = [
+        'config_issuers',
+        'contracts',
+        'clients',
+        'config_instances',
+        'config_catalog',
+    ];
+
     private const ALLOWED_PER_PAGE = [10, 25, 50, 100];
 
     private const MASK = '••••••••';
@@ -57,8 +68,15 @@ final class IssuersService extends ModelService
         $request = $context->getRequest();
 
         if ($method === 'GET' && $id === null) {
+            if (!RbacAuthHelper::canAny($this->authContext, self::VIEW_ALIASES, 'view')) {
+                return Result::fail('Sin permiso para consultar emisores.', 403);
+            }
             // Con filtros/paginación → respuesta enriquecida; sin ellos → lista plana (selects).
             if ($this->wantsPaginated($request)) {
+                if (!RbacAuthHelper::can($this->authContext, self::MODULE_KEY, 'view')) {
+                    return Result::fail('Sin permiso para administrar emisores.', 403);
+                }
+
                 return Result::ok($this->listPaginated($request), 'Emisores');
             }
 
@@ -66,6 +84,9 @@ final class IssuersService extends ModelService
         }
 
         if ($method === 'GET' && $id !== null) {
+            if (!RbacAuthHelper::canAny($this->authContext, self::VIEW_ALIASES, 'view')) {
+                return Result::fail('Sin permiso para consultar emisores.', 403);
+            }
             $row = $this->findEnriched((int) $id);
             if ($row === null) {
                 return Result::fail('Emisor no encontrado.', 404);
@@ -75,6 +96,9 @@ final class IssuersService extends ModelService
         }
 
         if ($method === 'POST' && $id === null) {
+            if (!RbacAuthHelper::can($this->authContext, self::MODULE_KEY, 'create')) {
+                return Result::fail('Sin permiso para crear emisores.', 403);
+            }
             $normalized = $this->normalizeInput($request);
             $rfcError = $this->validateRfc($normalized['rfc'] ?? null);
             if ($rfcError !== null) {
@@ -108,6 +132,9 @@ final class IssuersService extends ModelService
         $issuerId = (int) $id;
 
         if ($method === 'PUT') {
+            if (!RbacAuthHelper::can($this->authContext, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para editar emisores.', 403);
+            }
             $normalized = $this->normalizeInput($request);
             $rfcError = $this->validateRfc($normalized['rfc'] ?? null);
             if ($rfcError !== null) {
@@ -129,6 +156,9 @@ final class IssuersService extends ModelService
         }
 
         if ($method === 'PATCH') {
+            if (!RbacAuthHelper::can($this->authContext, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para editar emisores.', 403);
+            }
             $normalized = $this->normalizeInput($request, true);
             if (array_key_exists('rfc', $normalized)) {
                 $rfcError = $this->validateRfc($normalized['rfc']);
@@ -153,6 +183,9 @@ final class IssuersService extends ModelService
         }
 
         if ($method === 'DELETE') {
+            if (!RbacAuthHelper::can($this->authContext, self::MODULE_KEY, 'delete')) {
+                return Result::fail('Sin permiso para desactivar emisores.', 403);
+            }
             $before = $this->issuerRaw($issuerId);
             $patched = $this->patch($issuerId, ['is_active' => false], $context);
             if (!$patched->isSuccess()) {

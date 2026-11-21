@@ -14,6 +14,11 @@ use System\Support\AuditLogger;
 
 final class ServicesCatalogService extends ModelService
 {
+    private const MODULE_KEY = 'config_catalog';
+
+    /** Lectura permitida también a quien opera contratos (alta / detalle). */
+    private const VIEW_ALIASES = ['config_catalog', 'contracts'];
+
     private const ALLOWED_PER_PAGE = [10, 25, 50, 100];
 
     protected function modelClass(): string
@@ -44,10 +49,21 @@ final class ServicesCatalogService extends ModelService
         $auth = $context->getData('auth', []);
         $request = RbacAuthHelper::applySegmentFilterToQuery($auth, $context->getRequest());
 
-        if ($method === 'GET' && $id === null) {
-            return Result::ok($this->listPaginated($request), 'Catálogo de servicios');
+        if ($method === 'GET') {
+            if (!RbacAuthHelper::canAny($auth, self::VIEW_ALIASES, 'view')) {
+                return Result::fail('Sin permiso para consultar el catálogo de servicios.', 403);
+            }
+            if ($id === null) {
+                return Result::ok($this->listPaginated($request), 'Catálogo de servicios');
+            }
+
+            return Result::fail('Método no soportado.', 405);
         }
+
         if ($method === 'POST' && $id === null) {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'create')) {
+                return Result::fail('Sin permiso para crear servicios.', 403);
+            }
             $denied = RbacAuthHelper::assertSegmentWriteAllowed($auth, $request);
             if ($denied !== null) {
                 return Result::fail($denied, 403);
@@ -77,6 +93,16 @@ final class ServicesCatalogService extends ModelService
         }
 
         $serviceId = (int) $id;
+        if ($method === 'PUT' || $method === 'PATCH') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para editar servicios.', 403);
+            }
+        }
+        if ($method === 'DELETE') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'delete')) {
+                return Result::fail('Sin permiso para desactivar servicios.', 403);
+            }
+        }
         if ($method === 'PUT') {
             $denied = RbacAuthHelper::assertSegmentWriteAllowed($auth, $request);
             if ($denied !== null) {

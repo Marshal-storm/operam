@@ -40,6 +40,7 @@ final class SegmentsService extends ModelService
         $auth = $context->getData('auth', []);
         $request = $context->getRequest();
 
+        // GET abierto a sesión autenticada (filtros globales); escritura exige config_company.
         if ($method === 'GET' && $id === null) {
             return Result::ok($this->listSegments($auth), 'Segmentos');
         }

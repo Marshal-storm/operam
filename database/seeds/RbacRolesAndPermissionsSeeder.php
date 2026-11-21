@@ -5,14 +5,30 @@ declare(strict_types=1);
 use Phinx\Seed\AbstractSeed;
 
 /**
- * Módulos multinivel + roles iniciales con matriz CRUD (idempotente).
- * Incluye el rol de ejemplo "Gestor de Promociones".
- * Emisores e Instancias son submódulos independientes.
- * Claves de módulo y group_key en inglés. Nombres y descripciones visibles en español.
- * Los códigos de rol (admin_general, operador_comercial, etc.) se conservan: la app los referencia.
+ * Catálogo canónico de 18 module_key + roles iniciales con matriz CRUD (idempotente).
+ * group_key en inglés: main | configuration. Nombres visibles en español.
  */
 final class RbacRolesAndPermissionsSeeder extends AbstractSeed
 {
+    /** Solo lectura (Ver). */
+    private const READ_ONLY = [
+        'dashboard',
+        'sales_promotions',
+        'segment_profitability',
+        'config_audit_logs',
+    ];
+
+    /** Ver + Editar. */
+    private const VIEW_EDIT = [
+        'config_company',
+        'config_preferences',
+    ];
+
+    /** Ver + Editar + Eliminar (sin Crear). */
+    private const VIEW_EDIT_DELETE = [
+        'config_system',
+    ];
+
     public function getDependencies(): array
     {
         return [
@@ -24,7 +40,7 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
     {
         $nowUtc = gmdate('Y-m-d H:i:s');
         $this->seedModules();
-        $this->purgeLegacyConfigModule();
+        $this->purgeLegacyKeys();
         $roleIds = $this->seedRoles($nowUtc);
         $this->seedPermissions($roleIds, $nowUtc);
         $this->linkExistingUsers($roleIds, $nowUtc);
@@ -34,15 +50,15 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
     {
         $modules = [
             ['module_key' => 'dashboard', 'name' => 'Dashboard y Puente de MRR', 'group_key' => 'main', 'sort_order' => 10],
-            ['module_key' => 'contracts', 'name' => 'Contratos y bitácora', 'group_key' => 'main', 'sort_order' => 20],
+            ['module_key' => 'contracts', 'name' => 'Contratos y ciclo de vida', 'group_key' => 'main', 'sort_order' => 20],
             ['module_key' => 'clients', 'name' => 'Directorio de clientes', 'group_key' => 'main', 'sort_order' => 30],
-            ['module_key' => 'requests', 'name' => 'Solicitudes de compra/horas', 'group_key' => 'main', 'sort_order' => 40],
+            ['module_key' => 'requests', 'name' => 'Solicitudes', 'group_key' => 'main', 'sort_order' => 40],
             ['module_key' => 'collections', 'name' => 'Cobranza y cartera', 'group_key' => 'main', 'sort_order' => 50],
-            ['module_key' => 'segment_utility', 'name' => 'Utilidad por segmento', 'group_key' => 'main', 'sort_order' => 60],
-            ['module_key' => 'sales_promotions', 'name' => 'Promociones vigentes (ventas)', 'group_key' => 'main', 'sort_order' => 70],
+            ['module_key' => 'segment_profitability', 'name' => 'Utilidad por segmento', 'group_key' => 'main', 'sort_order' => 60],
+            ['module_key' => 'sales_promotions', 'name' => 'Promociones vigentes', 'group_key' => 'main', 'sort_order' => 70],
             ['module_key' => 'config_catalog', 'name' => 'Catálogo de servicios', 'group_key' => 'configuration', 'sort_order' => 110],
             ['module_key' => 'config_prices', 'name' => 'Listas de precios', 'group_key' => 'configuration', 'sort_order' => 120],
-            ['module_key' => 'config_promotions', 'name' => 'Promociones (admin)', 'group_key' => 'configuration', 'sort_order' => 130],
+            ['module_key' => 'config_promotions', 'name' => 'Promociones', 'group_key' => 'configuration', 'sort_order' => 130],
             ['module_key' => 'config_issuers', 'name' => 'Emisores', 'group_key' => 'configuration', 'sort_order' => 140],
             ['module_key' => 'config_instances', 'name' => 'Instancias', 'group_key' => 'configuration', 'sort_order' => 145],
             ['module_key' => 'config_users', 'name' => 'Usuarios del sistema', 'group_key' => 'configuration', 'sort_order' => 150],
@@ -73,14 +89,27 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
         }
     }
 
-    /**
-     * Elimina el módulo único heredado "configuracion" si quedó de un seeder anterior.
-     * Los permisos viven en los submódulos config_* .
-     */
-    private function purgeLegacyConfigModule(): void
+    /** Elimina llaves legacy / monolíticas que ya no forman parte del catálogo. */
+    private function purgeLegacyKeys(): void
     {
-        $this->execute("DELETE FROM role_permissions WHERE module_key = 'configuracion'");
-        $this->execute("DELETE FROM system_modules WHERE module_key = 'configuracion'");
+        $legacy = [
+            'segment_utility',
+            'configuracion',
+            'contratos',
+            'clientes',
+            'config_catalogo',
+            'config_precios',
+        ];
+        foreach ($legacy as $key) {
+            $this->execute(sprintf(
+                "DELETE FROM role_permissions WHERE module_key = '%s'",
+                $this->quote($key)
+            ));
+            $this->execute(sprintf(
+                "DELETE FROM system_modules WHERE module_key = '%s'",
+                $this->quote($key)
+            ));
+        }
     }
 
     /**
@@ -92,7 +121,7 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
             [
                 'code' => 'admin_general',
                 'name' => 'Administrador General',
-                'description' => 'CRUD total en módulos operativos y todos los submódulos de configuración. Alcance: Todos.',
+                'description' => 'Acceso total en los 18 módulos (según acciones aplicables). Alcance: Todos.',
                 'is_system' => 1,
             ],
             [
@@ -116,7 +145,7 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
             [
                 'code' => 'gestor_promociones',
                 'name' => 'Gestor de Promociones',
-                'description' => 'Ejemplo especializado: solo administra Promociones (config) y consulta promociones de ventas. Sin precios ni usuarios.',
+                'description' => 'Administra Promociones (config) y consulta promociones vigentes. Sin precios ni usuarios.',
                 'is_system' => 0,
             ],
         ];
@@ -170,7 +199,7 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
             'clients',
             'requests',
             'collections',
-            'segment_utility',
+            'segment_profitability',
             'sales_promotions',
         ];
         $config = [
@@ -194,14 +223,14 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
         }
 
         $matrices = [
-            'admin_general' => $this->fullCrudMatrix($allModules),
+            'admin_general' => $this->adminMatrix($allModules),
             'operador_comercial' => array_merge([
                 'dashboard' => [1, 0, 0, 0],
                 'contracts' => [1, 1, 1, 0],
                 'clients' => [1, 1, 1, 0],
                 'requests' => [1, 1, 1, 0],
                 'collections' => [0, 0, 0, 0],
-                'segment_utility' => [0, 0, 0, 0],
+                'segment_profitability' => [0, 0, 0, 0],
                 'sales_promotions' => [1, 0, 0, 0],
             ], $zeroConfig),
             'supervisor_segmento' => array_merge([
@@ -210,7 +239,7 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
                 'clients' => [1, 1, 1, 0],
                 'requests' => [1, 1, 1, 0],
                 'collections' => [1, 0, 1, 0],
-                'segment_utility' => [1, 0, 0, 0],
+                'segment_profitability' => [1, 0, 0, 0],
                 'sales_promotions' => [1, 0, 0, 0],
             ], $zeroConfig),
             'ejecutivo_ventas' => array_merge([
@@ -219,7 +248,7 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
                 'clients' => [1, 1, 0, 0],
                 'requests' => [0, 0, 0, 0],
                 'collections' => [0, 0, 0, 0],
-                'segment_utility' => [0, 0, 0, 0],
+                'segment_profitability' => [0, 0, 0, 0],
                 'sales_promotions' => [1, 0, 0, 0],
             ], $zeroConfig),
             'gestor_promociones' => array_merge([
@@ -228,7 +257,7 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
                 'clients' => [0, 0, 0, 0],
                 'requests' => [0, 0, 0, 0],
                 'collections' => [0, 0, 0, 0],
-                'segment_utility' => [0, 0, 0, 0],
+                'segment_profitability' => [0, 0, 0, 0],
                 'sales_promotions' => [1, 0, 0, 0],
             ], array_merge($zeroConfig, [
                 'config_promotions' => [1, 1, 1, 0],
@@ -275,13 +304,27 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
     }
 
     /**
+     * Acceso total del Administrador General respetando acciones aplicables por módulo.
+     *
      * @param list<string> $modules
      * @return array<string, list<int>>
      */
-    private function fullCrudMatrix(array $modules): array
+    private function adminMatrix(array $modules): array
     {
         $matrix = [];
         foreach ($modules as $moduleKey) {
+            if (in_array($moduleKey, self::READ_ONLY, true)) {
+                $matrix[$moduleKey] = [1, 0, 0, 0];
+                continue;
+            }
+            if (in_array($moduleKey, self::VIEW_EDIT, true)) {
+                $matrix[$moduleKey] = [1, 0, 1, 0];
+                continue;
+            }
+            if (in_array($moduleKey, self::VIEW_EDIT_DELETE, true)) {
+                $matrix[$moduleKey] = [1, 0, 1, 1];
+                continue;
+            }
             $matrix[$moduleKey] = [1, 1, 1, 1];
         }
 
@@ -289,8 +332,6 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
     }
 
     /**
-     * Enlaza usuarios semilla con su rol. No escribe una columna `rol`: solo role_id.
-     *
      * @param array<string, int> $roleIds
      */
     private function linkExistingUsers(array $roleIds, string $nowUtc): void

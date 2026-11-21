@@ -189,7 +189,7 @@ Obligatorios para quien continúe el proyecto:
 - Auth: JWT del framework — **prohibido Sanctum**.
 - **Cero mockups** fuera del Dashboard (Login, Catálogo, Contratos, Clientes, Cobranza, Solicitudes).
 - **Kit atómico (Single Source of Truth):** prohibido `<select>` / `<input>` / `<textarea>` / `<button>` nativos en `src/pages/**` o componentes de negocio. Importar solo desde `src/components/ui/` (`AppCard`, `AppInput`, `AppSelect`, `AppButton`, `AppBadge`, `AppModal`, `AppSwitch`, `AppTableWrapper`, `AppFilterField`). Un cambio visual global = un archivo del kit.
-- **RBAC multinivel:** permisos por `module_key` (`config_*` + operativos); sin permiso monolítico `configuration`.
+- **RBAC multinivel (18 `module_key`):** operativos (`main`: `dashboard`…`sales_promotions` + `segment_profitability`) y `config_*` (`configuration`); sin permiso monolítico `configuration`.
 - **Filtros con `<label>` visible:** todo criterio de toolbar/tabla usa `AppFilterField` (o equivalente); catálogos dinámicos desde MySQL.
 - **Auditoría automática (`audit_logs`):** toda escritura vía `System/Support/AuditLogger.php`; secretos redactados; módulo Sistema siempre audita; depuración solo con `@allow_audit_purge`.
 
@@ -346,12 +346,13 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `database/migrations/*` | Esquema inglés consolidado: MRR (000001), auth (000002), catálogo (000003), RBAC (000004); 000005–000007/000009 no-op de secuencia; triggers RNF-3 (000008); settings/audit (000010); clients Módulo 3 (000011). |
 | `database/migrations/20260925000011_enrich_clients_directory_module3.php` | `clients`: `segment_id`, contacto, `active`, índices `(segment_id, active)` / `rfc`. |
 | `database/migrations/20260925000012_enrich_contracts_module3_paso2.php` | `contracts` enriquecido (`issuer_id`, `price_list_id`, `mrr_mxn`…) + tabla `contract_lines`. |
+| `database/migrations/20260925000014_unify_rbac_eighteen_module_keys.php` | Unifica 18 `module_key` canónicos; renombra `segment_utility` → `segment_profitability`; limpia aliases legacy. |
 | `database/seeds/ClientsSeeder.php` | ≥8 clientes realistas Operam/Construsync × Piloto/Cibus (idempotente). |
 | `database/seeds/ContractsSeeder.php` | 4 contratos demo CT-0601…0604 con líneas, movements y monthly_mrr (idempotente). |
 | `database/scripts/reset_english_schema.php` | DROP tablas legacy (español) + actuales + `phinxlog` para remigrar en limpio. |
 | `scripts/reset_operational_data.php` | TRUNCATE operativo/comercial (contratos, clientes, catálogo, MRR, audit) conservando auth/RBAC/segmentos/settings; verifica triggers RNF-3. |
 | `database/migrations/20260925000009_add_package_link_and_fx_rate.php` | No-op de secuencia. Columnas vivas: `services.package_service_id` + `package_factor`; `segments.usd_exchange_rate`. |
-| `database/seeds/*` | Sep 2026 + EnterpriseUsers + CatalogAndPricing + RbacRolesAndPermissions (`module_key` en inglés, incluye `config_system` y `config_audit_logs`, + Gestor de Promociones). |
+| `database/seeds/*` | Sep 2026 + EnterpriseUsers + CatalogAndPricing + RbacRolesAndPermissions (18 `module_key` en inglés, `segment_profitability`, matriz aplicable por módulo, + Gestor de Promociones). |
 | `backend/src/Models/*` | Movement, Client, Contract, Segment, Issuer, MonthlyMrr, CollectionStatus. |
 | `backend/src/Services/MovementService.php` | Alta inmutable auxiliar (Operam\Services) + Money. |
 | `System/Services/MovementsService.php` | API `operam/servicios`: INSERT + reversión + sync transaccional `monthly_mrr` (bcadd); bloqueo UPDATE/DELETE. |

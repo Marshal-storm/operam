@@ -18,6 +18,10 @@ use System\Support\AuditLogger;
  */
 final class PriceListItemsService extends ModelService
 {
+    private const MODULE_KEY = 'config_prices';
+
+    private const VIEW_ALIASES = ['config_prices', 'contracts'];
+
     protected function modelClass(): string
     {
         return PriceListItemsModel::class;
@@ -41,9 +45,17 @@ final class PriceListItemsService extends ModelService
         $auth = $context->getData('auth', []);
 
         if ($method === 'GET' && $id === null) {
+            if (!RbacAuthHelper::canAny($auth, self::VIEW_ALIASES, 'view')) {
+                return Result::fail('Sin permiso para consultar ítems de precio.', 403);
+            }
+
             return Result::ok($this->listEnriched(), 'Ítems de precio');
         }
         if ($method === 'POST' && $id === null) {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'create')
+                && !RbacAuthHelper::can($auth, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para crear ítems de precio.', 403);
+            }
             $input = $this->normalizeScale($this->normalizeMoney($context->getRequest()));
             $scaleError = $this->assertValidScale($input, null);
             if ($scaleError !== null) {
@@ -63,6 +75,11 @@ final class PriceListItemsService extends ModelService
         }
         // Quitar producto completo de una lista (todas las frecuencias / escalas).
         if ($method === 'DELETE' && $id === null) {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'delete')
+                && !RbacAuthHelper::can($auth, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para eliminar ítems de precio.', 403);
+            }
+
             return $this->removeProductFromList($context->getRequest(), $auth);
         }
         if ($id === null) {
@@ -71,6 +88,9 @@ final class PriceListItemsService extends ModelService
 
         $itemId = (int) $id;
         if ($method === 'PUT') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para editar ítems de precio.', 403);
+            }
             $input = $this->normalizeScale($this->normalizeMoney($context->getRequest()));
             $scaleError = $this->assertValidScale($input, $itemId);
             if ($scaleError !== null) {
@@ -86,6 +106,9 @@ final class PriceListItemsService extends ModelService
             return $updated;
         }
         if ($method === 'PATCH') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para editar ítems de precio.', 403);
+            }
             $existing = $this->findModel($itemId);
             if ($existing === null) {
                 return Result::fail('Ítem no encontrado.', 404);
@@ -106,6 +129,10 @@ final class PriceListItemsService extends ModelService
             return $patched;
         }
         if ($method === 'DELETE') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'delete')
+                && !RbacAuthHelper::can($auth, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para eliminar ítems de precio.', 403);
+            }
             $model = $this->findModel($itemId);
             if ($model === null) {
                 return Result::fail('Ítem no encontrado.', 404);

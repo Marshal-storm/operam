@@ -129,6 +129,23 @@ final class RbacAuthHelper
     }
 
     /**
+     * True si el usuario tiene la acción en al menos uno de los module_key.
+     *
+     * @param array<string, mixed> $auth
+     * @param list<string> $moduleKeys
+     */
+    public static function canAny(array $auth, array $moduleKeys, string $action): bool
+    {
+        foreach ($moduleKeys as $moduleKey) {
+            if (self::can($auth, $moduleKey, $action)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Revoca todas las sesiones activas de un usuario (cambio de rol, segmento o estado).
      */
     public static function revokeSessionsForUser(int $userId): int

@@ -141,7 +141,7 @@ Obligatorio para este y todos los módulos futuros:
 - **Crisp Light (intacta):** fondo `#F8FAFC`; tarjetas `#FFFFFF` + `border-slate-200/80`; texto `#090D16`.
 - **Acentos iOS:** azul `#0A84FF` (dark) / `#0066FF` (light); verde `#10B981`; ámbar `#F59E0B`; rojo `#EF4444`.
 - **Layout shell:** Sidebar a altura completa (`h-screen`); header solo en la columna derecha sobre el `<main>`.
-- **Tema por defecto:** `prefers-color-scheme` del SO; switch iOS para override.
+- **Tema por defecto:** `prefers-color-scheme` del SO (`preference = 'system'`). El selector de tema (**Sistema / Claro / Oscuro OLED**) vive en **Configuración → Preferencias de pantalla** (`ScreenPreferencesPage` + `useTheme()`); el Login puede conservar un `ThemeToggleSwitch` compacto. **Prohibido** el selector de Apariencia en el pie del Sidebar.
 - **Tipografía Oficial Operam (obligatoria en todos los módulos):**
   - Encabezados / títulos / marca / KPI grandes (`h1`–`h3`, `.font-heading`): **Ubuntu** 500/700, `letter-spacing: -0.4px`.
   - UI general (`font-sans`, body, menús, tablas, formularios): **Ubuntu**, **DM Sans**, `system-ui`, sans-serif (400/500/700).
@@ -178,9 +178,10 @@ Obligatorio para este y todos los módulos futuros:
 
 CADA vez que se cree o modifique un módulo del sistema:
 
-1. **Registro obligatorio de `module_key`** en el catálogo (`system_modules` / matriz `role_permissions`) con permisos CRUD (`can_view`, `can_create`, `can_edit`, `can_delete`). **Prohibido** un permiso monolítico `configuration`. Claves vigentes multinivel (inglés):
-   - **Nivel 1 — Operativos (`group_key = 'main'`):** `dashboard`, `contracts`, `clients`, `requests`, `collections`, `segment_utility`, `sales_promotions`.
+1. **Registro obligatorio de `module_key`** en el catálogo (`system_modules` / matriz `role_permissions`) con permisos CRUD (`can_view`, `can_create`, `can_edit`, `can_delete`). **Prohibido** un permiso monolítico `configuration`. Catálogo oficial de **18** claves multinivel (inglés, `group_key` también en inglés):
+   - **Nivel 1 — Operativos (`group_key = 'main'`):** `dashboard`, `contracts`, `clients`, `requests`, `collections`, `segment_profitability`, `sales_promotions`.
    - **Nivel 2 — Submódulos de Configuración (`group_key = 'configuration'`):** `config_catalog`, `config_prices`, `config_promotions`, `config_issuers`, `config_instances`, `config_users`, `config_roles`, `config_company`, `config_system`, `config_audit_logs`, `config_preferences`.
+   - **Acciones aplicables en matriz UI:** solo lectura (`dashboard`, `sales_promotions`, `segment_profitability`, `config_audit_logs`) → Ver; `config_company` / `config_preferences` → Ver+Editar; `config_system` → Ver+Editar+Eliminar (depurar); el resto → CRUD completo.
 2. **Visibilidad Sidebar/Rutas:** Si no hay `can_view` en un módulo/submódulo, se oculta el ítem y la ruta bloquea. El padre `"Configuración"` se muestra **solo si** el usuario tiene `can_view` en **al menos un** `config_*`; cada sub-ítem se filtra individualmente. Botones Crear/Editar/Eliminar usan la llave específica del submódulo (`canCreate('config_promotions')`, etc.).
 3. **Alcance de Segmento Dinámico:** `Todos` (`segment_id = NULL`) o el segmento asignado (`segment_id` + `segment_name` desde tabla `segments`). JWT/`auth` exponen `segment_id`, `segment_name` (o `'Todos'`) y mapa `permissions` (`view`/`create`/`edit`/`delete`). Con segmento fijo, APIs y filtros de pantalla se bloquean a ese alcance. **Prohibido** quemar nombres de segmento en el frontend; usar `useSegments()` / `GET /api/segments`.
 4. **Revocación inmediata de sesión:** Al cambiar `role_id`, `segment_id` o `is_active = false` de un usuario, o al guardar la matriz `role_permissions` de un rol, se revocan (`is_revoked = 1`) las filas de `active_sessions` afectadas. El guardia JWT responde `401` y el frontend cierra sesión (toast + `/login`). Si el admin se afecta a sí mismo, logout automático tras guardar.

@@ -1,5 +1,5 @@
-import { BellRing, Check, LayoutList, Rows3 } from 'lucide-react'
-import { useRef } from 'react'
+import { BellRing, Check, LayoutList, Monitor, Moon, Rows3, Sun } from 'lucide-react'
+import { useRef, type ComponentType } from 'react'
 import {
   PAGE_SIZE_OPTIONS,
   TOAST_POSITION_LABELS,
@@ -8,10 +8,53 @@ import {
   type TableDensity,
   type ToastPosition,
 } from '@/context/ScreenPreferencesContext'
+import { useTheme, type ThemePreference } from '@/context/ThemeContext'
 import { useToast, type ToastVariant } from '@/context/ToastContext'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
 import { cn } from '@/lib/utils'
+
+/** Opciones visuales del selector de tema (Sistema / Claro / Oscuro OLED). */
+const THEME_OPTIONS: ReadonlyArray<{
+  value: ThemePreference
+  title: string
+  hint: string
+  icon: ComponentType<{ className?: string }>
+}> = [
+  {
+    value: 'system',
+    title: 'Automático (Sistema)',
+    hint: 'Sigue la preferencia de color del sistema operativo',
+    icon: Monitor,
+  },
+  {
+    value: 'light',
+    title: 'Claro',
+    hint: 'Tema Crisp Light siempre activo',
+    icon: Sun,
+  },
+  {
+    value: 'dark',
+    title: 'Oscuro OLED',
+    hint: 'True Dark OLED neutro, sin tintes azulados',
+    icon: Moon,
+  },
+]
+
+const THEME_TOAST_COPY: Record<ThemePreference, { title: string; description: string }> = {
+  system: {
+    title: 'Tema automático',
+    description: 'Operam seguirá la apariencia del sistema.',
+  },
+  light: {
+    title: 'Tema claro',
+    description: 'Se aplicó el tema Crisp Light.',
+  },
+  dark: {
+    title: 'Tema Oscuro OLED',
+    description: 'Se aplicó el True Dark OLED neutro.',
+  },
+}
 
 /** Orden visual de la mini-pantalla 3×2 (arriba → abajo). */
 const TOAST_GRID: ToastPosition[] = [
@@ -52,7 +95,7 @@ const PREVIEW_TOASTS: ReadonlyArray<{
 ]
 
 /**
- * Preferencias de pantalla — pageSize, densidad y posición de toasts.
+ * Preferencias de pantalla — tema, pageSize, densidad y posición de toasts.
  * Parámetros comerciales viven en `/configuracion/empresa`.
  */
 export function ScreenPreferencesPage() {
@@ -64,8 +107,15 @@ export function ScreenPreferencesPage() {
     setDensity,
     setToastPosition,
   } = useScreenPreferences()
+  const { preference, setPreference } = useTheme()
   const toast = useToast()
   const previewSeqRef = useRef(0)
+
+  function saveTheme(next: ThemePreference) {
+    setPreference(next)
+    const copy = THEME_TOAST_COPY[next]
+    toast.success(copy.title, copy.description)
+  }
 
   function savePageSize(n: PageSizeOption) {
     setPageSize(n)
@@ -102,10 +152,61 @@ export function ScreenPreferencesPage() {
           Preferencias de pantalla
         </h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Define cuántos registros ves por página, la densidad de tablas y dónde aparecen las
-          notificaciones. Se guarda en este navegador.
+          Define el tema visual, cuántos registros ves por página, la densidad de tablas y dónde
+          aparecen las notificaciones. Se guarda en este navegador.
         </p>
       </header>
+
+      <AppCard className="space-y-4 p-5 md:p-6">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#0066FF]/10 text-[#0066FF] dark:bg-[#0A84FF]/15 dark:text-[#0A84FF]">
+            <Sun className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="font-heading text-base font-semibold">Apariencia y tema</h2>
+            <p className="text-xs text-slate-500">
+              Elige Automático, Claro u Oscuro OLED. El cambio se aplica al instante.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {THEME_OPTIONS.map((opt) => {
+            const Icon = opt.icon
+            const selected = preference === opt.value
+            return (
+              <AppButton
+                key={opt.value}
+                type="button"
+                variant="ghost"
+                onClick={() => saveTheme(opt.value)}
+                className={cn(
+                  'relative h-auto flex-col items-start gap-0 rounded-2xl border p-4 text-left font-normal',
+                  selected
+                    ? 'border-[#0066FF]/40 bg-blue-50 hover:bg-blue-50 dark:border-[#0A84FF]/40 dark:bg-[#0A84FF]/15 dark:hover:bg-[#0A84FF]/15'
+                    : 'border-slate-200/80 hover:bg-slate-50 dark:border-white/[0.09] dark:hover:bg-white/[0.04]',
+                )}
+              >
+                {selected && (
+                  <Check className="absolute right-2 top-2 h-3.5 w-3.5 text-[#0066FF] dark:text-[#0A84FF]" />
+                )}
+                <span
+                  className={cn(
+                    'mb-3 flex h-10 w-10 items-center justify-center rounded-xl',
+                    selected
+                      ? 'bg-[#0066FF]/15 text-[#0066FF] dark:bg-[#0A84FF]/20 dark:text-[#0A84FF]'
+                      : 'bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-zinc-300',
+                  )}
+                >
+                  <Icon className="h-5 w-5" />
+                </span>
+                <p className="font-heading font-semibold">{opt.title}</p>
+                <p className="mt-1 text-xs text-slate-500">{opt.hint}</p>
+              </AppButton>
+            )
+          })}
+        </div>
+      </AppCard>
 
       <AppCard className="space-y-4 p-5 md:p-6">
         <div className="flex items-start gap-3">

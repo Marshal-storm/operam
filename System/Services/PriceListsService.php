@@ -15,6 +15,10 @@ use Throwable;
 
 final class PriceListsService extends ModelService
 {
+    private const MODULE_KEY = 'config_prices';
+
+    private const VIEW_ALIASES = ['config_prices', 'contracts'];
+
     protected function modelClass(): string
     {
         return PriceListsModel::class;
@@ -40,9 +44,16 @@ final class PriceListsService extends ModelService
         $request = RbacAuthHelper::applySegmentFilterToQuery($auth, $context->getRequest());
 
         if ($method === 'GET' && $id === null) {
+            if (!RbacAuthHelper::canAny($auth, self::VIEW_ALIASES, 'view')) {
+                return Result::fail('Sin permiso para consultar listas de precios.', 403);
+            }
+
             return Result::ok($this->listEnriched($auth), 'Listas de precios');
         }
         if ($method === 'POST' && $id === null) {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'create')) {
+                return Result::fail('Sin permiso para crear listas de precios.', 403);
+            }
             $denied = RbacAuthHelper::assertSegmentWriteAllowed($auth, $request);
             if ($denied !== null) {
                 return Result::fail($denied, 403);
@@ -59,6 +70,9 @@ final class PriceListsService extends ModelService
 
         $listId = (int) $id;
         if ($method === 'PUT') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para editar listas de precios.', 403);
+            }
             $denied = RbacAuthHelper::assertSegmentWriteAllowed($auth, $request);
             if ($denied !== null) {
                 return Result::fail($denied, 403);
@@ -70,9 +84,16 @@ final class PriceListsService extends ModelService
             return $this->persistWithUniqueDefault($request, $listId, $context, 'update');
         }
         if ($method === 'PATCH') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para editar listas de precios.', 403);
+            }
+
             return $this->persistWithUniqueDefault($request, $listId, $context, 'patch');
         }
         if ($method === 'DELETE') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'delete')) {
+                return Result::fail('Sin permiso para desactivar listas de precios.', 403);
+            }
             $before = $this->priceListSnapshot($listId);
             $deactivated = $this->patch($listId, ['is_active' => false], $context);
             if ($deactivated->isSuccess()) {

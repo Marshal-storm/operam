@@ -13,6 +13,11 @@ use System\Support\AuditLogger;
 
 final class PromotionsService extends ModelService
 {
+    private const MODULE_KEY = 'config_promotions';
+
+    /** Lectura: admin de promos, vendedores o alta de contratos (cupones). */
+    private const VIEW_ALIASES = ['config_promotions', 'sales_promotions', 'contracts'];
+
     protected function modelClass(): string
     {
         return PromotionsModel::class;
@@ -42,9 +47,16 @@ final class PromotionsService extends ModelService
         $request = RbacAuthHelper::applySegmentFilterToQuery($auth, $context->getRequest());
 
         if ($method === 'GET' && $id === null) {
+            if (!RbacAuthHelper::canAny($auth, self::VIEW_ALIASES, 'view')) {
+                return Result::fail('Sin permiso para consultar promociones.', 403);
+            }
+
             return Result::ok($this->listEnriched($auth), 'Promociones');
         }
         if ($method === 'POST' && $id === null) {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'create')) {
+                return Result::fail('Sin permiso para crear promociones.', 403);
+            }
             $denied = RbacAuthHelper::assertSegmentWriteAllowed($auth, $request);
             if ($denied !== null) {
                 return Result::fail($denied, 403);
@@ -71,6 +83,9 @@ final class PromotionsService extends ModelService
 
         $promoId = (int) $id;
         if ($method === 'PUT') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para editar promociones.', 403);
+            }
             $denied = RbacAuthHelper::assertSegmentWriteAllowed($auth, $request);
             if ($denied !== null) {
                 return Result::fail($denied, 403);
@@ -88,6 +103,9 @@ final class PromotionsService extends ModelService
             return $updated;
         }
         if ($method === 'PATCH') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para editar promociones.', 403);
+            }
             $payload = $this->normalizeMoney($request);
             $before = $this->promotionSnapshot($promoId);
             $patched = $this->patch($promoId, $payload, $context);
@@ -99,6 +117,9 @@ final class PromotionsService extends ModelService
             return $patched;
         }
         if ($method === 'DELETE') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'delete')) {
+                return Result::fail('Sin permiso para desactivar promociones.', 403);
+            }
             $before = $this->promotionSnapshot($promoId);
             $patched = $this->patch($promoId, ['is_active' => false], $context);
             if ($patched->isSuccess()) {

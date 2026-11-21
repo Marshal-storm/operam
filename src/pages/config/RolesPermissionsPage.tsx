@@ -25,7 +25,11 @@ import {
   fetchSystemModules,
   saveRolePermissions,
 } from '@/services/rbacService'
-import type { ModulePermission, PermissionsMap } from '@/types/auth'
+import {
+  isCrudActionApplicable,
+  type ModulePermission,
+  type PermissionsMap,
+} from '@/types/auth'
 
 const EMPTY_PERM: ModulePermission = {
   view: false,
@@ -109,7 +113,8 @@ export function RolesPermissionsPage() {
   const isDirty =
     selectedRole != null && !permsEqual(draftPerms, clonePerms(selectedRole.permissions))
 
-  const principalModules = (modulesQuery.data ?? []).filter((m) => m.group_key === 'principal')
+  // group_key canónico en inglés (main | configuration).
+  const principalModules = (modulesQuery.data ?? []).filter((m) => m.group_key === 'main')
   const configModules = (modulesQuery.data ?? []).filter((m) => m.group_key === 'configuration')
 
   const savePermsMutation = useMutation({
@@ -168,26 +173,42 @@ export function RolesPermissionsPage() {
             <p className="font-medium">{mod.name}</p>
             <p className="font-mono text-[11px] text-slate-400">{mod.module_key}</p>
           </td>
-          {CRUD_KEYS.map((col) => (
-            <td key={col.key} className="px-3 py-3 text-center">
-              <div className="inline-flex justify-center">
-                <AppSwitch
-                  checked={flags[col.key]}
-                  disabled={!canEdit('config_roles')}
-                  label={`${col.label} ${mod.name}`}
-                  onCheckedChange={(next) => {
-                    setDraftPerms((prev) => ({
-                      ...prev,
-                      [mod.module_key]: {
-                        ...(prev[mod.module_key] ?? EMPTY_PERM),
-                        [col.key]: next,
-                      },
-                    }))
-                  }}
-                />
-              </div>
-            </td>
-          ))}
+          {CRUD_KEYS.map((col) => {
+            const applicable = isCrudActionApplicable(mod.module_key, col.key)
+            return (
+              <td key={col.key} className="px-3 py-3 text-center">
+                {applicable ? (
+                  <div className="inline-flex justify-center">
+                    <AppSwitch
+                      checked={flags[col.key]}
+                      disabled={!canEdit('config_roles')}
+                      label={`${col.label} ${mod.name}`}
+                      onCheckedChange={(next) => {
+                        setDraftPerms((prev) => {
+                          const base = { ...(prev[mod.module_key] ?? EMPTY_PERM), [col.key]: next }
+                          // Fuerza a false las acciones no aplicables del módulo.
+                          for (const action of ['view', 'create', 'edit', 'delete'] as const) {
+                            if (!isCrudActionApplicable(mod.module_key, action)) {
+                              base[action] = false
+                            }
+                          }
+                          return { ...prev, [mod.module_key]: base }
+                        })
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <span
+                    className="select-none text-slate-300 dark:text-zinc-600"
+                    title="Acción no aplicable"
+                    aria-hidden
+                  >
+                    —
+                  </span>
+                )}
+              </td>
+            )
+          })}
         </tr>
       )
     })

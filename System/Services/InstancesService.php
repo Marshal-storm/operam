@@ -14,6 +14,8 @@ use System\Support\AuditLogger;
 
 final class InstancesService extends ModelService
 {
+    private const MODULE_KEY = 'config_instances';
+
     private const ALLOWED_PER_PAGE = [10, 25, 50, 100];
 
     protected function modelClass(): string
@@ -41,9 +43,16 @@ final class InstancesService extends ModelService
         $request = RbacAuthHelper::applySegmentFilterToQuery($auth, $context->getRequest());
 
         if ($method === 'GET' && $id === null) {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'view')) {
+                return Result::fail('Sin permiso para consultar instancias.', 403);
+            }
+
             return Result::ok($this->listPaginated($request), 'Instancias');
         }
         if ($method === 'POST' && $id === null) {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'create')) {
+                return Result::fail('Sin permiso para crear instancias.', 403);
+            }
             $denied = RbacAuthHelper::assertSegmentWriteAllowed($auth, $request);
             if ($denied !== null) {
                 return Result::fail($denied, 403);
@@ -69,6 +78,9 @@ final class InstancesService extends ModelService
 
         $instanceId = (int) $id;
         if ($method === 'PUT') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para editar instancias.', 403);
+            }
             $denied = RbacAuthHelper::assertSegmentWriteAllowed($auth, $request);
             if ($denied !== null) {
                 return Result::fail($denied, 403);
@@ -86,6 +98,9 @@ final class InstancesService extends ModelService
             return $updated;
         }
         if ($method === 'PATCH') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para editar instancias.', 403);
+            }
             $before = $this->instanceSnapshot($instanceId);
             $patched = $this->patch($instanceId, $request, $context);
             if ($patched->isSuccess()) {
@@ -96,6 +111,9 @@ final class InstancesService extends ModelService
             return $patched;
         }
         if ($method === 'DELETE') {
+            if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'delete')) {
+                return Result::fail('Sin permiso para dar de baja instancias.', 403);
+            }
             $before = $this->instanceSnapshot($instanceId);
             $patched = $this->patch($instanceId, ['status' => 'decommissioned'], $context);
             if ($patched->isSuccess()) {

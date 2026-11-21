@@ -1,0 +1,1 @@
+feat(rbac-ui): unify 18 granular RBAC module permissions, collapsed sidebar flyout, clean header scope, and theme in screen preferences

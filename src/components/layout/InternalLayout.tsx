@@ -1,3 +1,4 @@
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import {
   ChevronDown,
   ChevronLeft,
@@ -24,12 +25,11 @@ import {
   Shield,
   Cpu,
   History,
+  Mail,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type ComponentType } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
-import { ThemeToggleSwitch } from '@/components/ui/ThemeToggleSwitch'
 import { useAuth } from '@/context/AuthContext'
 import { usePermissions } from '@/hooks/usePermissions'
 import { cn } from '@/lib/utils'
@@ -62,7 +62,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: Gift,
     module: 'sales_promotions',
   },
-  { label: 'Utilidad por segmento', to: '/utilidad', icon: PieChart, module: 'segment_utility' },
+  { label: 'Utilidad por segmento', to: '/utilidad', icon: PieChart, module: 'segment_profitability' },
 ]
 
 const CONFIG_SUBITEMS: ConfigSubItem[] = [
@@ -75,9 +75,44 @@ const CONFIG_SUBITEMS: ConfigSubItem[] = [
   { label: 'Roles y permisos', to: '/configuracion/roles', icon: Shield, module: 'config_roles' },
   { label: 'Empresa', to: '/configuracion/empresa', icon: Building2, module: 'config_company' },
   { label: 'Sistema', to: '/configuracion/sistema', icon: Cpu, module: 'config_system' },
-  { label: 'Bitácora', to: '/configuracion/auditoria', icon: History, module: 'config_audit_logs' },
-  { label: 'Preferencias de pantalla', to: '/configuracion/preferencias', icon: SlidersHorizontal, module: 'config_preferences' },
+  {
+    label: 'Bitácora de auditoría',
+    to: '/configuracion/auditoria',
+    icon: History,
+    module: 'config_audit_logs',
+  },
+  {
+    label: 'Preferencias de pantalla',
+    to: '/configuracion/preferencias',
+    icon: SlidersHorizontal,
+    module: 'config_preferences',
+  },
 ]
+
+/** Superficie iOS Liquid Glass (misma familia que AppRowActionsMenu). */
+const MENU_SURFACE_CLASS =
+  'z-50 min-w-[220px] rounded-2xl p-1.5 ' +
+  'bg-white/80 backdrop-blur-2xl backdrop-saturate-150 ' +
+  'border border-white/85 ring-1 ring-slate-900/[0.07] ' +
+  'shadow-[inset_0_1px_1px_rgba(255,255,255,0.95),0_18px_40px_-10px_rgba(15,23,42,0.18)] ' +
+  'dark:bg-[linear-gradient(145deg,rgba(36,36,42,0.86)_0%,rgba(16,16,20,0.92)_100%)] ' +
+  'dark:border-white/[0.13] dark:ring-1 dark:ring-white/[0.05] ' +
+  'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_20px_48px_-10px_rgba(0,0,0,0.85)] ' +
+  'animate-in fade-in-0 zoom-in-95 duration-150'
+
+const MENU_ITEM_CLASS =
+  'flex cursor-pointer select-none items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium outline-none transition-all duration-150 ' +
+  'text-slate-700 hover:bg-blue-500/10 hover:text-blue-600 ' +
+  'data-[highlighted]:bg-blue-500/10 data-[highlighted]:text-blue-600 ' +
+  'dark:text-zinc-100 dark:hover:bg-blue-500/15 dark:hover:text-blue-400 ' +
+  'dark:data-[highlighted]:bg-blue-500/15 dark:data-[highlighted]:text-blue-400'
+
+const MENU_ITEM_ACTIVE_CLASS =
+  'bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-[#0A84FF]'
+
+const MENU_ITEM_DANGER_CLASS =
+  'text-red-600 hover:bg-red-500/10 data-[highlighted]:bg-red-500/10 data-[highlighted]:text-red-600 ' +
+  'dark:text-red-400 dark:hover:bg-red-500/10 dark:data-[highlighted]:bg-red-500/10'
 
 function UserAvatar({
   name,
@@ -107,6 +142,9 @@ function UserAvatar({
   )
 }
 
+/**
+ * Accordion expandido o flyout Liquid Glass cuando el sidebar está colapsado.
+ */
 function ConfigAccordion({
   collapsed,
   onNavigate,
@@ -115,9 +153,11 @@ function ConfigAccordion({
   onNavigate?: () => void
 }) {
   const location = useLocation()
+  const navigate = useNavigate()
   const { canView, canViewAnyConfig } = usePermissions()
   const inConfig = location.pathname.startsWith('/configuracion')
   const [open, setOpen] = useState(inConfig)
+  const [flyoutOpen, setFlyoutOpen] = useState(false)
 
   const visibleSubitems = useMemo(
     () => CONFIG_SUBITEMS.filter((item) => canView(item.module)),
@@ -132,23 +172,59 @@ function ConfigAccordion({
     return null
   }
 
-  const firstConfigTo = visibleSubitems[0]?.to ?? '/dashboard'
-
   if (collapsed) {
     return (
-      <NavLink
-        to={firstConfigTo}
-        title="Configuración"
-        onClick={onNavigate}
-        className={cn(
-          'flex items-center justify-center rounded-xl px-2 py-2.5 text-sm transition-colors',
-          inConfig
-            ? 'border border-blue-500/20 bg-blue-50 text-blue-600 dark:bg-[#0A84FF]/15 dark:text-[#0A84FF]'
-            : 'text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-white/[0.05]',
-        )}
-      >
-        <Settings className="h-4 w-4" />
-      </NavLink>
+      <DropdownMenu.Root open={flyoutOpen} onOpenChange={setFlyoutOpen}>
+        <DropdownMenu.Trigger asChild>
+          <AppButton
+            type="button"
+            variant="ghost"
+            title="Configuración"
+            aria-label="Abrir configuración"
+            className={cn(
+              'relative h-auto w-full justify-center rounded-xl px-2 py-2.5 font-normal',
+              inConfig || flyoutOpen
+                ? 'border border-blue-500/20 bg-blue-50 text-blue-600 dark:bg-[#0A84FF]/15 dark:text-[#0A84FF]'
+                : 'text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-white/[0.05]',
+            )}
+          >
+            <Settings className="h-4 w-4" />
+          </AppButton>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            side="right"
+            align="start"
+            sideOffset={12}
+            collisionPadding={8}
+            className={cn(MENU_SURFACE_CLASS, 'max-h-[min(70vh,28rem)] overflow-y-auto')}
+            onCloseAutoFocus={(event) => event.preventDefault()}
+          >
+            <p className="px-3 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-zinc-500">
+              Configuración
+            </p>
+            {visibleSubitems.map((item) => {
+              const Icon = item.icon
+              const active = location.pathname === item.to
+              return (
+                <DropdownMenu.Item
+                  key={item.to}
+                  className={cn(MENU_ITEM_CLASS, active && MENU_ITEM_ACTIVE_CLASS)}
+                  onSelect={(event) => {
+                    event.preventDefault()
+                    setFlyoutOpen(false)
+                    navigate(item.to)
+                    onNavigate?.()
+                  }}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" />
+                  <span className="whitespace-nowrap">{item.label}</span>
+                </DropdownMenu.Item>
+              )
+            })}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
     )
   }
 
@@ -244,7 +320,14 @@ function NavItems({
               )
             }
           >
-            <Icon className="h-4 w-4 shrink-0" />
+            <span className="relative shrink-0">
+              <Icon className="h-4 w-4" />
+              {collapsed && item.badge != null && item.badge > 0 ? (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[9px] font-bold leading-none text-white">
+                  {item.badge > 9 ? '9+' : item.badge}
+                </span>
+              ) : null}
+            </span>
             {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
             {!collapsed && item.badge != null && (
               <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[11px] font-semibold text-white">
@@ -312,6 +395,7 @@ function SidebarChrome({
         <AppButton
           type="button"
           variant="ghost"
+          title="Ayuda"
           className={cn(
             'h-auto w-full justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-normal text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-white/[0.05]',
             collapsed && 'justify-center px-2',
@@ -321,23 +405,10 @@ function SidebarChrome({
           {!collapsed && 'Ayuda'}
         </AppButton>
 
-        <div
-          className={cn(
-            'flex items-center rounded-xl px-3 py-2',
-            collapsed ? 'justify-center px-1' : 'justify-between gap-2',
-          )}
-        >
-          {!collapsed && (
-            <span className="text-sm text-slate-500 dark:text-zinc-400">Apariencia</span>
-          )}
-          <ThemeToggleSwitch />
-        </div>
-
-        <div className="my-1 border-t border-slate-200/80 dark:border-white/[0.07]" />
-
         <AppButton
           type="button"
           variant="ghost"
+          title="Cerrar sesión"
           className={cn(
             'h-auto w-full justify-start gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#EF4444] hover:bg-red-500/10 hover:text-[#EF4444]',
             collapsed && 'justify-center px-2',
@@ -356,29 +427,119 @@ function SidebarChrome({
   )
 }
 
+/**
+ * Perfil compacto en header: nombre + rol/alcance + menú Liquid Glass en el avatar.
+ */
 function HeaderUserProfile() {
-  const { user } = useAuth()
-  const { roleName, segmentBadgeLabel, isSegmentLocked } = usePermissions()
+  const { user, logout } = useAuth()
+  const { roleName, isSegmentLocked, canView } = usePermissions()
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+
   if (!user) return null
 
+  const roleLabel = roleName ?? user.role_code ?? 'Usuario'
+  const scopeLabel = isSegmentLocked
+    ? (user.segment_name || 'Segmento')
+    : 'Todos los segmentos'
+
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2.5 sm:gap-3">
       <div className="hidden min-w-0 text-right sm:block">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-          {roleName ?? user.role_code}
-        </p>
-        <p className="truncate text-sm font-semibold text-[#090D16] dark:text-white">
+        <p className="truncate text-sm font-semibold leading-tight text-slate-900 dark:text-white">
           {user.name}
         </p>
+        <p className="mt-0.5 truncate text-[11px] font-medium text-slate-500 dark:text-zinc-400">
+          {roleLabel}
+          <span className="mx-1 opacity-50">·</span>
+          {isSegmentLocked ? (
+            <span className="inline-flex items-center gap-1">
+              <span
+                className="inline-block h-1.5 w-1.5 rounded-full bg-[#0066FF] dark:bg-[#0A84FF]"
+                aria-hidden
+              />
+              <span className="text-slate-600 dark:text-zinc-300">{scopeLabel}</span>
+            </span>
+          ) : (
+            scopeLabel
+          )}
+        </p>
       </div>
-      <span className="hidden max-w-[14rem] md:inline-flex" title={segmentBadgeLabel}>
-        <AppBadge
-          label={segmentBadgeLabel}
-          tone={isSegmentLocked ? 'warning' : 'info'}
-          className="max-w-[14rem] truncate"
-        />
-      </span>
-      <UserAvatar name={user.name} size="sm" />
+
+      <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+        <DropdownMenu.Trigger asChild>
+          <AppButton
+            type="button"
+            variant="ghost"
+            aria-label="Menú de cuenta"
+            className="h-auto rounded-full p-0 hover:bg-transparent"
+          >
+            <UserAvatar name={user.name} size="sm" />
+          </AppButton>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            align="end"
+            sideOffset={8}
+            collisionPadding={8}
+            className={cn(MENU_SURFACE_CLASS, 'w-[260px]')}
+            onCloseAutoFocus={(event) => event.preventDefault()}
+          >
+            <div className="border-b border-slate-200/70 px-3 py-2.5 dark:border-white/[0.08]">
+              <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                {user.name}
+              </p>
+              <p className="mt-1 flex items-center gap-1.5 truncate text-[11px] text-slate-500 dark:text-zinc-400">
+                <Mail className="h-3 w-3 shrink-0 opacity-70" />
+                {user.email}
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-zinc-400">
+                Rol: <span className="font-medium text-slate-700 dark:text-zinc-200">{roleLabel}</span>
+              </p>
+              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-zinc-400">
+                Alcance:{' '}
+                {isSegmentLocked ? (
+                  <span className="inline-flex items-center gap-1 font-medium text-slate-700 dark:text-zinc-200">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#0066FF] dark:bg-[#0A84FF]" />
+                    {scopeLabel}
+                  </span>
+                ) : (
+                  <span className="font-medium text-slate-700 dark:text-zinc-200">{scopeLabel}</span>
+                )}
+              </p>
+            </div>
+
+            {canView('config_preferences') ? (
+              <DropdownMenu.Item
+                className={cn(MENU_ITEM_CLASS, 'mt-1')}
+                onSelect={(event) => {
+                  event.preventDefault()
+                  setOpen(false)
+                  navigate('/configuracion/preferencias')
+                }}
+              >
+                <SlidersHorizontal className="h-4 w-4 shrink-0 opacity-80" />
+                Preferencias de pantalla
+              </DropdownMenu.Item>
+            ) : null}
+
+            <DropdownMenu.Separator className="my-1 h-px bg-slate-200/70 dark:bg-white/[0.08]" />
+
+            <DropdownMenu.Item
+              className={cn(MENU_ITEM_CLASS, MENU_ITEM_DANGER_CLASS)}
+              onSelect={(event) => {
+                event.preventDefault()
+                setOpen(false)
+                logout()
+                navigate('/login', { replace: true })
+              }}
+            >
+              <LogOut className="h-4 w-4 shrink-0" />
+              Cerrar sesión
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
     </div>
   )
 }
