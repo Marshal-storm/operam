@@ -74,6 +74,7 @@ Obligatorio en **todos** los módulos actuales y futuros:
 
 - Sin `float` en dinero; montos `es-MX` + `tabular-nums`; fechas `15 sep 2026` / `America/Mexico_City`.
 - MRR inmutable desde `movements`; Puente de MRR con la ecuación de deltas.
+- **IVA en documentos de cobro (inquebrantable):** El MRR y el Puente de MRR se calculan siempre sobre subtotal (sin impuestos). Al emitir documentos de cobro en `invoices` (manuales o desde solicitudes aprobadas), se aplica automáticamente IVA del 16% con `BCMath` (`tax_amount = bcmul($subtotal, '0.16', 2)`, `total = bcadd($subtotal, $taxAmount, 2)`). Las facturas históricas ya emitidas no se recalculan.
 - Tablas → tarjetas en móvil (UI-4) — ver §3.3 para columnas ESTADO/ACCIONES y badges.
 
 ### RNF-3 — Inmutabilidad de `movements` (obligatorio Módulo 3+)

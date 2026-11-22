@@ -298,7 +298,8 @@ final class CollectionsService extends CustomService
         $today = $this->todayInMexicoCity();
         $creditDays = (int) ($contract->credit_days ?? 0);
         $dueDate = CollectionRules::computeDueDate($today, $creditDays);
-        $amounts = CollectionRules::buildInvoiceAmounts($billable, '0.00');
+        // IVA 16% automático (MRR permanece sobre subtotal sin impuestos).
+        $amounts = CollectionRules::buildInvoiceAmounts($billable);
 
         $invoiceType = match ((string) $request->request_type) {
             'consumption' => 'consumption',
@@ -947,8 +948,8 @@ final class CollectionsService extends CustomService
                     : sprintf('Mensualidad %s %s', $monthLabel, (string) $contract->folio);
             }
 
-            $tax = FinancialCalculator::normalizeMoney((string) ($payload['tax_amount'] ?? '0.00'));
-            $amounts = CollectionRules::buildInvoiceAmounts($subtotal, $tax);
+            // IVA 16% automático; se ignora tax_amount del payload para homogenizar emisión.
+            $amounts = CollectionRules::buildInvoiceAmounts($subtotal);
             $userId = (int) ($this->authContext['user_id'] ?? 0);
             $nowUtc = gmdate('Y-m-d H:i:s');
             $notes = isset($payload['notes']) ? trim((string) $payload['notes']) : null;

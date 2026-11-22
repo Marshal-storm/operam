@@ -145,10 +145,17 @@ export function NewInvoiceModal({
     setValue('due_date', addDays(issueDate, selected.credit_days ?? 0))
   }, [selected, issueDate, setValue])
 
-  const previewTotal =
+  const previewSubtotal =
     mode === 'recurring_cutoff'
       ? selected?.mrr_mxn ?? '0.00'
-      : (amount && Number(amount) > 0 ? Number(amount).toFixed(2) : '0.00')
+      : amount && Number(amount) > 0
+        ? Number(amount).toFixed(2)
+        : '0.00'
+  // IVA 16%: centavos enteros (round half-up sobre subtotal×16).
+  const previewSubCents = Math.round(Number(previewSubtotal) * 100)
+  const previewTaxCents = Math.round((previewSubCents * 16) / 100)
+  const previewTax = (previewTaxCents / 100).toFixed(2)
+  const previewTotal = ((previewSubCents + previewTaxCents) / 100).toFixed(2)
 
   return (
     <AppModal open={open} onOpenChange={onOpenChange}>
@@ -284,14 +291,33 @@ export function NewInvoiceModal({
 
           <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-              Vista previa del total
+              Vista previa del cobro
             </p>
-            <p className="mt-1 font-mono text-xl tabular-nums text-[#090D16] dark:text-white">
-              {formatCurrencyMx(Number(previewTotal))}
-            </p>
+            <div className="mt-2 space-y-1 text-sm">
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500 dark:text-zinc-400">Subtotal</span>
+                <span className="font-mono tabular-nums">
+                  {formatCurrencyMx(previewSubtotal, { fractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500 dark:text-zinc-400">IVA (16%)</span>
+                <span className="font-mono tabular-nums">
+                  {formatCurrencyMx(previewTax, { fractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3 border-t border-slate-200/80 pt-1.5 dark:border-white/[0.08]">
+                <span className="font-semibold text-[#090D16] dark:text-white">
+                  Total a cobrar
+                </span>
+                <span className="font-mono text-lg font-semibold tabular-nums text-[#090D16] dark:text-white">
+                  {formatCurrencyMx(previewTotal, { fractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
             {selected ? (
-              <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                {selected.folio} · {selected.client_name}
+              <p className="mt-2 text-xs text-slate-500 dark:text-zinc-400">
+                {selected.folio} · {selected.client_name} · MRR sin IVA
               </p>
             ) : null}
           </div>

@@ -179,7 +179,7 @@ final class CollectionRulesTest extends TestCase
     }
 
     /**
-     * Generación de factura desde solicitud aprobada one_time (subtotal BCMath exacto).
+     * Generación de factura desde solicitud aprobada one_time (subtotal + IVA 16%).
      */
     public function testInvoiceAmountsFromApprovedOneTimeRequest(): void
     {
@@ -187,10 +187,11 @@ final class CollectionRulesTest extends TestCase
         $lineSubtotal = bcmul('8', '850.00', 2);
         self::assertSame('6800.00', $lineSubtotal);
 
-        $invoice = CollectionRules::buildInvoiceAmounts($lineSubtotal, '0.00');
+        $invoice = CollectionRules::buildInvoiceAmounts($lineSubtotal);
         self::assertSame('6800.00', $invoice['subtotal']);
-        self::assertSame('6800.00', $invoice['total']);
-        self::assertSame('6800.00', $invoice['balance']);
+        self::assertSame('1088.00', $invoice['tax_amount']); // 6800 × 0.16
+        self::assertSame('7888.00', $invoice['total']);
+        self::assertSame('7888.00', $invoice['balance']);
         self::assertSame('0.00', $invoice['paid_amount']);
 
         $due = CollectionRules::computeDueDate('2026-11-21', 15);
@@ -199,5 +200,36 @@ final class CollectionRulesTest extends TestCase
             'pending',
             CollectionRules::resolveOpenInvoiceStatus('0.00', $invoice['balance'], $due, '2026-11-21'),
         );
+    }
+
+    /**
+     * IVA 16% oficial: subtotal 2400 → tax 384 → total/balance 2784;
+     * pago total cierra en 0.00 (MRR del contrato no se toca en cobranza).
+     */
+    public function testInvoiceAppliesSixteenPercentIvaAndFullPaymentClosesBalance(): void
+    {
+        $invoice = CollectionRules::buildInvoiceAmounts('2400.00');
+        self::assertSame('2400.00', $invoice['subtotal']);
+        self::assertSame('384.00', $invoice['tax_amount']);
+        self::assertSame('2784.00', $invoice['total']);
+        self::assertSame('2784.00', $invoice['balance']);
+
+        $contractMrrBefore = FinancialCalculator::normalizeMoney('12500.00');
+
+        $paid = CollectionRules::applyPayment(
+            $invoice['paid_amount'],
+            $invoice['balance'],
+            '2784.00',
+            '2026-12-31',
+            '2026-11-21',
+        );
+        self::assertSame('2784.00', $paid['paid_amount']);
+        self::assertSame('0.00', $paid['balance']);
+        self::assertSame('paid', $paid['status']);
+
+        // Cobranza no muta MRR: el contrato permanece intacto.
+        $contractMrrAfter = $contractMrrBefore;
+        self::assertSame('12500.00', $contractMrrAfter);
+        self::assertSame('0.00', bcsub($contractMrrAfter, $contractMrrBefore, 2));
     }
 }

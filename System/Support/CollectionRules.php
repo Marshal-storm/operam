@@ -279,18 +279,26 @@ final class CollectionRules
         return $dt->modify("+{$days} days")->format('Y-m-d');
     }
 
+    /** Tasa de IVA oficial para documentos de cobro (MRR permanece sin impuestos). */
+    public const IVA_RATE = '0.16';
+
     /**
-     * Totales de emisión: tax default 0.00; total = subtotal + tax; balance = total.
+     * Totales de emisión con IVA 16% por defecto (BCMath).
+     * `$taxAmount = null` → calcula `bcmul($subtotal, '0.16', 2)`.
+     * Pasar un string explícito solo para tests o casos especiales.
      *
      * @return array{subtotal: string, tax_amount: string, total: string, paid_amount: string, balance: string}
      */
-    public static function buildInvoiceAmounts(string $subtotal, string $taxAmount = '0.00'): array
+    public static function buildInvoiceAmounts(string $subtotal, ?string $taxAmount = null): array
     {
         $sub = FinancialCalculator::normalizeMoney($subtotal);
-        $tax = FinancialCalculator::normalizeMoney($taxAmount);
         if (bccomp($sub, '0.00', self::SCALE) <= 0) {
             throw new InvalidArgumentException('El subtotal del documento debe ser mayor a 0.00.');
         }
+
+        $tax = $taxAmount === null
+            ? bcmul($sub, self::IVA_RATE, self::SCALE)
+            : FinancialCalculator::normalizeMoney($taxAmount);
         $total = bcadd($sub, $tax, self::SCALE);
 
         return [

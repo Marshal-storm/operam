@@ -141,35 +141,51 @@ export function InvoiceDetailModal({
 
               <p className="text-sm text-slate-600 dark:text-zinc-300">{data.concept}</p>
 
-              <div className="grid grid-cols-2 gap-3 rounded-2xl border border-slate-200/80 p-3 dark:border-white/[0.08] sm:grid-cols-4">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase text-slate-500">Total</p>
-                  <p className="font-mono text-sm tabular-nums">
+              <div className="space-y-2 rounded-2xl border border-slate-200/80 p-3 dark:border-white/[0.08]">
+                <div className="flex justify-between gap-3 text-sm">
+                  <span className="text-slate-500">Subtotal</span>
+                  <span className="font-mono tabular-nums">
+                    {formatCurrencyMx(Number(data.subtotal), { fractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3 text-sm">
+                  <span className="text-slate-500">IVA (16%)</span>
+                  <span className="font-mono tabular-nums">
+                    {formatCurrencyMx(Number(data.tax_amount), { fractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-3 border-t border-slate-200/70 pt-2 text-sm dark:border-white/[0.07]">
+                  <span className="font-semibold">Total</span>
+                  <span className="font-mono font-semibold tabular-nums">
                     {formatCurrencyMx(Number(data.total), { fractionDigits: 2 })}
-                  </p>
+                  </span>
                 </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase text-slate-500">Pagado</p>
-                  <p className="font-mono text-sm tabular-nums">
-                    {formatCurrencyMx(Number(data.paid_amount), { fractionDigits: 2 })}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase text-slate-500">Saldo</p>
-                  <p className="font-mono text-sm tabular-nums">
-                    {data.status === 'cancelled'
-                      ? '$0.00'
-                      : formatCurrencyMx(Number(data.balance), { fractionDigits: 2 })}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold uppercase text-slate-500">Vence</p>
-                  <p className="text-sm">{formatDateEsMx(data.due_date)}</p>
-                  {data.days_overdue > 0 ? (
-                    <p className="text-xs font-medium text-red-500">
-                      +{data.days_overdue}d vencido
+                <div className="grid grid-cols-2 gap-3 pt-1 sm:grid-cols-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase text-slate-500">Pagado</p>
+                    <p className="font-mono text-sm tabular-nums">
+                      {formatCurrencyMx(Number(data.paid_amount), { fractionDigits: 2 })}
                     </p>
-                  ) : null}
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase text-slate-500">
+                      Saldo pendiente
+                    </p>
+                    <p className="font-mono text-sm tabular-nums">
+                      {data.status === 'cancelled'
+                        ? '$0.00'
+                        : formatCurrencyMx(Number(data.balance), { fractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase text-slate-500">Vence</p>
+                    <p className="text-sm">{formatDateEsMx(data.due_date)}</p>
+                    {data.days_overdue > 0 ? (
+                      <p className="text-xs font-medium text-red-500">
+                        +{data.days_overdue}d vencido
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               </div>
 

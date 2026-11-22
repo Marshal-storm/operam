@@ -898,19 +898,32 @@ final class ServiceRequestsService extends ModelService
             throw new \RuntimeException('No hay líneas recurrentes para expandir el contrato.');
         }
 
+        // Reconcilia MRR del contrato vs suma de líneas (evita deltas fantasma tipo $400 vs $395).
+        $linesMrrBefore = $this->sumActiveRecurringMrrForContract((int) $contract->id);
         $mrrBefore = FinancialCalculator::normalizeMoney((string) $contract->mrr_mxn);
+        if (bccomp($linesMrrBefore, $mrrBefore, 2) !== 0) {
+            Capsule::table('contracts')->where('id', (int) $contract->id)->update([
+                'mrr_mxn' => $linesMrrBefore,
+                'updated_at' => $nowUtc,
+            ]);
+            $mrrBefore = $linesMrrBefore;
+        }
+
         $exchangeRate = (string) $contract->exchange_rate;
         $frequency = (string) $contract->frequency;
         $addedMrr = '0.00';
+        $addedSubtotal = '0.00';
         $firstLineId = null;
         $firstServiceId = null;
         $qtyAfter = '0.00';
 
         foreach ($recurringItems as $item) {
-            $itemType = 'recurring';
-
             $serviceId = (int) $item->service_id;
             $quantity = max(1, (int) $item->quantity);
+            $frozenSubtotal = FinancialCalculator::normalizeMoney((string) $item->subtotal);
+            $frozenMrr = FinancialCalculator::normalizeMoney((string) $item->mrr_impact_mxn);
+            $unitPrice = FinancialCalculator::normalizeMoney((string) $item->unit_price);
+
             $service = Capsule::table('services')
                 ->select([
                     'id',
@@ -927,7 +940,9 @@ final class ServiceRequestsService extends ModelService
                 throw new \RuntimeException('Servicio recurrente no encontrado o inactivo.');
             }
 
-            $unitPrice = FinancialCalculator::normalizeMoney((string) $item->unit_price);
+            // Re-expande RF-2 solo para estructura (paquete vs sueltos).
+            // Si el total recalculado difiere del congelado en la solicitud, se honra el congelado
+            // (evita desfaces tipo $400 subtotal cotizado vs $395 al re-preciar en approve).
             $allowPkg = (bool) $service->allow_package_conversion;
             $packageServiceId = $service->package_service_id !== null ? (int) $service->package_service_id : null;
             $packageFactor = max(0, (int) ($service->package_factor ?? 0));
@@ -938,17 +953,22 @@ final class ServiceRequestsService extends ModelService
                     ->select(['id', 'name', 'is_active'])
                     ->where('id', $packageServiceId)
                     ->first();
-                if ($pkgService === null || !(bool) $pkgService->is_active) {
-                    throw new \RuntimeException('El producto paquete destino no existe o está inactivo.');
+                if ($pkgService !== null && (bool) $pkgService->is_active) {
+                    $packageName = (string) $pkgService->name;
+                    try {
+                        $packageUnitPrice = $this->resolveListUnitPrice(
+                            $priceListId,
+                            $packageServiceId,
+                            $frequency,
+                            1,
+                            'recurring',
+                        );
+                    } catch (InvalidArgumentException) {
+                        $allowPkg = false;
+                    }
+                } else {
+                    $allowPkg = false;
                 }
-                $packageName = (string) $pkgService->name;
-                $packageUnitPrice = $this->resolveListUnitPrice(
-                    $priceListId,
-                    $packageServiceId,
-                    $frequency,
-                    1,
-                    'recurring',
-                );
             }
 
             $priced = ServiceRequestRules::priceLine(
@@ -966,34 +986,62 @@ final class ServiceRequestsService extends ModelService
                 $packageUnitPrice,
             );
 
-            foreach ($priced['expanded_lines'] as $exp) {
-                // Cupón quemado: discount_amount = 0.00 en expansiones.
+            $useFrozen = bccomp($priced['mrr_impact_mxn'], $frozenMrr, 2) !== 0
+                || bccomp($priced['subtotal'], $frozenSubtotal, 2) !== 0;
+
+            if ($useFrozen || $priced['expanded_lines'] === []) {
+                // Una sola línea con montos congelados de la solicitud (fuente de verdad cotizada).
+                $freq = $frequency === 'annual' ? 'annual' : 'monthly';
                 $insertedId = (int) Capsule::table('contract_lines')->insertGetId([
                     'contract_id' => (int) $contract->id,
-                    'service_id' => (int) $exp['service_id'],
-                    'description' => mb_substr((string) $exp['description'], 0, 200),
-                    'service_type' => (string) $exp['service_type'],
-                    'billing_frequency' => (string) $exp['billing_frequency'],
-                    'quantity' => (int) $exp['quantity'],
-                    'unit_price' => (string) $exp['unit_price'],
+                    'service_id' => $serviceId,
+                    'description' => mb_substr((string) $service->name, 0, 200),
+                    'service_type' => 'recurring',
+                    'billing_frequency' => $freq,
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
                     'discount_amount' => '0.00',
-                    'subtotal' => (string) $exp['subtotal'],
-                    'mrr_mxn' => (string) $exp['mrr_mxn'],
-                    'is_package_converted' => !empty($exp['is_package_converted']) ? 1 : 0,
+                    'subtotal' => $frozenSubtotal,
+                    'mrr_mxn' => $frozenMrr,
+                    'is_package_converted' => 0,
                     'active' => 1,
                     'created_at' => $nowUtc,
                     'updated_at' => $nowUtc,
                 ]);
                 $firstLineId ??= $insertedId;
                 $firstServiceId ??= $serviceId;
-                $addedMrr = bcadd($addedMrr, (string) $exp['mrr_mxn'], 2);
+                $addedMrr = bcadd($addedMrr, $frozenMrr, 2);
+                $addedSubtotal = bcadd($addedSubtotal, $frozenSubtotal, 2);
+            } else {
+                foreach ($priced['expanded_lines'] as $exp) {
+                    // Cupón quemado: discount_amount = 0.00 en expansiones.
+                    $insertedId = (int) Capsule::table('contract_lines')->insertGetId([
+                        'contract_id' => (int) $contract->id,
+                        'service_id' => (int) $exp['service_id'],
+                        'description' => mb_substr((string) $exp['description'], 0, 200),
+                        'service_type' => (string) $exp['service_type'],
+                        'billing_frequency' => (string) $exp['billing_frequency'],
+                        'quantity' => (int) $exp['quantity'],
+                        'unit_price' => (string) $exp['unit_price'],
+                        'discount_amount' => '0.00',
+                        'subtotal' => (string) $exp['subtotal'],
+                        'mrr_mxn' => (string) $exp['mrr_mxn'],
+                        'is_package_converted' => !empty($exp['is_package_converted']) ? 1 : 0,
+                        'active' => 1,
+                        'created_at' => $nowUtc,
+                        'updated_at' => $nowUtc,
+                    ]);
+                    $firstLineId ??= $insertedId;
+                    $firstServiceId ??= $serviceId;
+                    $addedMrr = bcadd($addedMrr, (string) $exp['mrr_mxn'], 2);
+                    $addedSubtotal = bcadd($addedSubtotal, (string) $exp['subtotal'], 2);
+                }
             }
             $qtyAfter = bcadd($qtyAfter, number_format($quantity, 2, '.', ''), 2);
         }
 
-        $impact = ServiceRequestRules::expansionContractImpact($mrrBefore, $addedMrr);
+        // Fuente de verdad: suma BCMath de líneas activas tras el INSERT.
         $newContractMrr = $this->sumActiveRecurringMrrForContract((int) $contract->id);
-        // Recalcula impacto real desde suma de líneas (fuente de verdad).
         $impact = [
             'mrr_before' => $mrrBefore,
             'mrr_after' => $newContractMrr,
@@ -1001,6 +1049,13 @@ final class ServiceRequestsService extends ModelService
         ];
         if (bccomp($impact['mrr_delta_mxn'], '0.00', 2) <= 0) {
             throw new \RuntimeException('La expansión no genera incremento de MRR.');
+        }
+        // Garantiza igualdad exacta: delta del movimiento = MRR de líneas nuevas.
+        if (bccomp($impact['mrr_delta_mxn'], $addedMrr, 2) !== 0) {
+            throw new \RuntimeException(
+                'Inconsistencia MRR: delta calculado (' . $impact['mrr_delta_mxn']
+                . ') ≠ MRR de líneas nuevas (' . $addedMrr . ').',
+            );
         }
 
         Capsule::table('contracts')->where('id', (int) $contract->id)->update([
@@ -1032,9 +1087,10 @@ final class ServiceRequestsService extends ModelService
 
         (new MovementsService())->recordWithinTransaction($movementPayload);
 
-        // Congela impacto MRR de la solicitud al delta real aplicado.
+        // Congela impacto y subtotal al delta/monto real aplicado (coincide con movements).
         Capsule::table('service_requests')->where('id', (int) $request->id)->update([
             'mrr_impact_mxn' => $impact['mrr_delta_mxn'],
+            'subtotal' => $addedSubtotal,
             'updated_at' => $nowUtc,
         ]);
     }

@@ -205,7 +205,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 - [x] **Infra transversal M2:** RBAC por `module_key`, Kit Atómico `src/components/ui/`, `AuditLogger` + `system_settings` / `audit_logs`.
 - [x] **Módulo 3 (checkpoint oficial cerrado):** Directorio de Clientes, Motor de Contratos, Operaciones de Ciclo de Vida y Bitácora Inmutable (RF-3) — pasos 1–3: `/clientes`, `/contratos`, `/contratos/nuevo`, `/contratos/:id`, RF-2 dinámico, cupón quemado, BCMath y `movements` append-only.
 - [x] **Módulo 4 Paso 1:** Bandeja de Solicitudes (`/solicitudes`) — `service_requests` / `service_request_items`, cotizar/aprobar/rechazar/cancelar (`can_delete`), solicitudes mixtas (solo recurring toca MRR), trazabilidad `Origen: SOL-XXXX` en bitácora, badge Sidebar en vivo, RBAC `requests`.
-- [x] **Módulo 4 Paso 2:** Cobranza (`/cobranza`) — `invoices` / `payments`, emisión FAC-XXXX, pagos BCMath + reversión sin DELETE, antigüedad 5 tramos, puente/regeneración desde solicitudes (`from-request`), suspensión automática +90d (respeta `exclude_suspension`), CLI cron, RBAC `collections`, Dashboard aging en vivo.
+- [x] **Módulo 4 Paso 2:** Cobranza (`/cobranza`) — `invoices` / `payments`, emisión FAC-XXXX con **IVA 16% BCMath** (MRR sigue sin impuestos), pagos + reversión sin DELETE, antigüedad 5 tramos, puente/regeneración desde solicitudes (`from-request`), suspensión automática +90d (respeta `exclude_suspension`), CLI cron, RBAC `collections`, Dashboard aging en vivo.
 - [ ] **Módulo 4 (resto):** Portal Cliente con Magic Links e IntegroPAY (RF-4 a RF-8).
 
 ---
