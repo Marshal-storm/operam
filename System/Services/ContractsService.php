@@ -219,6 +219,7 @@ final class ContractsService extends ModelService
             ->leftJoin('instances as ins', 'ins.id', '=', 'c.instance_id')
             ->leftJoin('price_lists as pl', 'pl.id', '=', 'c.price_list_id')
             ->leftJoin('promotions as pr', 'pr.id', '=', 'c.promotion_id')
+            ->leftJoin('collection_statuses as cs', 'cs.contract_id', '=', 'c.id')
             ->leftJoinSub($linesCount, 'lc', 'lc.contract_id', '=', 'c.id');
     }
 
@@ -260,6 +261,8 @@ final class ContractsService extends ModelService
             'pl.name as price_list_name',
             'pr.code as promotion_code',
             'lc.lines_count',
+            'cs.overdue_balance as collection_overdue_balance',
+            'cs.overdue_days as collection_overdue_days',
         ];
     }
 
@@ -405,6 +408,7 @@ final class ContractsService extends ModelService
 
         return Capsule::table('movements as m')
             ->leftJoin('users as u', 'u.id', '=', 'm.user_id')
+            ->leftJoin('service_requests as sr', 'sr.id', '=', 'm.request_id')
             ->where('m.contract_id', $contractId)
             ->orderByDesc('m.created_at')
             ->orderByDesc('m.id')
@@ -423,11 +427,13 @@ final class ContractsService extends ModelService
                 'm.mrr_delta_mxn',
                 'm.exchange_rate',
                 'm.user_id',
+                'm.request_id',
                 'm.reason',
                 'm.has_exception',
                 'm.reversed_movement_id',
                 'm.created_at',
                 'u.name as user_name',
+                'sr.folio as request_folio',
             ])
             ->map(static function (object $row) use ($reversedSet): array {
                 $id = (int) $row->id;
@@ -448,6 +454,8 @@ final class ContractsService extends ModelService
                     'exchange_rate' => (string) $row->exchange_rate,
                     'user_id' => $row->user_id !== null ? (int) $row->user_id : null,
                     'user_name' => $row->user_name !== null ? (string) $row->user_name : null,
+                    'request_id' => $row->request_id !== null ? (int) $row->request_id : null,
+                    'request_folio' => $row->request_folio !== null ? (string) $row->request_folio : null,
                     'reason' => $row->reason !== null ? (string) $row->reason : null,
                     'has_exception' => (bool) $row->has_exception,
                     'reversed_movement_id' => $row->reversed_movement_id !== null
@@ -575,6 +583,15 @@ final class ContractsService extends ModelService
             'created_by' => $row->created_by !== null ? (int) $row->created_by : null,
             'created_at' => (string) $row->created_at,
             'updated_at' => (string) $row->updated_at,
+            'contract_is_current' => bccomp(
+                FinancialCalculator::normalizeMoney((string) ($row->collection_overdue_balance ?? '0')),
+                '0.00',
+                2,
+            ) <= 0 && (int) ($row->collection_overdue_days ?? 0) <= 0,
+            'contract_overdue_balance' => FinancialCalculator::normalizeMoney(
+                (string) ($row->collection_overdue_balance ?? '0'),
+            ),
+            'contract_days_overdue' => (int) ($row->collection_overdue_days ?? 0),
         ];
     }
 

@@ -434,16 +434,18 @@ final class MovementsService extends ModelService
     private function listRecent(array $query): array
     {
         $limit = max(1, min(200, (int) ($query['limit'] ?? 50)));
-        $builder = Capsule::table('movements')
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->limit($limit);
+        $builder = Capsule::table('movements as m')
+            ->leftJoin('service_requests as sr', 'sr.id', '=', 'm.request_id')
+            ->orderByDesc('m.created_at')
+            ->orderByDesc('m.id')
+            ->limit($limit)
+            ->select(['m.*', 'sr.folio as request_folio']);
 
         if (!empty($query['contract_id'])) {
-            $builder->where('contract_id', (int) $query['contract_id']);
+            $builder->where('m.contract_id', (int) $query['contract_id']);
         }
         if (!empty($query['mrr_category'])) {
-            $builder->where('mrr_category', (string) $query['mrr_category']);
+            $builder->where('m.mrr_category', (string) $query['mrr_category']);
         }
 
         return $builder->get()->map(fn (object $row): array => $this->mapRow($row))->all();
@@ -506,6 +508,9 @@ final class MovementsService extends ModelService
             'exchange_rate' => (string) $row->exchange_rate,
             'user_id' => $row->user_id !== null ? (int) $row->user_id : null,
             'request_id' => $row->request_id !== null ? (int) $row->request_id : null,
+            'request_folio' => isset($row->request_folio) && $row->request_folio !== null
+                ? (string) $row->request_folio
+                : null,
             'reason' => $row->reason !== null ? (string) $row->reason : null,
             'has_exception' => (bool) $row->has_exception,
             'excepted_policy' => isset($row->excepted_policy) && $row->excepted_policy !== null

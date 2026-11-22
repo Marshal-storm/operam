@@ -380,6 +380,9 @@ export function ContractDetailPage() {
                 label={CATEGORY_LABEL[mov.mrr_category] ?? mov.mrr_category}
                 tone={CATEGORY_TONE[mov.mrr_category] ?? 'neutral'}
               />
+              {mov.request_folio ? (
+                <AppBadge label={`Origen: ${mov.request_folio}`} variant="info" />
+              ) : null}
               {mov.is_reversed ? (
                 <AppBadge label="Revertido" variant="neutral" />
               ) : null}
@@ -842,6 +845,9 @@ export function ContractDetailPage() {
                       label={CATEGORY_LABEL[mov.mrr_category] ?? mov.mrr_category}
                       tone={CATEGORY_TONE[mov.mrr_category] ?? 'neutral'}
                     />
+                    {mov.request_folio ? (
+                      <AppBadge label={`Origen: ${mov.request_folio}`} variant="info" />
+                    ) : null}
                     {mov.is_reversed ? (
                       <AppBadge label="Revertido" variant="neutral" />
                     ) : null}

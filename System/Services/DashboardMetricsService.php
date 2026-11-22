@@ -378,6 +378,7 @@ final class DashboardMetricsService extends CustomService
             ->leftJoin('clients as cl', 'cl.id', '=', 'c.client_id')
             ->leftJoin('segments as s', 's.id', '=', 'c.segment_id')
             ->leftJoin('users as u', 'u.id', '=', 'm.user_id')
+            ->leftJoin('service_requests as sr', 'sr.id', '=', 'm.request_id')
             ->whereBetween('m.effective_date', [$from, $to])
             ->whereIn('m.mrr_category', self::DELTA_CATEGORIES)
             ->orderBy('m.created_at', 'desc')
@@ -395,11 +396,15 @@ final class DashboardMetricsService extends CustomService
                 'cl.name as client_name',
                 's.name as segment_name',
                 'u.name as user_name',
+                'sr.folio as request_folio',
             ]);
         $this->applySegmentId($builder, $segmentId, 'c.segment_id');
 
         $rows = [];
         foreach ($builder->get() as $row) {
+            $requestFolio = $row->request_folio !== null && (string) $row->request_folio !== ''
+                ? (string) $row->request_folio
+                : null;
             $rows[] = [
                 'id' => (string) $row->id,
                 'effective_date' => (string) $row->effective_date,
@@ -413,7 +418,9 @@ final class DashboardMetricsService extends CustomService
                 'mrr_delta_mxn' => FinancialCalculator::normalizeMoney((string) $row->mrr_delta_mxn),
                 'user' => (string) ($row->user_name ?? 'Sistema'),
                 'reason' => (string) ($row->reason ?? ''),
-                'request_origin' => null,
+                'request_folio' => $requestFolio,
+                // Compat con frontend histórico del Dashboard.
+                'request_origin' => $requestFolio,
             ];
         }
 

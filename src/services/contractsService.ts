@@ -141,6 +141,13 @@ function mapContract(raw: Partial<ContractListItem>): ContractListItem {
     created_by: raw.created_by != null ? Number(raw.created_by) : null,
     created_at: raw.created_at ?? null,
     updated_at: raw.updated_at ?? null,
+    contract_is_current:
+      raw.contract_is_current !== undefined
+        ? Boolean(raw.contract_is_current)
+        : Number(raw.contract_overdue_balance ?? 0) <= 0 &&
+          Number(raw.contract_days_overdue ?? 0) <= 0,
+    contract_overdue_balance: String(raw.contract_overdue_balance ?? '0.00'),
+    contract_days_overdue: Number(raw.contract_days_overdue ?? 0),
   }
 }
 
@@ -181,6 +188,8 @@ function mapMovement(raw: Partial<ContractMovement>): ContractMovement {
     exchange_rate: String(raw.exchange_rate ?? '1.000000'),
     user_id: raw.user_id != null ? Number(raw.user_id) : null,
     user_name: raw.user_name ?? null,
+    request_id: raw.request_id != null ? Number(raw.request_id) : null,
+    request_folio: raw.request_folio != null ? String(raw.request_folio) : null,
     reason: raw.reason ?? null,
     has_exception: Boolean(raw.has_exception),
     reversed_movement_id:

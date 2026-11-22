@@ -204,7 +204,8 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 - [x] **Módulo 2 (checkpoint oficial cerrado):** Catálogos, Listas de Precios con escalas, Promociones, Emisores, Instancias, Empresa, Preferencias, RBAC multinivel, BD 100% inglés, Kit Atómico, segmentos dinámicos, Sistema (`config_system`), Bitácora global `audit_logs` (`config_audit_logs`), Spinner + Toasts, cero mockups fuera del Dashboard.
 - [x] **Infra transversal M2:** RBAC por `module_key`, Kit Atómico `src/components/ui/`, `AuditLogger` + `system_settings` / `audit_logs`.
 - [x] **Módulo 3 (checkpoint oficial cerrado):** Directorio de Clientes, Motor de Contratos, Operaciones de Ciclo de Vida y Bitácora Inmutable (RF-3) — pasos 1–3: `/clientes`, `/contratos`, `/contratos/nuevo`, `/contratos/:id`, RF-2 dinámico, cupón quemado, BCMath y `movements` append-only.
-- [ ] **Módulo 4:** Cobranza, Saldos, Solicitudes (cargos únicos/consumo), Portal Cliente con Magic Links e IntegroPAY (RF-4 a RF-8).
+- [x] **Módulo 4 Paso 1:** Bandeja de Solicitudes (`/solicitudes`) — `service_requests` / `service_request_items`, cotizar/aprobar/rechazar/cancelar (`can_delete`), solicitudes mixtas (solo recurring toca MRR), trazabilidad `Origen: SOL-XXXX` en bitácora, badge Sidebar en vivo, RBAC `requests`.
+- [ ] **Módulo 4 (resto):** Cobranza, Saldos, Portal Cliente con Magic Links e IntegroPAY (RF-4 a RF-8).
 
 ---
 
@@ -227,6 +228,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `tests/Unit/ContractLifecycleEngineTest.php` | Deltas BCMath de ciclo de vida: expansión, contracción, precio, frecuencia, transfer=0, churn, reactivación. |
 | `tests/Unit/BurnedCouponLifecycleTest.php` | Cupón quemado: alta 10% + ajuste/contracción → `discount_amount=0`, delta BCMath exacto, sin subtotales negativos. |
 | `tests/Unit/MovementReversalRulesTest.php` | Reversión contable RNF-3: delta inverso BCMath, impacto vs MRR del contrato, bloqueo MRR negativo y doble reversión. |
+| `tests/Unit/ServiceRequestRulesTest.php` | Solicitudes M4: one_time sin MRR, expansión con `request_id`, bloqueo por cartera sin excepción, RF-2. |
 | `scripts/reset_contracts_only.php` | TRUNCATE solo tablas de contratos + `promotions.current_uses=0`; verifica triggers RNF-3. |
 | `index.html` | Entrada Vite + Google Fonts (Ubuntu / DM Sans / DM Mono). |
 | `tailwind.config.js` | Referencia `fontFamily` oficial (Tailwind v4 usa `@theme` en CSS). |
@@ -281,6 +283,13 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `pages/LoginPage.tsx` | Login 2 columnas Liquid Glass → `POST /api/login`. |
 | `pages/DashboardPage.tsx` | Dashboard KPIs + switch Mockup/API (única excepción). |
 | `pages/ClientsPage.tsx` | `/clientes` — directorio CRUD (KPIs, filtros dinámicos, tabla paginada, modales crear/editar/detalle) con Kit Atómico (`clients`). |
+| `pages/RequestsPage.tsx` | `/solicitudes` — bandeja M4 Paso 1: KPIs, `AppFilterBar`, tabla/tarjetas UI-4, cotizar/aprobar/rechazar (`requests`). |
+| `components/requests/NewRequestModal.tsx` | Modal RHF+Zod de alta interna con preview UI-9 (total vs impacto MRR / RF-2). |
+| `components/requests/RequestDetailModal.tsx` | Detalle + aprobación (excepción de cartera) + rechazo con caja UI-9. |
+| `components/requests/RequestImpactPreview.tsx` | Caja UI-9 Total / Impacto MRR (no suma vs expansión). |
+| `types/request.ts` | Tipos de solicitudes, ítems, KPIs y payloads create/quote/approve/reject. |
+| `services/requestsService.ts` | HTTP JWT contra `/api/requests` (+ `pending-count`, quote/approve/reject). |
+| `hooks/useRequests.ts` | TanStack Query listado/detalle + mutaciones con `useLoadingLock` e invalidación de badge/contratos/dashboard. |
 | `pages/ContractsPage.tsx` | `/contratos` — listado paginado servidor, 4 KPIs, `AppFilterBar`, tabla/tarjetas UI-4 (`contracts`). |
 | `pages/NewContractPage.tsx` | `/contratos/nuevo` — formulario 2 columnas + panel sticky MRR (UI-9), RF-2 en vivo, promo y alta atómica. |
 | `pages/ContractDetailPage.tsx` | `/contratos/:id` — detalle, KPIs, líneas, bitácora movements, ciclo de vida y reversión contable RNF-3 (`contracts`). |
@@ -324,7 +333,12 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 
 | Área | Descripción |
 |------|-------------|
-| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `clients` + `contracts` + `movements` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs`. |
+| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `clients` + `contracts` + `requests` + `movements` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs`. |
+| `Api/services.routes.inc` | Índice documentado de rutas (incl. `/api/requests` M4 Paso 1). |
+| `System/Services/ServiceRequestsService.php` | `/api/requests`: listado+KPIs, pending-count, create, quote, approve (one_time vs expansion), reject/cancel; RBAC `requests` + segmento. |
+| `System/Support/ServiceRequestRules.php` | Motor puro BCMath: precios, tipo, gate de cartera, payload expansion con `request_id`. |
+| `System/Models/ServiceRequestsModel.php` / `ServiceRequestItemsModel.php` | Eloquent `service_requests` / `service_request_items`. |
+| `database/migrations/20261122000001_create_service_requests_tables.php` | Tablas `service_requests` / `service_request_items` + índice `movements.request_id`. |
 | `backend/bootstrap/env.php` | Carga `.env` a `getenv` / `$_ENV`. |
 | `backend/bootstrap/eloquent.php` | Capsule Eloquent + MySQL UTC. |
 | `System/Core/*` | Result, Context, DataValidator, DataFormat. |

@@ -25,6 +25,7 @@ use System\Services\PromotionsService;
 use System\Services\RbacAuthHelper;
 use System\Services\RolesService;
 use System\Services\SegmentsService;
+use System\Services\ServiceRequestsService;
 use System\Services\ServicesCatalogService;
 use System\Services\SystemSettingsService;
 use System\Services\UsersManagementService;
@@ -113,6 +114,7 @@ if ($uri === 'login' && $method === 'POST') {
             'emisores', 'emitters', 'catalog/issuers' => 'issuers',
             'clientes', 'catalog/clients' => 'clients',
             'contratos', 'catalog/contracts' => 'contracts',
+            'solicitudes', 'service-requests', 'service_requests' => 'requests',
             'movimientos', 'catalog/movements' => 'movements',
             'dashboard/mrr', 'mrr' => 'dashboard',
             'roles-permissions', 'rbac/roles' => 'roles',
@@ -160,6 +162,7 @@ if ($uri === 'login' && $method === 'POST') {
             'issuers' => (new IssuersService())->handle($context),
             'clients' => (new ClientsService())->handle($context),
             'contracts' => (new ContractsService())->handle($context),
+            'requests' => (new ServiceRequestsService())->handle($context),
             'movements' => (new MovementsService())->handle($context),
             'dashboard' => (new DashboardMetricsService())->handle($context),
             'segments' => (new SegmentsService())->handle($context),

@@ -27,6 +27,7 @@ import { ContractsPage } from '@/pages/ContractsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { NewContractPage } from '@/pages/NewContractPage'
+import { RequestsPage } from '@/pages/RequestsPage'
 import { SalesPromotionsPage } from '@/pages/SalesPromotionsPage'
 import type { ModuleKey } from '@/types/auth'
 
@@ -142,7 +143,7 @@ function App() {
                           path="solicitudes"
                           element={
                             <ModulePage module="requests">
-                              <Placeholder title="Solicitudes" />
+                              <RequestsPage />
                             </ModulePage>
                           }
                         />

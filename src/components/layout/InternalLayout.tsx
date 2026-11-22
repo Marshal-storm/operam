@@ -32,6 +32,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { AppButton } from '@/components/ui/AppButton'
 import { useAuth } from '@/context/AuthContext'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useRequestsPendingCount } from '@/hooks/useRequests'
 import { cn } from '@/lib/utils'
 import type { ModuleKey } from '@/types/auth'
 
@@ -54,7 +55,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard, module: 'dashboard' },
   { label: 'Contratos', to: '/contratos', icon: FileText, module: 'contracts' },
   { label: 'Clientes', to: '/clientes', icon: Users, module: 'clients' },
-  { label: 'Solicitudes', to: '/solicitudes', icon: ClipboardList, module: 'requests', badge: 3 },
+  { label: 'Solicitudes', to: '/solicitudes', icon: ClipboardList, module: 'requests' },
   { label: 'Cobranza', to: '/cobranza', icon: CreditCard, module: 'collections' },
   {
     label: 'Promociones vigentes',
@@ -293,15 +294,24 @@ function NavItems({
   onNavigate?: () => void
 }) {
   const { canView } = usePermissions()
+  const canViewRequests = canView('requests')
+  const { pendingCount } = useRequestsPendingCount(canViewRequests)
+
   const visibleItems = useMemo(
-    () => NAV_ITEMS.filter((item) => canView(item.module)),
-    [canView],
+    () =>
+      NAV_ITEMS.filter((item) => canView(item.module)).map((item) =>
+        item.module === 'requests'
+          ? { ...item, badge: pendingCount > 0 ? pendingCount : undefined }
+          : item,
+      ),
+    [canView, pendingCount],
   )
 
   return (
     <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2">
       {visibleItems.map((item) => {
         const Icon = item.icon
+        const badge = item.badge
         return (
           <NavLink
             key={item.to}
@@ -322,18 +332,18 @@ function NavItems({
           >
             <span className="relative shrink-0">
               <Icon className="h-4 w-4" />
-              {collapsed && item.badge != null && item.badge > 0 ? (
+              {collapsed && badge != null && badge > 0 ? (
                 <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[9px] font-bold leading-none text-white">
-                  {item.badge > 9 ? '9+' : item.badge}
+                  {badge > 9 ? '9+' : badge}
                 </span>
               ) : null}
             </span>
             {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
-            {!collapsed && item.badge != null && (
+            {!collapsed && badge != null && badge > 0 ? (
               <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[11px] font-semibold text-white">
-                {item.badge}
+                {badge}
               </span>
-            )}
+            ) : null}
           </NavLink>
         )
       })}

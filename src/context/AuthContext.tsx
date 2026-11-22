@@ -19,6 +19,7 @@ import {
 import { configureCatalogAuth } from '@/services/catalogService'
 import { configureClientsAuth } from '@/services/clientsService'
 import { configureContractsAuth } from '@/services/contractsService'
+import { configureRequestsAuth } from '@/services/requestsService'
 import { configureDashboardAuth } from '@/services/dashboardService'
 import { configureRbacAuth } from '@/services/rbacService'
 import { configureSystemAuth } from '@/services/systemService'
@@ -73,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     configureCatalogAuth(getToken)
     configureClientsAuth(getToken)
     configureContractsAuth(getToken)
+    configureRequestsAuth(getToken)
     configureRbacAuth(getToken)
     configureSystemAuth(getToken)
   }, [getToken, logout])

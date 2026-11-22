@@ -64,6 +64,10 @@ export type ContractListItem = {
   created_by: number | null
   created_at: string | null
   updated_at: string | null
+  /** Cartera (collection_statuses) — útil para solicitudes. */
+  contract_is_current?: boolean
+  contract_overdue_balance?: string
+  contract_days_overdue?: number
 }
 
 export type ContractLine = {
@@ -100,6 +104,9 @@ export type ContractMovement = {
   exchange_rate: string
   user_id: number | null
   user_name: string | null
+  request_id?: number | null
+  /** Folio de solicitud origen (RF-3.7), ej. SOL-0002. */
+  request_folio?: string | null
   reason: string | null
   has_exception: boolean
   reversed_movement_id: number | null

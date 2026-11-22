@@ -66,6 +66,9 @@ export interface MrrMovement {
   mrr_delta_mxn: string
   user: string
   reason: string
+  /** Folio SOL-XXXX cuando el movimiento nace de una solicitud (RF-3.7). */
+  request_folio?: string | null
+  /** Alias histórico; preferir `request_folio`. */
   request_origin: string | null
 }
 

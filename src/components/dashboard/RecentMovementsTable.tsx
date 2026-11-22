@@ -85,11 +85,17 @@ export function RecentMovementsTable({
                     {movement.client_name} · {movement.segment}
                   </p>
                   <p className="mt-1 text-sm">{movement.description}</p>
-                  <div className="mt-2">
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     <AppBadge
                       label={categoryLabels[movement.mrr_category] ?? movement.mrr_category}
                       tone="info"
                     />
+                    {(movement.request_folio ?? movement.request_origin) ? (
+                      <AppBadge
+                        label={`Origen: ${movement.request_folio ?? movement.request_origin}`}
+                        variant="info"
+                      />
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -134,7 +140,23 @@ export function RecentMovementsTable({
                     <AppBadge label={movement.segment} tone="neutral" />
                   </td>
                   <td className="px-3 py-3 text-slate-600 dark:text-slate-300">
-                    {movement.description}
+                    <div className="flex flex-col gap-1.5">
+                      <span className="line-clamp-2">{movement.description}</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        <AppBadge
+                          label={
+                            categoryLabels[movement.mrr_category] ?? movement.mrr_category
+                          }
+                          tone="info"
+                        />
+                        {(movement.request_folio ?? movement.request_origin) ? (
+                          <AppBadge
+                            label={`Origen: ${movement.request_folio ?? movement.request_origin}`}
+                            variant="info"
+                          />
+                        ) : null}
+                      </div>
+                    </div>
                   </td>
                   <td className={cn('px-3 py-3 text-right')}>
                     <DeltaAmount value={movement.mrr_delta_mxn} />
