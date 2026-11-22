@@ -65,19 +65,18 @@ export function roundMoney2(amount: number): number {
 }
 
 /**
- * Etiquetas compactas del puente (`1,254.3k`, `+21.6k`).
- * Usa truncado entero sobre el valor absoluto en pesos.
+ * Etiquetas compactas del puente (`+3.9k`, `4.2k`).
+ * Redondea a 1 decimal en miles (no trunca): 3887.10 → +3.9k, 4154.10 → 4.2k.
  */
 export function formatBridgeCompactLabel(value: number, withSign: boolean): string {
   const rounded = roundMoney2(value)
   const sign = rounded < 0 ? '-' : withSign && rounded > 0 ? '+' : ''
-  const absCents = Math.abs(toCents(rounded))
-  // k = miles de pesos → centavos / 100_000, un decimal
-  const tenthsOfThousand = Math.trunc(absCents / 10_000)
-  const whole = Math.trunc(tenthsOfThousand / 10)
-  const tenth = tenthsOfThousand % 10
-  const grouped = whole.toLocaleString('es-MX')
-  return `${sign}${grouped}.${tenth}k`
+  const abs = Math.abs(rounded)
+  // Miles con 1 decimal, redondeo half-up vía toFixed.
+  const inThousands = Number((abs / 1000).toFixed(1))
+  const [wholePart, tenthPart = '0'] = inThousands.toFixed(1).split('.')
+  const grouped = Number(wholePart).toLocaleString('es-MX')
+  return `${sign}${grouped}.${tenthPart}k`
 }
 
 export type MrrDeltasByCategory = Partial<Record<MrrDeltaCategory, number>> &

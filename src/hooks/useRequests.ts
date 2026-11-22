@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLoadingLock } from '@/context/LoadingLockContext'
+import { issueInvoiceFromRequest } from '@/services/collectionsService'
 import {
   approveServiceRequest,
   cancelServiceRequest,
@@ -29,6 +30,7 @@ async function invalidateRequestQueries(
     queryClient.invalidateQueries({ queryKey: [...REQUESTS_QUERY_KEY] }),
     queryClient.invalidateQueries({ queryKey: [...REQUESTS_PENDING_COUNT_KEY] }),
     queryClient.invalidateQueries({ queryKey: ['contracts'] }),
+    queryClient.invalidateQueries({ queryKey: ['collections'] }),
     queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
   ])
 }
@@ -98,6 +100,10 @@ export function useRequests(params: RequestsQueryParams) {
       cancelServiceRequest(id, data ?? {}),
     'Cancelando solicitud...',
   )
+  const generateInvoice = useLockedMutation(
+    (requestId: number) => issueInvoiceFromRequest(requestId),
+    'Generando factura en cobranza...',
+  )
 
   return {
     items: query.data?.items ?? [],
@@ -125,6 +131,7 @@ export function useRequests(params: RequestsQueryParams) {
       reject.mutateAsync({ id, data }),
     cancelRequest: (id: number, data: { resolution_notes?: string } = {}) =>
       cancel.mutateAsync({ id, data }),
+    generateInvoiceFromRequest: (requestId: number) => generateInvoice.mutateAsync(requestId),
   }
 }
 

@@ -150,6 +150,8 @@ function mapRequest(raw: Partial<ServiceRequestListItem> & Record<string, unknow
     contract_is_current: Boolean(raw.contract_is_current),
     contract_overdue_balance: String(raw.contract_overdue_balance ?? '0.00'),
     contract_days_overdue: Number(raw.contract_days_overdue ?? 0),
+    invoice_id: raw.invoice_id != null ? Number(raw.invoice_id) : null,
+    invoice_folio: raw.invoice_folio != null ? String(raw.invoice_folio) : null,
     services_summary: String(raw.services_summary ?? ''),
     items,
     price_list_id: raw.price_list_id != null ? Number(raw.price_list_id) : null,

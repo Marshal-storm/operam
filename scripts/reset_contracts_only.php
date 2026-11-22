@@ -5,7 +5,8 @@ declare(strict_types=1);
 /**
  * Limpieza SOLO de tablas de contratos (desarrollo / pruebas limpias del Módulo 3).
  *
- * Vacía: contract_lines, movements, monthly_mrr, collection_statuses, contracts.
+ * Vacía: payments, invoices, service_request_items, service_requests,
+ *         contract_lines, movements, monthly_mrr, collection_statuses, contracts.
  * Restaura: promotions.current_uses = 0.
  *
  * NO TOCA: clients, services, price_lists, price_list_items, promotions (filas),
@@ -56,6 +57,10 @@ try {
 
 /** Orden hijo → padre. TRUNCATE no dispara triggers DELETE (RNF-3 intacto). */
 $truncate = [
+    'payments',
+    'invoices',
+    'service_request_items',
+    'service_requests',
     'contract_lines',
     'movements',
     'monthly_mrr',

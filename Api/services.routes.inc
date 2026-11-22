@@ -9,12 +9,25 @@
  *   GET    /api/requests/{id}             — detalle + items (can_view)
  *   POST   /api/requests                  — alta interna SOL-XXXX (can_create)
  *   POST   /api/requests/{id}/quote       — cotizar / ajustar (can_edit)
- *   POST   /api/requests/{id}/approve     — aprobar (+ expansión si recurrente) (can_edit)
+ *   POST   /api/requests/{id}/approve     — aprobar (+ expansión / factura) (can_edit)
  *   POST   /api/requests/{id}/reject      — rechazar (can_edit)
  *   POST   /api/requests/{id}/cancel      — cancelar (can_delete)
  *   DELETE /api/requests/{id}             — cancelar (can_delete)
  *
  * Alias: /api/solicitudes → requests
+ *
+ * Módulo 4 Paso 2 — Cobranza:
+ *   GET    /api/collections/invoices              — listado + kpis + aging (can_view)
+ *   GET    /api/collections/contracts             — cartera consolidada (can_view)
+ *   GET    /api/collections/invoices/{id}         — detalle + payments (can_view)
+ *   POST   /api/collections/invoices              — emitir FAC-XXXX (can_create)
+ *   POST   /api/collections/invoices/from-request/{requestId} — factura desde SOL (can_create)
+ *   POST   /api/collections/invoices/{id}/payments — registrar pago (can_edit)
+ *   POST   /api/collections/invoices/{id}/cancel   — cancelar sin pagos (can_delete)
+ *   POST   /api/collections/payments/{id}/reverse  — revertir pago (can_edit, sin DELETE)
+ *   POST   /api/collections/run-suspension-check   — suspensión +90d (can_edit)
+ *
+ * Alias: /api/cobranza → collections
  */
 
 declare(strict_types=1);

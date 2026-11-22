@@ -459,18 +459,13 @@ final class DashboardMetricsService extends CustomService
     }
 
     /**
+     * Antigüedad real desde `invoices` + `collection_statuses` (BCMath, filtro segmento).
+     *
      * @return array{buckets: list<array{label: string, amountMxn: int, color: string}>, total_overdue: float, over_60_count: int}
      */
     private function buildAging(?int $segmentId): array
     {
-        $builder = Capsule::table('collection_statuses as cs')
-            ->join('contracts as c', 'c.id', '=', 'cs.contract_id')
-            ->select([
-                'cs.overdue_balance',
-                'cs.overdue_days',
-                'cs.is_suspended',
-            ]);
-        $this->applySegmentId($builder, $segmentId, 'c.segment_id');
+        $today = (new \DateTimeImmutable('now', new \DateTimeZone('America/Mexico_City')))->format('Y-m-d');
 
         $buckets = [
             'Por vencer' => ['amount' => '0.00', 'color' => '#10B981'],
@@ -479,46 +474,100 @@ final class DashboardMetricsService extends CustomService
             '61-90 días' => ['amount' => '0.00', 'color' => '#EF4444'],
             'Suspendidos (+90)' => ['amount' => '0.00', 'color' => '#7F1D1D'],
         ];
-        $over60 = 0;
 
-        foreach ($builder->get() as $row) {
-            $balance = FinancialCalculator::normalizeMoney((string) $row->overdue_balance);
-            if (bccomp($balance, '0.00', 2) <= 0) {
-                continue;
+        // Fuente primaria: saldos abiertos en invoices (Módulo 4 Paso 2).
+        if (Capsule::schema()->hasTable('invoices')) {
+            $invBuilder = Capsule::table('invoices as i')
+                ->leftJoin('collection_statuses as cs', 'cs.contract_id', '=', 'i.contract_id')
+                ->whereIn('i.status', ['pending', 'partial', 'overdue'])
+                ->whereRaw('i.balance > 0')
+                ->select(['i.balance', 'i.due_date', 'cs.is_suspended']);
+            $this->applySegmentId($invBuilder, $segmentId, 'i.segment_id');
+
+            foreach ($invBuilder->get() as $row) {
+                $balance = FinancialCalculator::normalizeMoney((string) $row->balance);
+                $due = (string) $row->due_date;
+                $suspended = (bool) ($row->is_suspended ?? false);
+                if ($due >= $today && !$suspended) {
+                    $key = 'Por vencer';
+                } else {
+                    $from = \DateTimeImmutable::createFromFormat('Y-m-d', $due);
+                    $to = \DateTimeImmutable::createFromFormat('Y-m-d', $today);
+                    $days = ($from !== false && $to !== false)
+                        ? max(0, (int) $from->diff($to)->format('%r%a'))
+                        : 0;
+                    if ($suspended || $days >= 90) {
+                        $key = 'Suspendidos (+90)';
+                    } elseif ($days <= 30) {
+                        $key = '1-30 días';
+                    } elseif ($days <= 60) {
+                        $key = '31-60 días';
+                    } else {
+                        $key = '61-90 días';
+                    }
+                }
+                $buckets[$key]['amount'] = bcadd($buckets[$key]['amount'], $balance, 2);
             }
+        } else {
+            // Fallback histórico: solo collection_statuses (seeders demo).
+            $builder = Capsule::table('collection_statuses as cs')
+                ->join('contracts as c', 'c.id', '=', 'cs.contract_id')
+                ->select(['cs.overdue_balance', 'cs.overdue_days', 'cs.is_suspended']);
+            $this->applySegmentId($builder, $segmentId, 'c.segment_id');
+            foreach ($builder->get() as $row) {
+                $balance = FinancialCalculator::normalizeMoney((string) $row->overdue_balance);
+                if (bccomp($balance, '0.00', 2) <= 0) {
+                    continue;
+                }
+                $days = (int) $row->overdue_days;
+                $suspended = (bool) $row->is_suspended;
+                if ($suspended || $days >= 90) {
+                    $key = 'Suspendidos (+90)';
+                } elseif ($days <= 0) {
+                    $key = 'Por vencer';
+                } elseif ($days <= 30) {
+                    $key = '1-30 días';
+                } elseif ($days <= 60) {
+                    $key = '31-60 días';
+                } else {
+                    $key = '61-90 días';
+                }
+                $buckets[$key]['amount'] = bcadd($buckets[$key]['amount'], $balance, 2);
+            }
+        }
+
+        $statusBuilder = Capsule::table('collection_statuses as cs')
+            ->join('contracts as c', 'c.id', '=', 'cs.contract_id')
+            ->select(['cs.overdue_days', 'cs.is_suspended', 'c.status']);
+        $this->applySegmentId($statusBuilder, $segmentId, 'c.segment_id');
+        $over60 = 0;
+        foreach ($statusBuilder->get() as $row) {
             $days = (int) $row->overdue_days;
-            $suspended = (bool) $row->is_suspended;
-            if ($suspended || $days > 90) {
-                $key = 'Suspendidos (+90)';
-            } elseif ($days <= 0) {
-                $key = 'Por vencer';
-            } elseif ($days <= 30) {
-                $key = '1-30 días';
-            } elseif ($days <= 60) {
-                $key = '31-60 días';
-            } else {
-                $key = '61-90 días';
-            }
-            $buckets[$key]['amount'] = bcadd($buckets[$key]['amount'], $balance, 2);
+            $suspended = (bool) $row->is_suspended || (string) $row->status === 'suspended';
             if ($days > 60 || $suspended) {
                 $over60++;
             }
         }
 
-        $total = '0.00';
+        $totalOverdue = '0.00';
+        foreach (['1-30 días', '31-60 días', '61-90 días', 'Suspendidos (+90)'] as $label) {
+            $totalOverdue = bcadd($totalOverdue, $buckets[$label]['amount'], 2);
+        }
+
         $out = [];
         foreach ($buckets as $label => $meta) {
-            $total = bcadd($total, $meta['amount'], 2);
+            // amountMxn entero para compat UI histórica (sin float en aritmética BCMath).
+            $whole = bcadd($meta['amount'], '0', 0);
             $out[] = [
                 'label' => $label,
-                'amountMxn' => (int) round((float) $meta['amount']),
+                'amountMxn' => (int) $whole,
                 'color' => $meta['color'],
             ];
         }
 
         return [
             'buckets' => $out,
-            'total_overdue' => (float) $total,
+            'total_overdue' => (float) $totalOverdue,
             'over_60_count' => $over60,
         ];
     }

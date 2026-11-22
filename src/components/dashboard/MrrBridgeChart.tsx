@@ -205,13 +205,13 @@ export function MrrBridgeChart({
                 return (
                   <div className="rounded-xl border border-white/[0.09] bg-[#111113]/90 px-3 py-2 font-sans text-xs text-white shadow-xl backdrop-blur-md">
                     <p className="font-heading font-medium">{step.label}</p>
-                    <p className="amount-tabular mt-1 text-slate-300">
+                    <p className="amount-tabular mt-1 font-mono text-slate-300">
                       {step.type === 'total'
-                        ? formatCurrencyMx(step.size)
-                        : `${step.deltaMxn < 0 ? '-' : '+'}${formatCurrencyMx(Math.abs(step.deltaMxn))}`}
+                        ? formatCurrencyMx(step.size, { fractionDigits: 2 })
+                        : `${step.deltaMxn < 0 ? '-' : '+'}${formatCurrencyMx(Math.abs(step.deltaMxn), { fractionDigits: 2 })}`}
                     </p>
-                    <p className="mt-1 text-slate-400">
-                      Acumulado: {formatCurrencyMx(step.accumulated)}
+                    <p className="mt-1 font-mono text-slate-400">
+                      Acumulado: {formatCurrencyMx(step.accumulated, { fractionDigits: 2 })}
                     </p>
                   </div>
                 )

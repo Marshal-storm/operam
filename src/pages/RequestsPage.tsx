@@ -3,7 +3,16 @@ import {
   useTable,
   type ColumnDef,
 } from '@tanstack/react-table'
-import { Ban, CheckCircle2, ClipboardList, Eye, Plus, Quote, XCircle } from 'lucide-react'
+import {
+  Ban,
+  CheckCircle2,
+  ClipboardList,
+  Eye,
+  FilePlus2,
+  Plus,
+  Quote,
+  XCircle,
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { NewRequestModal } from '@/components/requests/NewRequestModal'
 import {
@@ -75,6 +84,7 @@ const TYPE_LABEL: Record<ServiceRequestType, string> = {
 export function RequestsPage() {
   const toast = useToast()
   const { canCreate, canEdit, canDelete } = usePermissions()
+  const canCreateCollections = canCreate('collections')
   const { pageSize: preferredSize, rowPaddingClass, setPageSize } = useScreenPreferences()
   const { segments, isSegmentLocked, lockedSegmentId } = useSegments()
 
@@ -137,6 +147,7 @@ export function RequestsPage() {
     approveRequest,
     rejectRequest,
     cancelRequest,
+    generateInvoiceFromRequest,
   } = useRequests({
     page,
     per_page: preferredSize,
@@ -179,13 +190,22 @@ export function RequestsPage() {
         accessorKey: 'folio',
         header: 'FOLIO',
         cell: ({ row }) => (
-          <AppButton
-            variant="ghost"
-            className="h-auto rounded-lg px-1.5 py-0.5 font-mono text-sm font-semibold tabular-nums hover:bg-blue-500/10 hover:text-[#0066FF] dark:hover:text-[#0A84FF]"
-            onClick={() => openDetail(row.original.id, 'view')}
-          >
-            {row.original.folio}
-          </AppButton>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <AppButton
+              variant="ghost"
+              className="h-auto rounded-lg px-1.5 py-0.5 font-mono text-sm font-semibold tabular-nums hover:bg-blue-500/10 hover:text-[#0066FF] dark:hover:text-[#0A84FF]"
+              onClick={() => openDetail(row.original.id, 'view')}
+            >
+              {row.original.folio}
+            </AppButton>
+            {row.original.invoice_folio ? (
+              <AppBadge
+                label={row.original.invoice_folio}
+                variant="neutral"
+                className="whitespace-nowrap shrink-0"
+              />
+            ) : null}
+          </div>
         ),
       },
       {
@@ -273,6 +293,11 @@ export function RequestsPage() {
         cell: ({ row }) => {
           const r = row.original
           const actionable = r.status === 'pending' || r.status === 'quoted'
+          const canBill =
+            r.status === 'approved' &&
+            (r.request_type === 'one_time' || r.request_type === 'consumption') &&
+            !r.invoice_id &&
+            canCreateCollections
           return (
             <div className="flex justify-end">
               <AppRowActionsMenu
@@ -302,6 +327,19 @@ export function RequestsPage() {
                     hidden: !canEditRequests || !actionable,
                   },
                   {
+                    label: 'Generar factura en cobranza',
+                    icon: <FilePlus2 className="h-4 w-4" />,
+                    onClick: async () => {
+                      try {
+                        const inv = await generateInvoiceFromRequest(r.id)
+                        toast.success(`Documento ${inv.folio} generado`, r.folio)
+                      } catch (error) {
+                        toast.apiError(error)
+                      }
+                    },
+                    hidden: !canBill,
+                  },
+                  {
                     label: 'Cancelar solicitud',
                     icon: <Ban className="h-4 w-4" />,
                     onClick: () => {
@@ -319,7 +357,13 @@ export function RequestsPage() {
         },
       },
     ],
-    [canEditRequests, canDeleteRequests],
+    [
+      canEditRequests,
+      canDeleteRequests,
+      canCreateCollections,
+      generateInvoiceFromRequest,
+      toast,
+    ],
   )
 
   const table = useTable({
@@ -531,11 +575,25 @@ export function RequestsPage() {
         <div className="space-y-3 p-3 lg:hidden">
           {items.map((r) => {
             const actionable = r.status === 'pending' || r.status === 'quoted'
+            const canBill =
+              r.status === 'approved' &&
+              (r.request_type === 'one_time' || r.request_type === 'consumption') &&
+              !r.invoice_id &&
+              canCreateCollections
             return (
               <AppCard key={r.id} className="p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-mono text-sm font-semibold tabular-nums">{r.folio}</p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="font-mono text-sm font-semibold tabular-nums">{r.folio}</p>
+                      {r.invoice_folio ? (
+                        <AppBadge
+                          label={r.invoice_folio}
+                          variant="neutral"
+                          className="whitespace-nowrap shrink-0"
+                        />
+                      ) : null}
+                    </div>
                     <p className="mt-0.5 font-medium">{r.client_name}</p>
                     <p className="font-mono text-xs tabular-nums text-slate-500">
                       {r.contract_folio}
@@ -566,6 +624,19 @@ export function RequestsPage() {
                         onClick: () => openDetail(r.id, 'reject'),
                         variant: 'danger',
                         hidden: !canEditRequests || !actionable,
+                      },
+                      {
+                        label: 'Generar factura en cobranza',
+                        icon: <FilePlus2 className="h-4 w-4" />,
+                        onClick: async () => {
+                          try {
+                            const inv = await generateInvoiceFromRequest(r.id)
+                            toast.success(`Documento ${inv.folio} generado`, r.folio)
+                          } catch (error) {
+                            toast.apiError(error)
+                          }
+                        },
+                        hidden: !canBill,
                       },
                       {
                         label: 'Cancelar solicitud',

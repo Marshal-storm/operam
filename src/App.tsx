@@ -22,6 +22,7 @@ import { ScreenPreferencesPage } from '@/pages/config/ScreenPreferencesPage'
 import { SystemSettingsPage } from '@/pages/config/SystemSettingsPage'
 import { UsersManagementPage } from '@/pages/config/UsersManagementPage'
 import { ClientsPage } from '@/pages/ClientsPage'
+import { CollectionsPage } from '@/pages/CollectionsPage'
 import { ContractDetailPage } from '@/pages/ContractDetailPage'
 import { ContractsPage } from '@/pages/ContractsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
@@ -151,7 +152,7 @@ function App() {
                           path="cobranza"
                           element={
                             <ModulePage module="collections">
-                              <Placeholder title="Cobranza" />
+                              <CollectionsPage />
                             </ModulePage>
                           }
                         />

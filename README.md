@@ -205,7 +205,8 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 - [x] **Infra transversal M2:** RBAC por `module_key`, Kit Atómico `src/components/ui/`, `AuditLogger` + `system_settings` / `audit_logs`.
 - [x] **Módulo 3 (checkpoint oficial cerrado):** Directorio de Clientes, Motor de Contratos, Operaciones de Ciclo de Vida y Bitácora Inmutable (RF-3) — pasos 1–3: `/clientes`, `/contratos`, `/contratos/nuevo`, `/contratos/:id`, RF-2 dinámico, cupón quemado, BCMath y `movements` append-only.
 - [x] **Módulo 4 Paso 1:** Bandeja de Solicitudes (`/solicitudes`) — `service_requests` / `service_request_items`, cotizar/aprobar/rechazar/cancelar (`can_delete`), solicitudes mixtas (solo recurring toca MRR), trazabilidad `Origen: SOL-XXXX` en bitácora, badge Sidebar en vivo, RBAC `requests`.
-- [ ] **Módulo 4 (resto):** Cobranza, Saldos, Portal Cliente con Magic Links e IntegroPAY (RF-4 a RF-8).
+- [x] **Módulo 4 Paso 2:** Cobranza (`/cobranza`) — `invoices` / `payments`, emisión FAC-XXXX, pagos BCMath + reversión sin DELETE, antigüedad 5 tramos, puente/regeneración desde solicitudes (`from-request`), suspensión automática +90d (respeta `exclude_suspension`), CLI cron, RBAC `collections`, Dashboard aging en vivo.
+- [ ] **Módulo 4 (resto):** Portal Cliente con Magic Links e IntegroPAY (RF-4 a RF-8).
 
 ---
 
@@ -229,7 +230,9 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `tests/Unit/BurnedCouponLifecycleTest.php` | Cupón quemado: alta 10% + ajuste/contracción → `discount_amount=0`, delta BCMath exacto, sin subtotales negativos. |
 | `tests/Unit/MovementReversalRulesTest.php` | Reversión contable RNF-3: delta inverso BCMath, impacto vs MRR del contrato, bloqueo MRR negativo y doble reversión. |
 | `tests/Unit/ServiceRequestRulesTest.php` | Solicitudes M4: one_time sin MRR, expansión con `request_id`, bloqueo por cartera sin excepción, RF-2. |
-| `scripts/reset_contracts_only.php` | TRUNCATE solo tablas de contratos + `promotions.current_uses=0`; verifica triggers RNF-3. |
+| `tests/Unit/CollectionRulesTest.php` | Cobranza M4: emisión+pagos BCMath, bloqueo sobrepago, suspensión +90d vs `exclude_suspension`. |
+| `scripts/reset_contracts_only.php` | TRUNCATE solo tablas de contratos + solicitudes/cobranza + `promotions.current_uses=0`; verifica triggers RNF-3. |
+| `scripts/run_collections_suspension.php` | CLI nocturno: `runSuspensionCheck` (+90 días, churn append-only). |
 | `index.html` | Entrada Vite + Google Fonts (Ubuntu / DM Sans / DM Mono). |
 | `tailwind.config.js` | Referencia `fontFamily` oficial (Tailwind v4 usa `@theme` en CSS). |
 | `package.json` / `package-lock.json` | Dependencias npm. |
@@ -284,12 +287,17 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `pages/DashboardPage.tsx` | Dashboard KPIs + switch Mockup/API (única excepción). |
 | `pages/ClientsPage.tsx` | `/clientes` — directorio CRUD (KPIs, filtros dinámicos, tabla paginada, modales crear/editar/detalle) con Kit Atómico (`clients`). |
 | `pages/RequestsPage.tsx` | `/solicitudes` — bandeja M4 Paso 1: KPIs, `AppFilterBar`, tabla/tarjetas UI-4, cotizar/aprobar/rechazar (`requests`). |
+| `pages/CollectionsPage.tsx` | `/cobranza` — M4 Paso 2: KPIs, aging 5 tramos, pestañas Documentos/Cartera, `AppFilterBar`, emisión/pagos/cancelación/suspensión (`collections`). |
+| `components/collections/*` | `NewInvoiceModal`, `RecordPaymentModal`, `InvoiceDetailModal` (RHF+Zod + Kit Atómico). |
 | `components/requests/NewRequestModal.tsx` | Modal RHF+Zod de alta interna con preview UI-9 (total vs impacto MRR / RF-2). |
 | `components/requests/RequestDetailModal.tsx` | Detalle + aprobación (excepción de cartera) + rechazo con caja UI-9. |
 | `components/requests/RequestImpactPreview.tsx` | Caja UI-9 Total / Impacto MRR (no suma vs expansión). |
 | `types/request.ts` | Tipos de solicitudes, ítems, KPIs y payloads create/quote/approve/reject. |
 | `services/requestsService.ts` | HTTP JWT contra `/api/requests` (+ `pending-count`, quote/approve/reject). |
+| `services/collectionsService.ts` | HTTP JWT contra `/api/collections/invoices|contracts|payments|cancel|run-suspension-check`. |
 | `hooks/useRequests.ts` | TanStack Query listado/detalle + mutaciones con `useLoadingLock` e invalidación de badge/contratos/dashboard. |
+| `hooks/useCollections.ts` | TanStack Query cobranza + mutaciones con `useLoadingLock`; invalida `collections`/`contracts`/`requests`/`dashboard`. |
+| `types/collection.ts` | Tipos invoices/payments/cartera/aging/suspensión. |
 | `pages/ContractsPage.tsx` | `/contratos` — listado paginado servidor, 4 KPIs, `AppFilterBar`, tabla/tarjetas UI-4 (`contracts`). |
 | `pages/NewContractPage.tsx` | `/contratos/nuevo` — formulario 2 columnas + panel sticky MRR (UI-9), RF-2 en vivo, promo y alta atómica. |
 | `pages/ContractDetailPage.tsx` | `/contratos/:id` — detalle, KPIs, líneas, bitácora movements, ciclo de vida y reversión contable RNF-3 (`contracts`). |
@@ -333,12 +341,16 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 
 | Área | Descripción |
 |------|-------------|
-| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `clients` + `contracts` + `requests` + `movements` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs`. |
-| `Api/services.routes.inc` | Índice documentado de rutas (incl. `/api/requests` M4 Paso 1). |
-| `System/Services/ServiceRequestsService.php` | `/api/requests`: listado+KPIs, pending-count, create, quote, approve (one_time vs expansion), reject/cancel; RBAC `requests` + segmento. |
+| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `clients` + `contracts` + `requests` + `collections` + `movements` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs`. |
+| `Api/services.routes.inc` | Índice documentado de rutas (incl. `/api/requests` M4 Paso 1 y `/api/collections` M4 Paso 2). |
+| `System/Services/ServiceRequestsService.php` | `/api/requests`: listado+KPIs, pending-count, create, quote, approve (one_time vs expansion + puente factura), reject/cancel; RBAC `requests` + segmento. |
+| `System/Services/CollectionsService.php` | `/api/collections`: invoices, payments, cartera, recalculo `collection_statuses`, suspensión +90d; RBAC `collections`. |
 | `System/Support/ServiceRequestRules.php` | Motor puro BCMath: precios, tipo, gate de cartera, payload expansion con `request_id`. |
+| `System/Support/CollectionRules.php` | Motor puro BCMath: pagos, notice_level, aging, elegibilidad suspensión, due_date. |
 | `System/Models/ServiceRequestsModel.php` / `ServiceRequestItemsModel.php` | Eloquent `service_requests` / `service_request_items`. |
+| `System/Models/InvoicesModel.php` / `PaymentsModel.php` | Eloquent `invoices` / `payments`. |
 | `database/migrations/20261122000001_create_service_requests_tables.php` | Tablas `service_requests` / `service_request_items` + índice `movements.request_id`. |
+| `database/migrations/20261122000002_create_collections_invoices_and_payments.php` | Tablas `invoices` / `payments` (DECIMAL 14,2, FKs, índices de cobranza). |
 | `backend/bootstrap/env.php` | Carga `.env` a `getenv` / `$_ENV`. |
 | `backend/bootstrap/eloquent.php` | Capsule Eloquent + MySQL UTC. |
 | `System/Core/*` | Result, Context, DataValidator, DataFormat. |

@@ -13,6 +13,7 @@ use System\Models\UsersModel;
 use System\Services\AppService;
 use System\Services\AuditLogsService;
 use System\Services\ClientsService;
+use System\Services\CollectionsService;
 use System\Services\ContractsService;
 use System\Services\DashboardMetricsService;
 use System\Services\InstancesService;
@@ -115,6 +116,7 @@ if ($uri === 'login' && $method === 'POST') {
             'clientes', 'catalog/clients' => 'clients',
             'contratos', 'catalog/contracts' => 'contracts',
             'solicitudes', 'service-requests', 'service_requests' => 'requests',
+            'cobranza', 'collections' => 'collections',
             'movimientos', 'catalog/movements' => 'movements',
             'dashboard/mrr', 'mrr' => 'dashboard',
             'roles-permissions', 'rbac/roles' => 'roles',
@@ -163,6 +165,7 @@ if ($uri === 'login' && $method === 'POST') {
             'clients' => (new ClientsService())->handle($context),
             'contracts' => (new ContractsService())->handle($context),
             'requests' => (new ServiceRequestsService())->handle($context),
+            'collections' => (new CollectionsService())->handle($context),
             'movements' => (new MovementsService())->handle($context),
             'dashboard' => (new DashboardMetricsService())->handle($context),
             'segments' => (new SegmentsService())->handle($context),

@@ -69,6 +69,9 @@ export type ServiceRequestListItem = {
   contract_is_current: boolean
   contract_overdue_balance: string
   contract_days_overdue: number
+  /** Factura activa en cobranza (si ya se generó desde la solicitud). */
+  invoice_id: number | null
+  invoice_folio: string | null
   services_summary: string
   items?: ServiceRequestItem[]
   price_list_id?: number | null

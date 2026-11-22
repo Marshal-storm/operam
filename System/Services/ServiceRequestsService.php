@@ -260,6 +260,13 @@ final class ServiceRequestsService extends ModelService
 
     private function baseEnrichedQuery(): Builder
     {
+        // Una sola factura activa por solicitud (evita duplicar filas en el listado).
+        $activeInvoicePick = Capsule::table('invoices')
+            ->selectRaw('request_id, MAX(id) as id')
+            ->whereNotNull('request_id')
+            ->where('status', '!=', 'cancelled')
+            ->groupBy('request_id');
+
         return Capsule::table('service_requests as sr')
             ->leftJoin('clients as cl', 'cl.id', '=', 'sr.client_id')
             ->leftJoin('contracts as c', 'c.id', '=', 'sr.contract_id')
@@ -267,7 +274,9 @@ final class ServiceRequestsService extends ModelService
             ->leftJoin('issuers as i', 'i.id', '=', 'sr.issuer_id')
             ->leftJoin('collection_statuses as cs', 'cs.contract_id', '=', 'sr.contract_id')
             ->leftJoin('users as ru', 'ru.id', '=', 'sr.requested_by_user_id')
-            ->leftJoin('users as vu', 'vu.id', '=', 'sr.resolved_by_user_id');
+            ->leftJoin('users as vu', 'vu.id', '=', 'sr.resolved_by_user_id')
+            ->leftJoinSub($activeInvoicePick, 'inv_pick', 'inv_pick.request_id', '=', 'sr.id')
+            ->leftJoin('invoices as inv', 'inv.id', '=', 'inv_pick.id');
     }
 
     /**
@@ -313,6 +322,8 @@ final class ServiceRequestsService extends ModelService
             'cs.overdue_days as collection_overdue_days',
             'ru.name as requested_by_user_name',
             'vu.name as resolved_by_user_name',
+            'inv.id as invoice_id',
+            'inv.folio as invoice_folio',
         ];
     }
 
@@ -421,6 +432,12 @@ final class ServiceRequestsService extends ModelService
             'contract_is_current' => $isCurrent,
             'contract_overdue_balance' => $overdueBalance,
             'contract_days_overdue' => $daysOverdue,
+            'invoice_id' => isset($row->invoice_id) && $row->invoice_id !== null
+                ? (int) $row->invoice_id
+                : null,
+            'invoice_folio' => isset($row->invoice_folio) && $row->invoice_folio !== null
+                ? (string) $row->invoice_folio
+                : null,
             'services_summary' => '',
         ];
 
@@ -783,6 +800,9 @@ final class ServiceRequestsService extends ModelService
                 if (ServiceRequestRules::approvalTouchesContractMrr($requestType)) {
                     $this->applyRecurringExpansionFromRequest($locked, $withException, $exceptionPolicy, $resolutionNotes, $userId, $nowUtc);
                 }
+
+                // Puente Cobranza (M4 Paso 2): one_time / consumption → invoice FAC-XXXX.
+                (new CollectionsService())->issueInvoiceFromApprovedRequest($locked, $userId, $nowUtc);
 
                 Capsule::table('service_requests')->where('id', (int) $locked->id)->update([
                     'status' => 'approved',

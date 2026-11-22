@@ -60,6 +60,10 @@ try {
  * role_permissions, active_sessions, auth_attempts, segments, system_settings, phinxlog.
  */
 $truncate = [
+    'payments',
+    'invoices',
+    'service_request_items',
+    'service_requests',
     'contract_lines',
     'movements',
     'monthly_mrr',
