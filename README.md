@@ -204,8 +204,9 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 - [x] **Módulo 2 (checkpoint oficial cerrado):** Catálogos, Listas de Precios con escalas, Promociones, Emisores, Instancias, Empresa, Preferencias, RBAC multinivel, BD 100% inglés, Kit Atómico, segmentos dinámicos, Sistema (`config_system`), Bitácora global `audit_logs` (`config_audit_logs`), Spinner + Toasts, cero mockups fuera del Dashboard.
 - [x] **Infra transversal M2:** RBAC por `module_key`, Kit Atómico `src/components/ui/`, `AuditLogger` + `system_settings` / `audit_logs`.
 - [x] **Módulo 3 (checkpoint oficial cerrado):** Directorio de Clientes, Motor de Contratos, Operaciones de Ciclo de Vida y Bitácora Inmutable (RF-3) — pasos 1–3: `/clientes`, `/contratos`, `/contratos/nuevo`, `/contratos/:id`, RF-2 dinámico, cupón quemado, BCMath y `movements` append-only.
-- [x] **Módulo 4 Paso 1:** Bandeja de Solicitudes (`/solicitudes`) — `service_requests` / `service_request_items`, cotizar/aprobar/rechazar/cancelar (`can_delete`), solicitudes mixtas (solo recurring toca MRR), trazabilidad `Origen: SOL-XXXX` en bitácora, badge Sidebar en vivo, RBAC `requests`.
-- [x] **Módulo 4 Paso 2:** Cobranza (`/cobranza`) — `invoices` / `payments`, emisión FAC-XXXX con **IVA 16% BCMath** (MRR sigue sin impuestos), pagos + reversión sin DELETE, antigüedad 5 tramos, puente/regeneración desde solicitudes (`from-request`), suspensión automática +90d (respeta `exclude_suspension`), CLI cron, RBAC `collections`, Dashboard aging en vivo.
+- [x] **Módulo 4 Pasos 1–2 (checkpoint oficial cerrado):** Solicitudes (`/solicitudes`) + Cobranza (`/cobranza`) — RBAC 6 capas (`requests` / `collections`), IVA 16% BCMath en facturas (MRR sin impuestos), pagos + reversión sin DELETE, suspensión +90d (`exclude_suspension`), puente `from-request`, badge Sidebar, Kit Atómico, suite PHPUnit en verde.
+- [x] **Módulo 4 Paso 1:** Bandeja de Solicitudes — `service_requests` / `service_request_items`, cotizar/aprobar/rechazar/cancelar (`can_delete`), solicitudes mixtas (solo recurring toca MRR), trazabilidad `Origen: SOL-XXXX` en bitácora.
+- [x] **Módulo 4 Paso 2:** Cobranza — `invoices` / `payments`, emisión FAC-XXXX, antigüedad 5 tramos, CLI `run_collections_suspension.php`, Dashboard aging en vivo.
 - [ ] **Módulo 4 (resto):** Portal Cliente con Magic Links e IntegroPAY (RF-4 a RF-8).
 
 ---
@@ -232,6 +233,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `tests/Unit/ServiceRequestRulesTest.php` | Solicitudes M4: one_time sin MRR, expansión con `request_id`, bloqueo por cartera sin excepción, RF-2. |
 | `tests/Unit/CollectionRulesTest.php` | Cobranza M4: emisión+pagos BCMath, bloqueo sobrepago, suspensión +90d vs `exclude_suspension`. |
 | `scripts/reset_contracts_only.php` | TRUNCATE solo tablas de contratos + solicitudes/cobranza + `promotions.current_uses=0`; verifica triggers RNF-3. |
+| `scripts/reset_transactional_history.php` | Reset pre-IVA: TRUNCATE 9 tablas transaccionales (CT/SOL/FAC → 0001), restaura `promotions.current_uses=0`, recrea/verifica triggers RNF-3; catálogos/clientes intactos. |
 | `scripts/run_collections_suspension.php` | CLI nocturno: `runSuspensionCheck` (+90 días, churn append-only). |
 | `index.html` | Entrada Vite + Google Fonts (Ubuntu / DM Sans / DM Mono). |
 | `tailwind.config.js` | Referencia `fontFamily` oficial (Tailwind v4 usa `@theme` en CSS). |
