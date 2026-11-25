@@ -6,7 +6,7 @@ import {
 } from '@tanstack/react-table'
 
 const instancesTableFeatures = tableFeatures({})
-import { KeyRound, Pencil, Plus } from 'lucide-react'
+import { AlertTriangle, Copy, KeyRound, Pencil, Plus, ShieldCheck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -29,6 +29,7 @@ import {
 import { AppSelect, type AppSelectTone } from '@/components/ui/AppSelect'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useLoadingLock } from '@/context/LoadingLockContext'
 import { useScreenPreferences } from '@/context/ScreenPreferencesContext'
 import { useToast } from '@/context/ToastContext'
 import { useInstancesConfig } from '@/hooks/useConfigCatalog'
@@ -73,6 +74,7 @@ type FormValues = z.infer<typeof formSchema>
  */
 export function InstancesPage() {
   const { pageSize: preferredSize, rowPaddingClass, setPageSize } = useScreenPreferences()
+  const { withScreenLock } = useLoadingLock()
   const toast = useToast()
   const [page, setPage] = useState(1)
   const [pageSize, setLocalPageSize] = useState(preferredSize)
@@ -122,8 +124,10 @@ export function InstancesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<CatalogInstance | null>(null)
   const [tokenModalOpen, setTokenModalOpen] = useState(false)
+  const [tokenTarget, setTokenTarget] = useState<CatalogInstance | null>(null)
   const [tokenPlain, setTokenPlain] = useState<string | null>(null)
-  const [tokenInstanceName, setTokenInstanceName] = useState('')
+  const [confirmPhrase, setConfirmPhrase] = useState('')
+  const isConfirmPhraseValid = confirmPhrase.trim().toUpperCase() === 'SI ACEPTO'
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -204,7 +208,7 @@ export function InstancesPage() {
                 {
                   label: 'Generar / rotar token API',
                   icon: <KeyRound className="h-4 w-4" />,
-                  onClick: () => void handleRotateToken(row.original),
+                  onClick: () => openRotateTokenModal(row.original),
                   hidden: !canEdit('config_instances'),
                 },
               ]}
@@ -251,13 +255,30 @@ export function InstancesPage() {
     setModalOpen(true)
   }
 
-  async function handleRotateToken(row: CatalogInstance) {
+  function openRotateTokenModal(row: CatalogInstance) {
+    setTokenTarget(row)
+    setTokenPlain(null)
+    setConfirmPhrase('')
+    setTokenModalOpen(true)
+  }
+
+  function closeRotateTokenModal() {
+    setTokenModalOpen(false)
+    setTokenPlain(null)
+    setConfirmPhrase('')
+    setTokenTarget(null)
+  }
+
+  async function handleConfirmRotateToken() {
+    if (!tokenTarget || !isConfirmPhraseValid) return
     try {
-      const result = await rotateInstanceToken(row.id)
-      setTokenInstanceName(row.name)
+      const result = await withScreenLock(
+        () => rotateInstanceToken(tokenTarget.id),
+        'Generando nuevo token API...',
+      )
       setTokenPlain(result.api_token)
-      setTokenModalOpen(true)
-      toast.success('Token generado', 'Cópialo ahora; no se volverá a mostrar.')
+      setConfirmPhrase('')
+      toast.success('Token API rotado correctamente')
       void refetch()
     } catch (error) {
       toast.apiError(error)
@@ -471,7 +492,7 @@ export function InstancesPage() {
                           {
                             label: 'Generar / rotar token API',
                             icon: <KeyRound className="h-4 w-4" />,
-                            onClick: () => void handleRotateToken(row),
+                            onClick: () => openRotateTokenModal(row),
                             hidden: !canEdit('config_instances'),
                           },
                         ]}
@@ -581,54 +602,160 @@ export function InstancesPage() {
       <AppModal
         open={tokenModalOpen}
         onOpenChange={(open) => {
-          setTokenModalOpen(open)
-          if (!open) setTokenPlain(null)
+          if (!open) {
+            closeRotateTokenModal()
+          } else {
+            setTokenModalOpen(true)
+          }
         }}
       >
         <AppModalContent className="max-w-lg">
-          <AppModalHeader>
-            <AppModalTitle>Token API de instancia</AppModalTitle>
-            <AppModalDescription>
-              {tokenInstanceName
-                ? `Bearer generado para ${tokenInstanceName}. Guárdalo en un lugar seguro (RNF-8).`
-                : 'Bearer generado. Guárdalo en un lugar seguro (RNF-8).'}
-            </AppModalDescription>
-          </AppModalHeader>
-          <div className="space-y-3">
-            <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-              Este token solo se muestra una vez. No se almacena en texto plano en Operam.
-            </p>
-            <AppInput
-              mono
-              readOnly
-              value={tokenPlain ?? ''}
-              aria-label="Token API"
-            />
-            <div className="flex justify-end gap-2">
-              <AppButton
-                type="button"
-                variant="ghost"
-                onClick={() => setTokenModalOpen(false)}
-              >
-                Cerrar
-              </AppButton>
-              <AppButton
-                type="button"
-                isLoading={isRotatingToken}
-                onClick={async () => {
-                  if (!tokenPlain) return
-                  try {
-                    await navigator.clipboard.writeText(tokenPlain)
-                    toast.success('Token copiado')
-                  } catch (error) {
-                    toast.apiError(error)
-                  }
-                }}
-              >
-                Copiar token
-              </AppButton>
-            </div>
-          </div>
+          {tokenPlain === null ? (
+            <>
+              <AppModalHeader>
+                <AppModalTitle>Confirmar generación de token API</AppModalTitle>
+                <AppModalDescription>
+                  Verifica el impacto operativo antes de emitir una nueva credencial Bearer (RNF-8).
+                </AppModalDescription>
+              </AppModalHeader>
+              <div className="space-y-4">
+                {tokenTarget ? (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 dark:border-white/[0.09] dark:bg-white/[0.03]">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+                        {tokenTarget.name}
+                      </p>
+                      <p className="font-mono text-xs tabular-nums text-slate-500 dark:text-zinc-400">
+                        {tokenTarget.code}
+                      </p>
+                    </div>
+                    {tokenTarget.has_api_token || tokenTarget.api_token_last4 ? (
+                      <AppBadge
+                        label={`Token activo: ****${tokenTarget.api_token_last4 ?? '••••'}`}
+                        tone="warning"
+                      />
+                    ) : (
+                      <AppBadge label="Sin token activo" tone="neutral" />
+                    )}
+                  </div>
+                ) : null}
+
+                <div className="space-y-2.5 rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-amber-900 dark:border-red-500/35 dark:bg-red-500/10 dark:text-amber-100">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <div className="space-y-2">
+                      {tokenTarget?.has_api_token || tokenTarget?.api_token_last4 ? (
+                        <p>
+                          Al generar un nuevo token, el token anterior (
+                          <span className="font-mono font-semibold">
+                            ****{tokenTarget?.api_token_last4 ?? '••••'}
+                          </span>
+                          ) dejará de funcionar de inmediato (HTTP 401). Deberás actualizar el nuevo
+                          token en la configuración del ERP del cliente para restablecer la
+                          comunicación de saldos y consumos.
+                        </p>
+                      ) : (
+                        <p>
+                          Se emitirá un nuevo token Bearer para esta instancia. Deberás configurarlo
+                          en el ERP del cliente para habilitar la comunicación de saldos y consumos.
+                        </p>
+                      )}
+                      <p className="flex items-start gap-1.5 text-[11px] text-slate-700 dark:text-zinc-300">
+                        <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <span>
+                          Mientras actualizas el token, la instancia del cliente podrá seguir
+                          timbrando temporalmente con su último saldo en caché.
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <label className="block text-sm font-medium text-slate-800 dark:text-zinc-200">
+                  Escribe &quot;SI ACEPTO&quot; para confirmar la generación del nuevo token
+                  <AppInput
+                    withLabelSpacing
+                    mono
+                    autoComplete="off"
+                    placeholder="SI ACEPTO"
+                    value={confirmPhrase}
+                    onChange={(event) => setConfirmPhrase(event.target.value)}
+                  />
+                </label>
+
+                <div className="flex flex-wrap justify-end gap-2 pt-1">
+                  <AppButton
+                    type="button"
+                    variant="ghost"
+                    onClick={closeRotateTokenModal}
+                    disabled={isRotatingToken}
+                  >
+                    Cancelar
+                  </AppButton>
+                  <AppButton
+                    type="button"
+                    variant={
+                      tokenTarget?.has_api_token || tokenTarget?.api_token_last4
+                        ? 'danger'
+                        : 'primary'
+                    }
+                    disabled={!isConfirmPhraseValid || isRotatingToken}
+                    isLoading={isRotatingToken}
+                    onClick={() => void handleConfirmRotateToken()}
+                  >
+                    Confirmar y generar nuevo token
+                  </AppButton>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <AppModalHeader>
+                <AppModalTitle>Token API generado</AppModalTitle>
+                <AppModalDescription>
+                  {tokenTarget
+                    ? `Bearer generado para ${tokenTarget.name} (${tokenTarget.code}). Guárdalo en un lugar seguro (RNF-8).`
+                    : 'Bearer generado. Guárdalo en un lugar seguro (RNF-8).'}
+                </AppModalDescription>
+              </AppModalHeader>
+              <div className="space-y-4">
+                <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+                  Este token solo se muestra una vez y no volverá a mostrarse al cerrar esta ventana.
+                  No se almacena en texto plano en Operam.
+                </p>
+                <AppInput
+                  mono
+                  readOnly
+                  value={tokenPlain}
+                  aria-label="Token API generado"
+                />
+                <div className="flex justify-end gap-2">
+                  <AppButton
+                    type="button"
+                    variant="ghost"
+                    onClick={closeRotateTokenModal}
+                  >
+                    Cerrar
+                  </AppButton>
+                  <AppButton
+                    type="button"
+                    onClick={async () => {
+                      if (!tokenPlain) return
+                      try {
+                        await navigator.clipboard.writeText(tokenPlain)
+                        toast.info('Token copiado al portapapeles')
+                      } catch (error) {
+                        toast.apiError(error)
+                      }
+                    }}
+                  >
+                    <Copy className="mr-1.5 h-4 w-4" />
+                    Copiar token
+                  </AppButton>
+                </div>
+              </div>
+            </>
+          )}
         </AppModalContent>
       </AppModal>
     </div>
