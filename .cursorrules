@@ -90,6 +90,21 @@ Obligatorio en **todos** los módulos actuales y futuros:
 - Al ejecutar cualquier operación de ciclo de vida que modifique una línea (`expansion`, `contraction`, `price_adjustment`, `frequency_change`), el cupón ya no aplica sobre la línea modificada (`discount_amount` se restablece a `'0.00'`) y el nuevo subtotal/MRR se calcula estrictamente sobre el precio neto pactado, garantizando exactitud con BCMath y cero MRR negativos.
 - Las líneas no tocadas en esa operación conservan intactos su `subtotal`, `discount_amount` y `mrr_mxn`.
 
+### RNF-8 — Cero Hardcodeo en Servicios Externos (inquebrantable)
+
+- **PROHIBIDO** quemar en código fuente URLs, hosts, puertos, API keys, tokens, webhooks o parámetros operativos de conexiones externas (SMTP / correo, ERP Master, Slack, Banxico, colas/Jobs, pasarelas, PAC, webhooks).
+- Todo parámetro operativo (endpoint base, puerto, timeout, remitente, canal, zona, flags de habilitación, etc.) se administra exclusivamente desde **Configuración → Servicios externos** (persistido en MySQL en inglés `snake_case`).
+- Las contraseñas, tokens y secretos reales **jamás** se guardan en texto plano en MySQL: solo se persiste el **nombre de referencia** hacia Secret Manager / variables de `.env` (mismo patrón que `issuers.secret_ref` / IntegroPAY). El runtime resuelve el secreto por esa referencia al momento de usarlo.
+- Al agregar un conector nuevo: migrar parámetros al catálogo de servicios externos + `secret_ref`; no introducir constantes de conexión en `System/Services/**` ni en el frontend.
+
+### RNF-15 — Validación numérica estricta y manejo de errores API (inquebrantable)
+
+Blindaje obligatorio en **3 capas** (cliente → HTTP → backend) para montos, precios, porcentajes, tipo de cambio, cantidades y días:
+
+1. **Frontend (formularios):** Todo campo monetario/numérico usa `Zod` con helpers de `src/lib/validationSchemas.ts` (`moneySchema`, `exchangeRateSchema`, `positiveIntSchema`, `nonNegativeIntSchema`) **antes** de disparar cualquier petición HTTP. En UI, `AppInput` / `AppCurrencyInput` con `numericMode` (`decimal` | `integer` | `decimal4`) sanitiza al teclear/pegar. Error Zod en rojo debajo del campo; **prohibido** enviar al API si la validación falla.
+2. **Backend (`Api/index.php`):** `display_errors = 0` + `Content-Type: application/json`. Toda excepción se captura en un `try/catch (\Throwable)` global: `\InvalidArgumentException` → **HTTP 422** JSON `{success:false,message,...}`; cualquier otro `\Throwable` → **HTTP 500** JSON saneado con `error_id` (detalle real solo en `error_log`). **PROHIBIDO** devolver HTML de fatales PHP (`<br/><b>Fatal error</b>…`) en respuestas API.
+3. **Cliente HTTP (`src/lib/apiClient.ts` y todo `apiFetch`):** Siempre `response.text()` + `JSON.parse` en `try/catch`. Si el parseo falla, `!response.ok` o `success !== true`: **lanzar Error** (nunca resolver como éxito ni disparar `toast.success`).
+
 ## 5. Documentación viva (README)
 
 - `README.md` es el **manual técnico oficial de onboarding** para nuevos desarrolladores (arquitectura, requisitos, quickstart, credenciales, estándares, roadmap e índice de archivos).
@@ -108,7 +123,7 @@ Obligatorio en **todos** los módulos actuales y futuros:
 - Montos `DECIMAL(14,2)`; timestamps UTC (RNF-11); cortes `America/Mexico_City`.
 - **PROHIBIDO** tablas, columnas o valores `ENUM` en español. Nombres de esquema **solo inglés** en `snake_case` (`segments`, `issuers`, `clients`, `contracts`, `movements`, `users`, `active_sessions`, etc.).
 - Comentarios de migraciones/seeders en español (propósito de negocio); identificadores técnicos siempre en inglés.
-- Tablas canónicas: `segments`, `issuers`, `clients`, `contracts`, `movements`, `collection_statuses`, `monthly_mrr`, `users`, `active_sessions`, `auth_attempts`, `services`, `instances`, `price_lists`, `price_list_items`, `promotions`, `roles`, `system_modules`, `role_permissions`, `system_settings`, `audit_logs`.
+- Tablas canónicas: `segments`, `issuers`, `clients`, `contracts`, `movements`, `collection_statuses`, `monthly_mrr`, `users`, `active_sessions`, `auth_attempts`, `services`, `instances`, `price_lists`, `price_list_items`, `promotions`, `roles`, `system_modules`, `role_permissions`, `system_settings`, `audit_logs`, `segment_costs`, `service_requests`, `invoices`, `payments`.
 
 ## 8. Backend PHP 8.3, Illuminate y arquitectura `operam/servicios` + JWT
 
@@ -182,7 +197,7 @@ CADA vez que se cree o modifique un módulo del sistema:
 1. **Registro obligatorio de `module_key`** en el catálogo (`system_modules` / matriz `role_permissions`) con permisos CRUD (`can_view`, `can_create`, `can_edit`, `can_delete`). **Prohibido** un permiso monolítico `configuration`. Catálogo oficial de **18** claves multinivel (inglés, `group_key` también en inglés):
    - **Nivel 1 — Operativos (`group_key = 'main'`):** `dashboard`, `contracts`, `clients`, `requests`, `collections`, `segment_profitability`, `sales_promotions`.
    - **Nivel 2 — Submódulos de Configuración (`group_key = 'configuration'`):** `config_catalog`, `config_prices`, `config_promotions`, `config_issuers`, `config_instances`, `config_users`, `config_roles`, `config_company`, `config_system`, `config_audit_logs`, `config_preferences`.
-   - **Acciones aplicables en matriz UI:** solo lectura (`dashboard`, `sales_promotions`, `segment_profitability`, `config_audit_logs`) → Ver; `config_company` / `config_preferences` → Ver+Editar; `config_system` → Ver+Editar+Eliminar (depurar); el resto → CRUD completo.
+   - **Acciones aplicables en matriz UI:** solo lectura (`dashboard`, `sales_promotions`, `config_audit_logs`) → Ver; `segment_profitability` → CRUD completo (captura de `segment_costs` + reportes RF-10/RF-11); `config_company` / `config_preferences` → Ver+Editar; `config_system` → Ver+Editar+Eliminar (depurar); el resto → CRUD completo.
 2. **Visibilidad Sidebar/Rutas:** Si no hay `can_view` en un módulo/submódulo, se oculta el ítem y la ruta bloquea. El padre `"Configuración"` se muestra **solo si** el usuario tiene `can_view` en **al menos un** `config_*`; cada sub-ítem se filtra individualmente. Botones Crear/Editar/Eliminar usan la llave específica del submódulo (`canCreate('config_promotions')`, etc.).
 3. **Alcance de Segmento Dinámico:** `Todos` (`segment_id = NULL`) o el segmento asignado (`segment_id` + `segment_name` desde tabla `segments`). JWT/`auth` exponen `segment_id`, `segment_name` (o `'Todos'`) y mapa `permissions` (`view`/`create`/`edit`/`delete`). Con segmento fijo, APIs y filtros de pantalla se bloquean a ese alcance. **Prohibido** quemar nombres de segmento en el frontend; usar `useSegments()` / `GET /api/segments`.
 4. **Revocación inmediata de sesión:** Al cambiar `role_id`, `segment_id` o `is_active = false` de un usuario, o al guardar la matriz `role_permissions` de un rol, se revocan (`is_revoked = 1`) las filas de `active_sessions` afectadas. El guardia JWT responde `401` y el frontend cierra sesión (toast + `/login`). Si el admin se afecta a sí mismo, logout automático tras guardar.

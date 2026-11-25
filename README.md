@@ -187,10 +187,12 @@ Obligatorios para quien continúe el proyecto:
 - Tema dual Light crisp / True Dark OLED; shell Sidebar `h-screen` + Header solo columna derecha.
 - DB: solo migraciones/seeders Phinx — **prohibido `.sql` sueltos**.
 - Auth: JWT del framework — **prohibido Sanctum**.
-- **Cero mockups** fuera del Dashboard (Login, Catálogo, Contratos, Clientes, Cobranza, Solicitudes).
-- **Kit atómico (Single Source of Truth):** prohibido `<select>` / `<input>` / `<textarea>` / `<button>` nativos en `src/pages/**` o componentes de negocio. Importar solo desde `src/components/ui/` (`AppCard`, `AppInput`, `AppSelect`, `AppButton`, `AppBadge`, `AppModal`, `AppSwitch`, `AppTableWrapper`, `AppFilterField`). Un cambio visual global = un archivo del kit.
+- **Cero mockups** fuera del Dashboard (Login, Catálogo, Contratos, Clientes, Cobranza, Solicitudes, Utilidad por segmento).
+- **Kit atómico (Single Source of Truth):** prohibido `<select>` / `<input>` / `<textarea>` / `<button>` nativos en `src/pages/**` o componentes de negocio. Importar solo desde `src/components/ui/` (`AppCard`, `AppInput`, `AppSelect`, `AppButton`, `AppBadge`, `AppModal`, `AppSwitch`, `AppTableWrapper`, `AppFilterBar`, `AppRowActionsMenu`). Un cambio visual global = un archivo del kit.
+- **Filtros homologados (`AppFilterBar`):** toda barra de búsqueda/filtros de listados usa `<AppFilterBar />` (§3.2) con etiquetas en mayúsculas; catálogos dinámicos desde MySQL.
+- **RNF-15 — Validación numérica estricta y errores API:** montos/precios/cantidades con Zod (`src/lib/validationSchemas.ts`: `moneySchema`, `exchangeRateSchema`, `positiveIntSchema`, `nonNegativeIntSchema`) + `AppInput.numericMode` antes de cualquier HTTP; `Api/index.php` con `display_errors=0` y `try/catch` global (`InvalidArgumentException` → HTTP 422 JSON; demás → HTTP 500 JSON con `error_id`); cliente `apiClient` / `parseOperamApiResponse` jamás trata HTML o `success≠true` como éxito.
+- **RNF-8 — Cero hardcodeo de servicios externos:** URLs, hosts, API keys y parámetros operativos (SMTP, ERP, Slack, Banxico, PAC, webhooks) viven en Configuración → Servicios externos / MySQL; secretos solo por `secret_ref` hacia `.env` / Secret Manager.
 - **RBAC multinivel (18 `module_key`):** operativos (`main`: `dashboard`…`sales_promotions` + `segment_profitability`) y `config_*` (`configuration`); sin permiso monolítico `configuration`.
-- **Filtros con `<label>` visible:** todo criterio de toolbar/tabla usa `AppFilterField` (o equivalente); catálogos dinámicos desde MySQL.
 - **Auditoría automática (`audit_logs`):** toda escritura vía `System/Support/AuditLogger.php`; secretos redactados; módulo Sistema siempre audita; depuración solo con `@allow_audit_purge`.
 
 Detalle completo: archivo `.cursorrules` en la raíz.
@@ -207,6 +209,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 - [x] **Módulo 4 Pasos 1–2 (checkpoint oficial cerrado):** Solicitudes (`/solicitudes`) + Cobranza (`/cobranza`) — RBAC 6 capas (`requests` / `collections`), IVA 16% BCMath en facturas (MRR sin impuestos), pagos + reversión sin DELETE, suspensión +90d (`exclude_suspension`), puente `from-request`, badge Sidebar, Kit Atómico, suite PHPUnit en verde.
 - [x] **Módulo 4 Paso 1:** Bandeja de Solicitudes — `service_requests` / `service_request_items`, cotizar/aprobar/rechazar/cancelar (`can_delete`), solicitudes mixtas (solo recurring toca MRR), trazabilidad `Origen: SOL-XXXX` en bitácora.
 - [x] **Módulo 4 Paso 2:** Cobranza — `invoices` / `payments`, emisión FAC-XXXX, antigüedad 5 tramos, CLI `run_collections_suspension.php`, Dashboard aging en vivo.
+- [x] **Bloque A — Utilidad por Segmento, Costos Operativos, Ingresos No Recurrentes y Permiso/Reporte de Excepciones (RF-10, RF-11.4, RF-11.5):** checkpoint oficial cerrado — `/utilidad-segmento` (4 pestañas Kit Atómico), KPIs + unit economics sin scroll, CRUD `segment_costs`, ingresos no recurrentes, reporte de excepciones, `can_authorize_exceptions`, RNF-8 servicios externos, RNF-15 validación numérica + manejador JSON global en `Api/index.php`.
 - [ ] **Módulo 4 (resto):** Portal Cliente con Magic Links e IntegroPAY (RF-4 a RF-8).
 
 ---
@@ -224,6 +227,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `composer.json` / `composer.lock` | Dependencias PHP 8.3 + `phpunit/phpunit` ^11 en require-dev. |
 | `phinx.php` / `phpunit.xml` | Phinx y PHPUnit (suite `tests/Unit`). |
 | `tests/Unit/FinancialRulesTest.php` | Suite oficial RNF-1 / RF-2 / RNF-3 (Puente MRR, paquetes de 5, reversión, inmutabilidad). |
+| `tests/Unit/NormalizeMoneyValidationTest.php` | RNF-15: `FinancialCalculator::normalizeMoney` rechaza `ddd`/`12a`/`NaN` y acepta deltas con signo. |
 | `tests/Unit/AuditLoggerTest.php` | Sanitización de secretos y diff de auditoría. |
 | `tests/Unit/ClientRulesTest.php` | Normalización de RFC y herencia de días de crédito por segmento. |
 | `tests/Unit/ContractPricingEngineTest.php` | Motor BCMath de contrato: RF-2, anual/12, USD→MXN y promo %. |
@@ -268,7 +272,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `components/ui/ThemeToggleSwitch.tsx` | Switch iOS luna/sol (primitivo del kit). |
 | `components/ui/appTokens.ts` | Tokens compartidos de campo/tarjeta/popover (borde, focus, sombra). |
 | `components/ui/AppButton.tsx` | Botón atómico (`primary` / `secondary` / `outline` / `ghost` / `danger` + `isLoading`). |
-| `components/ui/AppInput.tsx` | Input / moneda / búsqueda / textarea atómicos. |
+| `components/ui/AppInput.tsx` | Input / moneda / búsqueda / textarea atómicos + `numericMode` (`decimal` \| `integer` \| `decimal4`) RNF-15. |
 | `components/ui/AppSelect.tsx` | Select Radix Liquid Glass; buscador si >6 opciones; semáforo por opción. |
 | `components/ui/AppCard.tsx` | Tarjeta Liquid Glass (`Header` / `Content` / `Footer`). |
 | `components/ui/AppBadge.tsx` | Píldoras semáforo (`success` \| `warning` \| `danger` \| `info` \| `neutral` \| `slate`); siempre `whitespace-nowrap`. |
@@ -290,6 +294,11 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `pages/ClientsPage.tsx` | `/clientes` — directorio CRUD (KPIs, filtros dinámicos, tabla paginada, modales crear/editar/detalle) con Kit Atómico (`clients`). |
 | `pages/RequestsPage.tsx` | `/solicitudes` — bandeja M4 Paso 1: KPIs, `AppFilterBar`, tabla/tarjetas UI-4, cotizar/aprobar/rechazar (`requests`). |
 | `pages/CollectionsPage.tsx` | `/cobranza` — M4 Paso 2: KPIs, aging 5 tramos, pestañas Documentos/Cartera, `AppFilterBar`, emisión/pagos/cancelación/suspensión (`collections`). |
+| `pages/SegmentProfitabilityPage.tsx` | `/utilidad-segmento` — 4 pestañas en `AppCard`: Resumen financiero, Costos operativos, Ingresos no recurrentes, Excepciones; `AppFilterBar` + unit economics en tarjetas (`segment_profitability`). |
+| `components/profitability/SegmentCostModal.tsx` | Modal RHF+Zod de captura/edición de `segment_costs`. |
+| `hooks/useProfitability.ts` | TanStack Query summary/costs/non-recurring/exceptions + mutaciones con `useLoadingLock`. |
+| `services/profitabilityService.ts` | HTTP JWT contra `/api/segment-profitability/*`. |
+| `types/profitability.ts` | Tipos summary, costos, no recurrentes y excepciones. |
 | `components/collections/*` | `NewInvoiceModal`, `RecordPaymentModal`, `InvoiceDetailModal` (RHF+Zod + Kit Atómico). |
 | `components/requests/NewRequestModal.tsx` | Modal RHF+Zod de alta interna con preview UI-9 (total vs impacto MRR / RF-2). |
 | `components/requests/RequestDetailModal.tsx` | Detalle + aprobación (excepción de cartera) + rechazo con caja UI-9. |
@@ -338,13 +347,21 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `hooks/useClientTableState.ts` | page/pageSize anclado a Preferencias de pantalla. |
 | `lib/utils.ts` / `lib/mrrCalculator.ts` | Utilidades y motor MRR. |
 | `lib/pricingCalculator.ts` | RF-2 `optimizeUserPackages` (centavos). |
+| `lib/apiClient.ts` | Cliente HTTP RNF-15: `parseOperamApiResponse` (nunca éxito falso con HTML/`success≠true`). |
+| `lib/validationSchemas.ts` | Zod `moneySchema` / `exchangeRateSchema` / `positiveIntSchema` / `nonNegativeIntSchema`. |
 
 ### `Api/` / `System/` / `database/` / `backend/`
 
 | Área | Descripción |
 |------|-------------|
-| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `clients` + `contracts` + `requests` + `collections` + `movements` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs`. |
-| `Api/services.routes.inc` | Índice documentado de rutas (incl. `/api/requests` M4 Paso 1 y `/api/collections` M4 Paso 2). |
+| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `clients` + `contracts` + `requests` + `collections` + `movements` + `segment-profitability` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs`. RNF-15: `display_errors=0` + `try/catch` global JSON (422/500 + `error_id`). |
+| `Api/services.routes.inc` | Índice documentado de rutas (incl. `/api/requests`, `/api/collections` y `/api/segment-profitability`). |
+| `System/Services/SegmentProfitabilityService.php` | Summary + CRUD `segment_costs` + no recurrentes + excepciones; RBAC `segment_profitability` + alcance segmento. |
+| `System/Support/SegmentProfitabilityCalculator.php` | Motor puro BCMath: utilidad bruta, margen, unit economics, usuarios concurrentes. |
+| `System/Support/ExceptionAuthorization.php` | RF-11.4: gate `can_authorize_exceptions` + saldo vencido al momento. |
+| `System/Models/SegmentCostsModel.php` | Eloquent `segment_costs` (`alias = scost`). |
+| `database/migrations/20261125000001_create_segment_costs_and_exceptions_fields.php` | Tabla `segment_costs` + `users.can_authorize_exceptions` + `overdue_balance_at_exception`. |
+| `tests/Unit/SegmentProfitabilityTest.php` | BCMath utilidad/margen/unit economics + bloqueo RF-11.4. |
 | `System/Services/ServiceRequestsService.php` | `/api/requests`: listado+KPIs, pending-count, create, quote, approve (one_time vs expansion + puente factura), reject/cancel; RBAC `requests` + segmento. |
 | `System/Services/CollectionsService.php` | `/api/collections`: invoices, payments, cartera, recalculo `collection_statuses`, suspensión +90d; RBAC `collections`. |
 | `System/Support/ServiceRequestRules.php` | Motor puro BCMath: precios, tipo, gate de cartera, payload expansion con `request_id`. |

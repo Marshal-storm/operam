@@ -34,6 +34,7 @@ final class UsersManagementService extends ModelService
             ->setField('role_id', DataTypes::Integer, false)
             ->setField('segment_id', DataTypes::Integer, false)
             ->setField('is_active', DataTypes::Boolean, false, true)
+            ->setField('can_authorize_exceptions', DataTypes::Boolean, false, false)
             ->setField('last_login_at', DataTypes::DateTime, false);
     }
 
@@ -146,6 +147,7 @@ final class UsersManagementService extends ModelService
                 'u.segment_id',
                 's.name as segment_name',
                 'u.is_active',
+                'u.can_authorize_exceptions',
                 'u.last_login_at',
                 'u.created_at',
             ]);
@@ -178,6 +180,9 @@ final class UsersManagementService extends ModelService
             ? (int) $request['segment_id']
             : null;
         $isActive = array_key_exists('is_active', $request) ? (bool) $request['is_active'] : true;
+        $canAuthorizeExceptions = array_key_exists('can_authorize_exceptions', $request)
+            ? (bool) $request['can_authorize_exceptions']
+            : false;
 
         if ($email === '' || $name === '' || $password === '' || $roleId === null) {
             return Result::fail('email, name, password y role_id son obligatorios.', 422);
@@ -203,6 +208,7 @@ final class UsersManagementService extends ModelService
             'role_id' => $roleId,
             'segment_id' => $segmentId,
             'is_active' => $isActive,
+            'can_authorize_exceptions' => $canAuthorizeExceptions,
             'last_login_at' => null,
             'created_at' => $nowUtc,
             'updated_at' => $nowUtc,
@@ -274,6 +280,9 @@ final class UsersManagementService extends ModelService
         }
         if (array_key_exists('is_active', $request)) {
             $updates['is_active'] = (bool) $request['is_active'];
+        }
+        if (array_key_exists('can_authorize_exceptions', $request)) {
+            $updates['can_authorize_exceptions'] = (bool) $request['can_authorize_exceptions'];
         }
         if (!empty($request['password'])) {
             $updates['password_hash'] = $this->hashPassword((string) $request['password']);
@@ -379,6 +388,7 @@ final class UsersManagementService extends ModelService
                 'u.segment_id',
                 's.name as segment_name',
                 'u.is_active',
+                'u.can_authorize_exceptions',
                 'u.last_login_at',
                 'u.created_at',
             ]);
@@ -401,6 +411,7 @@ final class UsersManagementService extends ModelService
             'segment_id' => $row->segment_id !== null ? (int) $row->segment_id : null,
             'segment_name' => $row->segment_name !== null ? (string) $row->segment_name : 'Todos',
             'is_active' => (bool) $row->is_active,
+            'can_authorize_exceptions' => (bool) ($row->can_authorize_exceptions ?? false),
             'last_login_at' => $row->last_login_at,
             'created_at' => $row->created_at,
         ];

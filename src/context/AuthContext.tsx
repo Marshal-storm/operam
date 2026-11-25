@@ -22,6 +22,7 @@ import { configureCollectionsAuth } from '@/services/collectionsService'
 import { configureContractsAuth } from '@/services/contractsService'
 import { configureRequestsAuth } from '@/services/requestsService'
 import { configureDashboardAuth } from '@/services/dashboardService'
+import { configureProfitabilityAuth } from '@/services/profitabilityService'
 import { configureRbacAuth } from '@/services/rbacService'
 import { configureSystemAuth } from '@/services/systemService'
 import {
@@ -77,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     configureContractsAuth(getToken)
     configureRequestsAuth(getToken)
     configureCollectionsAuth(getToken)
+    configureProfitabilityAuth(getToken)
     configureRbacAuth(getToken)
     configureSystemAuth(getToken)
   }, [getToken, logout])

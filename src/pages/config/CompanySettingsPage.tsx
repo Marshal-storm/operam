@@ -13,10 +13,16 @@ import {
   type SegmentOption,
 } from '@/services/catalogService'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  exchangeRateSchema,
+  nonNegativeIntSchema,
+  sanitizeNumericTyping,
+} from '@/lib/validationSchemas'
 
 function normalizeFxInput(raw: string): string {
-  const cleaned = raw.trim().replace(/,/g, '')
-  const num = Number(cleaned)
+  const parsed = exchangeRateSchema().safeParse(raw)
+  if (!parsed.success) return '0.0000'
+  const num = Number(parsed.data)
   if (!Number.isFinite(num) || num < 0) return '0.0000'
   return num.toFixed(4)
 }
@@ -98,6 +104,21 @@ export function CompanySettingsPage() {
 
   async function onSave() {
     if (!canEditCompany || !hasChanges) return
+    for (const seg of segments) {
+      const daysOk = nonNegativeIntSchema().safeParse(
+        String(draftDays[seg.id] ?? seg.default_credit_days),
+      )
+      const fxOk = exchangeRateSchema().safeParse(
+        draftFx[seg.id] ?? seg.usd_exchange_rate,
+      )
+      if (!daysOk.success || !fxOk.success) {
+        toast.error(
+          'Datos inválidos',
+          `${seg.name}: revisa días de crédito y tipo de cambio.`,
+        )
+        return
+      }
+    }
     await withScreenLock(
       () => saveMutation.mutateAsync(segments),
       'Guardando parámetros comerciales...',
@@ -142,16 +163,14 @@ export function CompanySettingsPage() {
                     Días de crédito por defecto
                   </span>
                   <AppInput
-                    type="number"
-                    min={0}
-                    step={1}
-                    inputMode="numeric"
+                    numericMode="integer"
                     mono
                     withLabelSpacing
                     disabled={!canEditCompany || saveMutation.isPending}
-                    value={draftDays[seg.id] ?? seg.default_credit_days}
+                    value={String(draftDays[seg.id] ?? seg.default_credit_days)}
                     onChange={(e) => {
-                      const parsed = Number.parseInt(e.target.value, 10)
+                      const sanitized = sanitizeNumericTyping(e.target.value, 'integer')
+                      const parsed = Number.parseInt(sanitized || '0', 10)
                       setDraftDays((prev) => ({
                         ...prev,
                         [seg.id]: Number.isFinite(parsed) ? Math.max(0, parsed) : 0,
@@ -168,10 +187,7 @@ export function CompanySettingsPage() {
                       $
                     </span>
                     <AppCurrencyInput
-                      type="number"
-                      min={0}
-                      step="0.0001"
-                      inputMode="decimal"
+                      numericMode="decimal4"
                       disabled={!canEditCompany || saveMutation.isPending}
                       value={draftFx[seg.id] ?? seg.usd_exchange_rate}
                       onChange={(e) => {

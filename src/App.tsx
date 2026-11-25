@@ -30,6 +30,7 @@ import { LoginPage } from '@/pages/LoginPage'
 import { NewContractPage } from '@/pages/NewContractPage'
 import { RequestsPage } from '@/pages/RequestsPage'
 import { SalesPromotionsPage } from '@/pages/SalesPromotionsPage'
+import { SegmentProfitabilityPage } from '@/pages/SegmentProfitabilityPage'
 import type { ModuleKey } from '@/types/auth'
 
 const queryClient = new QueryClient({
@@ -165,12 +166,16 @@ function App() {
                           }
                         />
                         <Route
-                          path="utilidad"
+                          path="utilidad-segmento"
                           element={
                             <ModulePage module="segment_profitability">
-                              <Placeholder title="Utilidad por segmento" />
+                              <SegmentProfitabilityPage />
                             </ModulePage>
                           }
+                        />
+                        <Route
+                          path="utilidad"
+                          element={<Navigate to="/utilidad-segmento" replace />}
                         />
                         <Route path="bitacora" element={<Placeholder title="Bitácora completa" />} />
 

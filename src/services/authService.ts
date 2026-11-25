@@ -1,3 +1,4 @@
+import { ApiClientError, parseOperamApiResponse } from '@/lib/apiClient'
 import type {
   AuthSession,
   AuthUser,
@@ -53,6 +54,9 @@ function normalizeUser(raw: ApiLoginResponse['data'] extends infer D
     segment_id: raw.segment_id ?? null,
     segment_name: raw.segment_name ?? 'Todos',
     permissions: (raw.permissions as PermissionsMap) ?? {},
+    can_authorize_exceptions: Boolean(
+      (raw as { can_authorize_exceptions?: boolean }).can_authorize_exceptions,
+    ),
     scope: 'enterprise',
   }
 }
@@ -80,19 +84,25 @@ export async function loginRequest(
     throw new AuthError('No se pudo conectar con el servicio de login.', 0)
   }
 
-  const payload = (await response.json()) as ApiLoginResponse
-  if (!response.ok || !payload.success || !payload.data?.token) {
-    throw new AuthError(
-      payload.message || 'No se pudo iniciar sesión.',
-      response.status,
+  try {
+    const data = await parseOperamApiResponse<NonNullable<ApiLoginResponse['data']>>(
+      response,
     )
-  }
-
-  return {
-    token: payload.data.token,
-    tokenType: 'Bearer',
-    expiresIn: payload.data.expires_in ?? 28_800,
-    user: normalizeUser(payload.data.user),
+    if (!data?.token || !data.user) {
+      throw new AuthError('No se pudo iniciar sesión.', response.status)
+    }
+    return {
+      token: data.token,
+      tokenType: 'Bearer',
+      expiresIn: data.expires_in ?? 28_800,
+      user: normalizeUser(data.user),
+    }
+  } catch (error) {
+    if (error instanceof AuthError) throw error
+    if (error instanceof ApiClientError) {
+      throw new AuthError(error.message, error.status)
+    }
+    throw new AuthError('No se pudo iniciar sesión.', response.status)
   }
 }
 
@@ -136,21 +146,21 @@ export async function fetchCurrentUserProfile(token: string): Promise<AuthUser> 
     throw new AuthError('No se pudo sincronizar el perfil de sesión.', 0)
   }
 
-  let payload: ApiLoginResponse = { success: false }
   try {
-    payload = (await response.json()) as ApiLoginResponse
-  } catch {
-    throw new AuthError('Respuesta inválida del perfil de sesión.', response.status)
+    const data = await parseOperamApiResponse<{
+      user: NonNullable<ApiLoginResponse['data']>['user']
+    }>(response)
+    if (!data?.user) {
+      throw new AuthError('No se pudo sincronizar el perfil.', response.status)
+    }
+    return normalizeUser(data.user)
+  } catch (error) {
+    if (error instanceof AuthError) throw error
+    if (error instanceof ApiClientError) {
+      throw new AuthError(error.message, error.status)
+    }
+    throw new AuthError('No se pudo sincronizar el perfil.', response.status)
   }
-
-  if (!response.ok || !payload.success || !payload.data?.user) {
-    throw new AuthError(
-      payload.message || 'No se pudo sincronizar el perfil.',
-      response.status,
-    )
-  }
-
-  return normalizeUser(payload.data.user)
 }
 
 /** Credenciales del EnterpriseUsersSeeder (solo autocompletado de formulario). */

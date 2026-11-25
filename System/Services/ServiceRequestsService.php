@@ -761,6 +761,22 @@ final class ServiceRequestsService extends ModelService
         $withException = filter_var($payload['with_exception'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $resolutionNotes = trim((string) ($payload['resolution_notes'] ?? ''));
         $collection = $this->loadCollectionStatus((int) $existing->contract_id);
+
+        // RF-11.4: permiso independiente can_authorize_exceptions (consulta MySQL).
+        $authGate = \System\Support\ExceptionAuthorization::assertCanAuthorize(
+            $this->authContext,
+            $withException,
+            $resolutionNotes,
+            (int) $existing->contract_id,
+        );
+        if (!$authGate['allowed']) {
+            $code = $authGate['message'] === \System\Support\ExceptionAuthorization::DENIED_MESSAGE
+                ? 403
+                : 422;
+
+            return Result::fail((string) $authGate['message'], $code);
+        }
+
         $gate = ServiceRequestRules::evaluateCollectionGate(
             $collection['overdue_balance'],
             $collection['days_overdue'],
@@ -775,6 +791,9 @@ final class ServiceRequestsService extends ModelService
         $nowUtc = gmdate('Y-m-d H:i:s');
         $requestType = (string) $existing->request_type;
         $exceptionPolicy = $gate['exception_policy'];
+        $overdueAtException = $withException && $exceptionPolicy !== null
+            ? $authGate['overdue_balance']
+            : null;
 
         try {
             Capsule::connection()->transaction(function () use (
@@ -783,6 +802,7 @@ final class ServiceRequestsService extends ModelService
                 $withException,
                 $exceptionPolicy,
                 $resolutionNotes,
+                $overdueAtException,
                 $userId,
                 $nowUtc,
             ): void {
@@ -798,7 +818,15 @@ final class ServiceRequestsService extends ModelService
                 }
 
                 if (ServiceRequestRules::approvalTouchesContractMrr($requestType)) {
-                    $this->applyRecurringExpansionFromRequest($locked, $withException, $exceptionPolicy, $resolutionNotes, $userId, $nowUtc);
+                    $this->applyRecurringExpansionFromRequest(
+                        $locked,
+                        $withException,
+                        $exceptionPolicy,
+                        $resolutionNotes,
+                        $userId,
+                        $nowUtc,
+                        $overdueAtException,
+                    );
                 }
 
                 // Puente Cobranza (M4 Paso 2): one_time / consumption → invoice FAC-XXXX.
@@ -808,6 +836,7 @@ final class ServiceRequestsService extends ModelService
                     'status' => 'approved',
                     'with_exception' => $withException && $exceptionPolicy !== null ? 1 : 0,
                     'exception_policy' => $withException ? $exceptionPolicy : null,
+                    'overdue_balance_at_exception' => $overdueAtException,
                     'resolution_notes' => $resolutionNotes !== ''
                         ? mb_substr($resolutionNotes, 0, 2000)
                         : ($locked->resolution_notes ?? null),
@@ -858,6 +887,7 @@ final class ServiceRequestsService extends ModelService
         string $resolutionNotes,
         int $userId,
         string $nowUtc,
+        ?string $overdueBalanceAtException = null,
     ): void {
         $contract = Capsule::table('contracts')->where('id', (int) $request->contract_id)->lockForUpdate()->first();
         if ($contract === null) {
@@ -1083,6 +1113,7 @@ final class ServiceRequestsService extends ModelService
             '0.00',
             $qtyAfter,
             $nowUtc,
+            $overdueBalanceAtException,
         );
 
         (new MovementsService())->recordWithinTransaction($movementPayload);

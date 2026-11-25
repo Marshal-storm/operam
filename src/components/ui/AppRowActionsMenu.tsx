@@ -35,7 +35,7 @@ export function AppActionsColumnHeader({ className }: { className?: string }) {
 }
 
 const MENU_SURFACE_CLASS =
-  'z-40 min-w-[196px] rounded-[20px] p-1.5 ' +
+  'z-50 min-w-[196px] rounded-[20px] p-1.5 ' +
   'bg-white/80 backdrop-blur-2xl backdrop-saturate-150 ' +
   'border border-white/85 ring-1 ring-slate-900/[0.07] ' +
   'shadow-[inset_0_1px_1px_rgba(255,255,255,0.95),0_18px_40px_-10px_rgba(15,23,42,0.18)] ' +

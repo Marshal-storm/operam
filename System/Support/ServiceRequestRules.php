@@ -375,6 +375,7 @@ final class ServiceRequestRules
         string $quantityBefore = '0.00',
         string $quantityAfter = '0.00',
         string $createdAtUtc = '',
+        ?string $overdueBalanceAtException = null,
     ): array {
         $now = $createdAtUtc !== '' ? $createdAtUtc : gmdate('Y-m-d H:i:s');
 
@@ -396,6 +397,9 @@ final class ServiceRequestRules
             'reason' => mb_substr($reason, 0, 255),
             'has_exception' => $withException ? 1 : 0,
             'excepted_policy' => $withException ? ($exceptionPolicy ?? self::EXCEPTION_POLICY_OVERDUE) : null,
+            'overdue_balance_at_exception' => $withException && $overdueBalanceAtException !== null
+                ? FinancialCalculator::normalizeMoney($overdueBalanceAtException)
+                : null,
             'reversed_movement_id' => null,
             'created_at' => $now,
         ];

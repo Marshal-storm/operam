@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/AppModal'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { formatCurrencyMx } from '@/lib/utils'
+import { moneySchema } from '@/lib/validationSchemas'
 import { fetchContractsPaginated } from '@/services/contractsService'
 import type { IssueInvoiceInput } from '@/types/collection'
 
@@ -36,11 +37,13 @@ const formSchema = z
       if (!values.concept?.trim()) {
         ctx.addIssue({ code: 'custom', message: 'El concepto es obligatorio', path: ['concept'] })
       }
-      const n = Number(values.amount ?? '0')
-      if (!Number.isFinite(n) || n <= 0) {
+      const parsed = moneySchema().safeParse(values.amount ?? '')
+      if (!parsed.success) {
         ctx.addIssue({
           code: 'custom',
-          message: 'El monto debe ser mayor a 0',
+          message:
+            parsed.error.issues[0]?.message ??
+            'Ingresa un monto numérico válido (ej. 1500.00)',
           path: ['amount'],
         })
       }

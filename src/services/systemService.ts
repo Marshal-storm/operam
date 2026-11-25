@@ -1,3 +1,4 @@
+import { ApiClientError, parseOperamApiResponse } from '@/lib/apiClient'
 import { notifyUnauthorized } from '@/services/sessionSecurity'
 
 const API_BASE_URL = (
@@ -91,38 +92,32 @@ export type AuditLogsPage = {
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getAuthToken()
   const hadBearer = Boolean(token)
-  const response = await fetch(`${API_BASE_URL}/${path}`, {
-    ...options,
-    headers: {
-      Accept: 'application/json',
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers ?? {}),
-    },
-  })
-
-  let body: { success?: boolean; data?: T; message?: string } = {}
-  let parsed = false
+  let response: Response
   try {
-    body = (await response.json()) as typeof body
-    parsed = true
+    response = await fetch(`${API_BASE_URL}/${path}`, {
+      ...options,
+      headers: {
+        Accept: 'application/json',
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers ?? {}),
+      },
+    })
   } catch {
-    /* HTML de un fatal PHP no es una sesión revocada */
+    throw new SystemApiError('No se pudo conectar con la API.', 0)
   }
 
-  if (response.status === 401) {
-    notifyUnauthorized(hadBearer)
+  try {
+    return await parseOperamApiResponse<T>(response, {
+      hadBearer,
+      onUnauthorized: (had) => notifyUnauthorized(had),
+    })
+  } catch (error) {
+    if (error instanceof ApiClientError) {
+      throw new SystemApiError(error.message, error.status)
+    }
+    throw error
   }
-
-  if (!parsed || !response.ok || body.success === false) {
-    throw new SystemApiError(
-      body.message ??
-        (parsed ? `Error HTTP ${response.status}` : 'La API no devolvió JSON.'),
-      response.status,
-    )
-  }
-
-  return (body.data ?? body) as T
 }
 
 function toQuery(params: Record<string, string | number | undefined | null>): string {

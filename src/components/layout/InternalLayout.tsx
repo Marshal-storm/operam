@@ -63,7 +63,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: Gift,
     module: 'sales_promotions',
   },
-  { label: 'Utilidad por segmento', to: '/utilidad', icon: PieChart, module: 'segment_profitability' },
+  { label: 'Utilidad por segmento', to: '/utilidad-segmento', icon: PieChart, module: 'segment_profitability' },
 ]
 
 const CONFIG_SUBITEMS: ConfigSubItem[] = [

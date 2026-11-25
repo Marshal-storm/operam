@@ -69,6 +69,7 @@ export function UsersManagementPage() {
     /** 'todos' = alcance global; cualquier otro valor es el id del segmento. */
     segment_choice: 'todos',
     is_active: true,
+    can_authorize_exceptions: false,
   })
 
   const rolesQuery = useQuery({ queryKey: ['rbac', 'roles'], queryFn: fetchRoles })
@@ -125,6 +126,7 @@ export function UsersManagementPage() {
       role_id: String(rolesQuery.data?.[0]?.id ?? ''),
       segment_choice: 'todos',
       is_active: true,
+      can_authorize_exceptions: false,
     })
     setModalOpen(true)
   }
@@ -139,6 +141,7 @@ export function UsersManagementPage() {
       role_id: String(row.role_id ?? ''),
       segment_choice: row.segment_id == null ? 'todos' : String(row.segment_id),
       is_active: row.is_active,
+      can_authorize_exceptions: Boolean(row.can_authorize_exceptions),
     })
     setModalOpen(true)
   }
@@ -163,6 +166,7 @@ export function UsersManagementPage() {
           role_id: rolId,
           segment_id: segmentoId,
           is_active: form.is_active,
+          can_authorize_exceptions: form.can_authorize_exceptions,
           ...(form.password ? { password: form.password } : {}),
         })
       }
@@ -174,6 +178,7 @@ export function UsersManagementPage() {
         role_id: rolId,
         segment_id: segmentoId,
         is_active: form.is_active,
+        can_authorize_exceptions: form.can_authorize_exceptions,
       })
     },
     onSuccess: async (saved) => {
@@ -522,6 +527,26 @@ export function UsersManagementPage() {
               />
               Usuario activo
             </label>
+            <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+              <label className="flex items-start gap-3 text-sm">
+                <AppSwitch
+                  checked={form.can_authorize_exceptions}
+                  onCheckedChange={(next) =>
+                    setForm((f) => ({ ...f, can_authorize_exceptions: next }))
+                  }
+                  label="Puede autorizar excepciones"
+                />
+                <span>
+                  <span className="font-medium">
+                    Puede autorizar excepciones comerciales (RF-11.4)
+                  </span>
+                  <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                    Permite brincarse políticas comerciales (saldo vencido, fechas de baja,
+                    suspensión) registrando motivo obligatorio en el reporte de Dirección
+                  </span>
+                </span>
+              </label>
+            </div>
             <AppButton
               className="w-full"
               isLoading={saveMutation.isPending}

@@ -1,3 +1,4 @@
+import { ApiClientError, parseOperamApiResponse } from '@/lib/apiClient'
 import { buildMrrBridgeSteps, MRR_DELTA_CATEGORY_ORDER } from '@/lib/mrrCalculator'
 import { getDashboardSnapshot, getMovementsByCategory } from '@/services/mockDashboardData'
 import { notifyUnauthorized } from '@/services/sessionSecurity'
@@ -178,34 +179,18 @@ async function fetchDashboardFromApi(
     throw new DashboardEmptyError()
   }
 
-  if (!response.ok) {
-    throw new DashboardApiError(
-      `Error al consultar el dashboard (HTTP ${response.status}).`,
-      response.status,
-    )
-  }
-
-  let body: {
-    success?: boolean
-    message?: string
-    data?: ApiDashboardResponse
-  } & ApiDashboardResponse = {}
   try {
-    body = (await response.json()) as typeof body
-  } catch {
-    throw new DashboardApiError('Respuesta inválida del dashboard.')
+    const payload = await parseOperamApiResponse<ApiDashboardResponse>(response, {
+      hadBearer: true,
+      // 401 ya se manejó arriba.
+    })
+    return mapApiDashboardToSnapshot(payload, params)
+  } catch (error) {
+    if (error instanceof ApiClientError) {
+      throw new DashboardApiError(error.message, error.status)
+    }
+    throw error
   }
-
-  if (body.success === false) {
-    throw new DashboardApiError(
-      body.message ?? 'No se pudo cargar el dashboard.',
-      response.status,
-    )
-  }
-
-  // Framework operam/servicios envuelve el payload en `{ success, data }`.
-  const payload = (body.data ?? body) as ApiDashboardResponse
-  return mapApiDashboardToSnapshot(payload, params)
 }
 
 /**

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/AppModal'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { APP_TIME_ZONE } from '@/lib/utils'
+import { moneySchema, positiveIntSchema } from '@/lib/validationSchemas'
 import type {
   ContractDetail,
   ContractLifecycleInput,
@@ -50,8 +51,34 @@ const baseSchema = z.object({
   reason: z.string().trim().min(3, 'El motivo debe tener al menos 3 caracteres'),
   contract_line_id: z.string().optional(),
   service_id: z.string().optional(),
-  quantity: z.string().optional(),
-  unit_price: z.string().optional(),
+  quantity: z
+    .string()
+    .optional()
+    .superRefine((val, ctx) => {
+      if (val == null || val.trim() === '') return
+      const parsed = positiveIntSchema().safeParse(val)
+      if (!parsed.success) {
+        ctx.addIssue({
+          code: 'custom',
+          message: parsed.error.issues[0]?.message ?? 'Ingresa un entero mayor a 0',
+        })
+      }
+    }),
+  unit_price: z
+    .string()
+    .optional()
+    .superRefine((val, ctx) => {
+      if (val == null || val.trim() === '') return
+      const parsed = moneySchema().safeParse(val)
+      if (!parsed.success) {
+        ctx.addIssue({
+          code: 'custom',
+          message:
+            parsed.error.issues[0]?.message ??
+            'Ingresa un monto numérico válido (ej. 1500.00)',
+        })
+      }
+    }),
   deactivate: z.string().optional(),
   billing_frequency: z.string().optional(),
   issuer_id: z.string().optional(),
@@ -252,7 +279,7 @@ export function LifecycleOperationModal({
                     label="Cantidad"
                     name="quantity"
                     control={form.control}
-                    type="number"
+                    numericMode="integer"
                     mono
                   />
                 </>
@@ -269,7 +296,7 @@ export function LifecycleOperationModal({
                     label="Nueva cantidad"
                     name="quantity"
                     control={form.control}
-                    type="number"
+                    numericMode="integer"
                     mono
                   />
                 </>
@@ -317,7 +344,7 @@ export function LifecycleOperationModal({
                     label="Nueva cantidad (unidades que quedarán)"
                     name="quantity"
                     control={form.control}
-                    type="number"
+                    numericMode="integer"
                     mono
                   />
                   {contractionHint ? (
@@ -343,6 +370,7 @@ export function LifecycleOperationModal({
                 label="Nuevo precio unitario"
                 name="unit_price"
                 control={form.control}
+                numericMode="decimal"
                 mono
                 placeholder="0.00"
               />
@@ -472,16 +500,16 @@ function FieldInput({
   label,
   name,
   control,
-  type = 'text',
   mono,
   placeholder,
+  numericMode,
 }: {
   label: string
   name: keyof FormValues
   control: ReturnType<typeof useForm<FormValues>>['control']
-  type?: string
   mono?: boolean
   placeholder?: string
+  numericMode?: 'decimal' | 'integer' | 'decimal4'
 }) {
   return (
     <div>
@@ -493,9 +521,9 @@ function FieldInput({
         name={name}
         render={({ field }) => (
           <AppInput
-            type={type}
             mono={mono}
             placeholder={placeholder}
+            numericMode={numericMode}
             value={field.value ?? ''}
             onChange={field.onChange}
           />

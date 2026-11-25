@@ -14,13 +14,14 @@ import {
 } from '@/components/ui/AppModal'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { formatCurrencyMx } from '@/lib/utils'
+import { moneySchema } from '@/lib/validationSchemas'
 import type { InvoiceListItem, RecordPaymentInput } from '@/types/collection'
 
 const FIELD_LABEL =
   'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400'
 
 const formSchema = z.object({
-  amount: z.string().min(1, 'Indica el monto'),
+  amount: moneySchema(),
   payment_method: z.enum(['transfer', 'card_integropay', 'cash', 'check', 'other']),
   payment_date: z.string().min(1, 'Indica la fecha'),
   reference: z.string().max(120).optional(),

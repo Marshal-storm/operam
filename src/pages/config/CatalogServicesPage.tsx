@@ -11,6 +11,7 @@ import { Pencil, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
+import { positiveIntSchema } from '@/lib/validationSchemas'
 import { fetchServices } from '@/services/catalogService'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
@@ -85,10 +86,11 @@ const formSchema = z.object({
   ]),
   allow_package_conversion: z.boolean(),
   package_service_id: z.string().optional(),
-  package_factor: z
-    .string()
-    .regex(/^[1-9]\d*$/, 'Factor entero entre 2 y 100')
-    .refine((v) => Number(v) >= 2 && Number(v) <= 100, 'Factor entero entre 2 y 100'),
+  package_factor: positiveIntSchema({
+    message: 'Factor entero entre 2 y 100',
+    min: 2,
+    max: 100,
+  }),
   is_active: z.boolean(),
 }).superRefine((values, ctx) => {
   if (values.allow_package_conversion && !values.package_service_id) {
@@ -716,11 +718,9 @@ export function CatalogServicesPage() {
                     <label className="block text-sm">
                       Factor de paquete
                       <AppInput
-                        type="number"
-                        min={2}
-                        max={100}
                         withLabelSpacing
                         mono
+                        numericMode="integer"
                         {...form.register('package_factor')}
                       />
                       {form.formState.errors.package_factor && (

@@ -26,6 +26,7 @@ import {
 import { AppSelect, type AppSelectOption } from '@/components/ui/AppSelect'
 import { optimizeUserPackages, resolveTierPriceDetailed } from '@/lib/pricingCalculator'
 import { formatCurrencyMx } from '@/lib/utils'
+import { moneySchema } from '@/lib/validationSchemas'
 import { fetchPriceLists, fetchServices } from '@/services/catalogService'
 import { fetchContractsPaginated } from '@/services/contractsService'
 import type { CatalogService, PriceListItem } from '@/types/catalog'
@@ -41,7 +42,21 @@ const lineSchema = z.object({
     .number({ error: 'Indica la cantidad' })
     .int('La cantidad debe ser entera')
     .min(1, 'La cantidad debe ser ≥ 1'),
-  custom_unit_price: z.string().optional(),
+  custom_unit_price: z
+    .string()
+    .optional()
+    .superRefine((val, ctx) => {
+      if (val == null || val.trim() === '') return
+      const parsed = moneySchema().safeParse(val)
+      if (!parsed.success) {
+        ctx.addIssue({
+          code: 'custom',
+          message:
+            parsed.error.issues[0]?.message ??
+            'Ingresa un monto numérico válido (ej. 1500.00)',
+        })
+      }
+    }),
 })
 
 const formSchema = z.object({
@@ -473,11 +488,12 @@ export function NewRequestModal({ open, onOpenChange, onSubmit }: NewRequestModa
                           <div>
                             <label className={FIELD_LABEL}>Cantidad</label>
                             <AppInput
-                              type="number"
-                              min={1}
+                              numericMode="integer"
                               mono
                               value={String(f.value ?? 1)}
-                              onChange={(e) => f.onChange(Number(e.target.value) || 1)}
+                              onChange={(e) =>
+                                f.onChange(Math.max(1, Number(e.target.value || '1') || 1))
+                              }
                             />
                           </div>
                         )}

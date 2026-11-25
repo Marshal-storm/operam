@@ -1,3 +1,4 @@
+import { ApiClientError, parseOperamApiResponse } from '@/lib/apiClient'
 import { notifyUnauthorized } from '@/services/sessionSecurity'
 import type {
   CollectionAgingBucket,
@@ -39,35 +40,32 @@ export class CollectionsApiError extends Error {
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getAuthToken()
   const hadBearer = Boolean(token)
-  const response = await fetch(`${API_BASE_URL}/${path}`, {
-    ...options,
-    headers: {
-      Accept: 'application/json',
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers ?? {}),
-    },
-  })
-
-  let body: { success?: boolean; data?: T; message?: string } = {}
+  let response: Response
   try {
-    body = (await response.json()) as typeof body
+    response = await fetch(`${API_BASE_URL}/${path}`, {
+      ...options,
+      headers: {
+        Accept: 'application/json',
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers ?? {}),
+      },
+    })
   } catch {
-    /* sin JSON */
+    throw new CollectionsApiError('No se pudo conectar con la API.', 0)
   }
 
-  if (response.status === 401) {
-    notifyUnauthorized(hadBearer)
+  try {
+    return await parseOperamApiResponse<T>(response, {
+      hadBearer,
+      onUnauthorized: (had) => notifyUnauthorized(had),
+    })
+  } catch (error) {
+    if (error instanceof ApiClientError) {
+      throw new CollectionsApiError(error.message, error.status)
+    }
+    throw error
   }
-
-  if (!response.ok || body.success === false) {
-    throw new CollectionsApiError(
-      body.message ?? `Error HTTP ${response.status}`,
-      response.status,
-    )
-  }
-
-  return (body.data ?? body) as T
 }
 
 function toQuery(params: Record<string, string | number | boolean | undefined | null>): string {

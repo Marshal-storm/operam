@@ -127,6 +127,7 @@ final class AppService extends CustomService
             'segment_id' => $segmentId,
             'segment_name' => (string) ($jti->segment_name ?? 'Todos'),
             'permissions' => $permissions,
+            'can_authorize_exceptions' => (bool) ($jti->can_authorize_exceptions ?? false),
             'scope' => 'enterprise',
         ]);
     }

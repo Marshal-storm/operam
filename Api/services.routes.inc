@@ -28,6 +28,18 @@
  *   POST   /api/collections/run-suspension-check   — suspensión +90d (can_edit)
  *
  * Alias: /api/cobranza → collections
+ *
+ * Bloque A — Utilidad por segmento (RF-10 / RF-11.5):
+ *   GET    /api/segment-profitability/summary          — KPIs + unit economics + tendencia 6 meses
+ *   GET    /api/segment-profitability/costs            — listado paginado segment_costs
+ *   POST   /api/segment-profitability/costs            — alta de costo mensual
+ *   PUT    /api/segment-profitability/costs/{id}       — editar costo
+ *   DELETE /api/segment-profitability/costs/{id}       — eliminar costo
+ *   GET    /api/segment-profitability/non-recurring    — ingresos one_time / consumption
+ *   GET    /api/segment-profitability/exceptions        — reporte Dirección (movements + requests)
+ *
+ * Alias: /api/utilidad-segmento → segment-profitability
+ * RBAC: segment_profitability (CRUD completo para captura de costos)
  */
 
 declare(strict_types=1);

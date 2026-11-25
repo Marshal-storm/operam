@@ -21,6 +21,7 @@ final class UsersModel extends Model
         'role_id',
         'segment_id',
         'is_active',
+        'can_authorize_exceptions',
         'last_login_at',
     ];
 
@@ -29,6 +30,7 @@ final class UsersModel extends Model
         'role_id' => 'integer',
         'segment_id' => 'integer',
         'is_active' => 'boolean',
+        'can_authorize_exceptions' => 'boolean',
         'last_login_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',

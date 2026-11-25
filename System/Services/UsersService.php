@@ -23,6 +23,7 @@ final class UsersService extends ModelService
             ->setField('role_id', DataTypes::Integer, false)
             ->setField('segment_id', DataTypes::Integer, false)
             ->setField('is_active', DataTypes::Boolean, false, true)
+            ->setField('can_authorize_exceptions', DataTypes::Boolean, false, false)
             ->setField('last_login_at', DataTypes::DateTime, false);
     }
 }

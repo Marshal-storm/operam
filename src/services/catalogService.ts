@@ -1,3 +1,4 @@
+import { ApiClientError, parseOperamApiResponse } from '@/lib/apiClient'
 import { notifyUnauthorized } from '@/services/sessionSecurity'
 import type {
   CatalogService,
@@ -53,36 +54,32 @@ async function apiRequest<T>(
 ): Promise<T> {
   const token = getAuthToken()
   const hadBearer = Boolean(token)
-  const response = await fetch(`${API_BASE_URL}/${path}`, {
-    ...options,
-    headers: {
-      Accept: 'application/json',
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers ?? {}),
-    },
-  })
-
-  let body: { success?: boolean; data?: T; message?: string } = {}
+  let response: Response
   try {
-    body = (await response.json()) as typeof body
+    response = await fetch(`${API_BASE_URL}/${path}`, {
+      ...options,
+      headers: {
+        Accept: 'application/json',
+        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers ?? {}),
+      },
+    })
   } catch {
-    /* sin JSON — p. ej. fatal PHP; no confundir con sesión revocada */
+    throw new CatalogApiError('No se pudo conectar con la API.', 0)
   }
 
-  // Solo 401 con Bearer enviado = sesión revocada/expirada. Nunca 404/500/422.
-  if (response.status === 401) {
-    notifyUnauthorized(hadBearer)
+  try {
+    return await parseOperamApiResponse<T>(response, {
+      hadBearer,
+      onUnauthorized: (had) => notifyUnauthorized(had),
+    })
+  } catch (error) {
+    if (error instanceof ApiClientError) {
+      throw new CatalogApiError(error.message, error.status)
+    }
+    throw error
   }
-
-  if (!response.ok || body.success === false) {
-    throw new CatalogApiError(
-      body.message ?? `Error HTTP ${response.status}`,
-      response.status,
-    )
-  }
-
-  return (body.data ?? body) as T
 }
 
 function asArray<T>(value: T[] | unknown): T[] {

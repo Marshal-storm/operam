@@ -3,6 +3,7 @@ import { Pause, Pencil, Play, Plus, Ticket } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { moneySchema, nonNegativeIntSchema } from '@/lib/validationSchemas'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
@@ -49,11 +50,23 @@ const formSchema = z.object({
   name: z.string().min(3).max(120),
   segment_id: z.string().optional(),
   discount_type: z.enum(['percentage', 'fixed_amount', 'free_months']),
-  discount_value: z.string().regex(/^\d+(\.\d{1,2})?$/),
+  discount_value: moneySchema({ allowZero: true }),
   applies_to: z.enum(['recurring', 'single', 'both']),
   valid_from: z.string().min(8),
   valid_until: z.string().optional(),
-  max_uses: z.string().optional(),
+  max_uses: z
+    .string()
+    .optional()
+    .superRefine((val, ctx) => {
+      if (val == null || val.trim() === '') return
+      const parsed = nonNegativeIntSchema().safeParse(val)
+      if (!parsed.success) {
+        ctx.addIssue({
+          code: 'custom',
+          message: parsed.error.issues[0]?.message ?? 'Ingresa un entero válido',
+        })
+      }
+    }),
   is_active: z.boolean(),
 })
 

@@ -860,12 +860,13 @@ export function ClientsPage() {
                     Días de crédito
                   </label>
                   <AppInput
-                    type="number"
-                    min={0}
+                    numericMode="integer"
+                    mono
                     className="tabular-nums"
                     {...form.register('credit_days', { valueAsNumber: true })}
                     onChange={(e) => {
-                      const next = e.target.value === '' ? 0 : Number(e.target.value)
+                      const raw = e.target.value.replace(/[^\d]/g, '')
+                      const next = raw === '' ? 0 : Number(raw)
                       form.setValue('credit_days', Number.isFinite(next) ? next : 0, {
                         shouldValidate: true,
                       })

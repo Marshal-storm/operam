@@ -1,3 +1,4 @@
+import { ApiClientError, parseOperamApiResponse } from '@/lib/apiClient'
 import { notifyUnauthorized } from '@/services/sessionSecurity'
 import type { ModuleKey, ModulePermission, PermissionsMap } from '@/types/auth'
 
@@ -40,26 +41,17 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     throw new RbacApiError('No se pudo conectar con la API.', 0)
   }
 
-  let payload: {
-    success?: boolean
-    message?: string
-    data?: T
-  } = {}
   try {
-    payload = (await response.json()) as typeof payload
-  } catch {
-    /* sin JSON */
+    return await parseOperamApiResponse<T>(response, {
+      hadBearer,
+      onUnauthorized: (had) => notifyUnauthorized(had),
+    })
+  } catch (error) {
+    if (error instanceof ApiClientError) {
+      throw new RbacApiError(error.message, error.status)
+    }
+    throw error
   }
-
-  if (response.status === 401) {
-    notifyUnauthorized(hadBearer)
-  }
-
-  if (!response.ok || payload.success === false) {
-    throw new RbacApiError(payload.message || 'Error en la operación.', response.status)
-  }
-
-  return payload.data as T
 }
 
 export type SystemModule = {
@@ -90,6 +82,8 @@ export type ManagedUser = {
   segment_id: number | null
   segment_name: string
   is_active: boolean
+  /** RF-11.4 — puede autorizar excepciones comerciales. */
+  can_authorize_exceptions: boolean
   last_login_at: string | null
   created_at?: string
 }
@@ -158,6 +152,7 @@ export function createManagedUser(input: {
   role_id: number
   segment_id: number | null
   is_active?: boolean
+  can_authorize_exceptions?: boolean
 }): Promise<ManagedUser> {
   return apiFetch<ManagedUser>('/users', {
     method: 'POST',
@@ -174,6 +169,7 @@ export function updateManagedUser(
     role_id: number
     segment_id: number | null
     is_active: boolean
+    can_authorize_exceptions: boolean
   }>,
 ): Promise<ManagedUser> {
   return apiFetch<ManagedUser>(`/users/${id}`, {

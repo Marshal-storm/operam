@@ -23,6 +23,11 @@ import {
 } from '@/lib/pricingCalculator'
 import { cn, formatCurrencyMx, formatDateEsMx } from '@/lib/utils'
 import {
+  exchangeRateSchema,
+  nonNegativeIntSchema,
+  positiveIntSchema,
+} from '@/lib/validationSchemas'
+import {
   fetchInstances,
   fetchPriceLists,
   fetchPromotions,
@@ -504,6 +509,28 @@ export function NewContractPage() {
 
   async function handleSubmit() {
     if (!canSubmit) return
+    const daysOk = nonNegativeIntSchema().safeParse(String(creditDays))
+    if (!daysOk.success) {
+      toast.error('Datos inválidos', 'Revisa los días de crédito.')
+      return
+    }
+    if (selectedList?.currency === 'USD') {
+      const fxOk = exchangeRateSchema().safeParse(exchangeRate)
+      if (!fxOk.success) {
+        toast.error(
+          'Datos inválidos',
+          fxOk.error.issues[0]?.message ?? 'Tipo de cambio inválido.',
+        )
+        return
+      }
+    }
+    for (const line of lines.filter((l) => Number(l.serviceId) > 0)) {
+      const qtyOk = positiveIntSchema().safeParse(String(line.quantity))
+      if (!qtyOk.success) {
+        toast.error('Datos inválidos', 'Las cantidades deben ser enteros mayores a 0.')
+        return
+      }
+    }
     try {
       const created = await createContract({
         client_id: Number(clientId),
@@ -646,11 +673,12 @@ export function NewContractPage() {
                     Días de crédito
                   </label>
                   <AppInput
-                    type="number"
-                    min={0}
+                    numericMode="integer"
                     mono
-                    value={creditDays}
-                    onChange={(e) => setCreditDays(Math.max(0, Number(e.target.value) || 0))}
+                    value={String(creditDays)}
+                    onChange={(e) =>
+                      setCreditDays(Math.max(0, Number(e.target.value || '0') || 0))
+                    }
                   />
                 </div>
                 <div className="flex items-end pb-1">
@@ -667,6 +695,7 @@ export function NewContractPage() {
                     </label>
                     <AppInput
                       mono
+                      numericMode="decimal4"
                       value={exchangeRate}
                       onChange={(e) => setExchangeRate(e.target.value)}
                     />
@@ -737,10 +766,9 @@ export function NewContractPage() {
                           Cantidad
                         </label>
                         <AppInput
-                          type="number"
-                          min={1}
+                          numericMode="integer"
                           mono
-                          value={line.quantity}
+                          value={String(line.quantity)}
                           error={Boolean(outOfRangeLine)}
                           onChange={(e) =>
                             setLines((prev) =>
@@ -748,7 +776,7 @@ export function NewContractPage() {
                                 l.key === line.key
                                   ? {
                                       ...l,
-                                      quantity: Math.max(1, Number(e.target.value) || 1),
+                                      quantity: Math.max(1, Number(e.target.value || '1') || 1),
                                     }
                                   : l,
                               ),

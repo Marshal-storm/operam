@@ -10,11 +10,10 @@ use Phinx\Seed\AbstractSeed;
  */
 final class RbacRolesAndPermissionsSeeder extends AbstractSeed
 {
-    /** Solo lectura (Ver). */
+    /** Solo lectura (Ver). `segment_profitability` es CRUD (captura de costos RF-10). */
     private const READ_ONLY = [
         'dashboard',
         'sales_promotions',
-        'segment_profitability',
         'config_audit_logs',
     ];
 
@@ -239,7 +238,7 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
                 'clients' => [1, 1, 1, 0],
                 'requests' => [1, 1, 1, 0],
                 'collections' => [1, 0, 1, 0],
-                'segment_profitability' => [1, 0, 0, 0],
+                'segment_profitability' => [1, 1, 1, 0],
                 'sales_promotions' => [1, 0, 0, 0],
             ], $zeroConfig),
             'ejecutivo_ventas' => array_merge([

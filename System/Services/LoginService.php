@@ -91,6 +91,7 @@ final class LoginService extends CustomService
                 'segment_id' => $jti['segment_id'] ?? null,
                 'segment_name' => $jti['segment_name'] ?? 'Todos',
                 'permissions' => $jti['permissions'] ?? [],
+                'can_authorize_exceptions' => (bool) ($jti['can_authorize_exceptions'] ?? false),
                 'scope' => $jti['scope'] ?? 'enterprise',
             ],
         ], 'Sesión iniciada');
@@ -201,6 +202,7 @@ final class LoginService extends CustomService
             'segment_id' => $rbac['segment_id'],
             'segment_name' => $rbac['segment_name'],
             'permissions' => $rbac['permissions'],
+            'can_authorize_exceptions' => (bool) ($user->can_authorize_exceptions ?? false),
             'scope' => 'enterprise',
         ]);
     }

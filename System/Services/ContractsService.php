@@ -31,6 +31,13 @@ final class ContractsService extends ModelService
     /** @var array<string, mixed> */
     private array $authContext = [];
 
+    /**
+     * Flags RF-11.4/11.5 propagados durante una operación de ciclo de vida.
+     *
+     * @var array{has_exception:int,excepted_policy:?string,overdue_balance_at_exception:?string}|null
+     */
+    private ?array $lifecycleExceptionFlags = null;
+
     protected function modelClass(): string
     {
         return ContractsModel::class;
@@ -1254,6 +1261,8 @@ final class ContractsService extends ModelService
         }
         $reason = mb_substr($reason, 0, 255);
 
+        $withException = filter_var($request['with_exception'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
         $effectiveDate = trim((string) ($request['effective_date'] ?? ''));
         if ($effectiveDate === '') {
             $effectiveDate = $this->todayInMexicoCity();
@@ -1270,9 +1279,37 @@ final class ContractsService extends ModelService
             return Result::fail('Contrato fuera de tu alcance de segmento.', 403);
         }
 
+        // RF-11.4 / RF-11.5: excepción comercial requiere permiso independiente + motivo.
+        $authGate = \System\Support\ExceptionAuthorization::assertCanAuthorize(
+            $this->authContext,
+            $withException,
+            $reason,
+            $contractId,
+            3,
+        );
+        if (!$authGate['allowed']) {
+            $code = $authGate['message'] === \System\Support\ExceptionAuthorization::DENIED_MESSAGE
+                ? 403
+                : 422;
+
+            return Result::fail((string) $authGate['message'], $code);
+        }
+        $overdueAtException = $withException ? $authGate['overdue_balance'] : null;
+        $exceptedPolicy = $withException
+            ? \System\Support\ServiceRequestRules::EXCEPTION_POLICY_OVERDUE
+            : null;
+
+        $this->lifecycleExceptionFlags = [
+            'has_exception' => $withException ? 1 : 0,
+            'excepted_policy' => $exceptedPolicy,
+            'overdue_balance_at_exception' => $overdueAtException,
+        ];
+
         $status = (string) $contract->status;
         $statusGate = $this->assertLifecycleStatus($operation, $status);
         if ($statusGate !== null) {
+            $this->lifecycleExceptionFlags = null;
+
             return $statusGate;
         }
 
@@ -1301,10 +1338,12 @@ final class ContractsService extends ModelService
                 };
             });
         } catch (Throwable $exception) {
+            $this->lifecycleExceptionFlags = null;
             $code = str_contains($exception->getMessage(), 'MRR en $0.00') ? 422 : 422;
 
             return Result::fail($exception->getMessage(), $code);
         }
+        $this->lifecycleExceptionFlags = null;
 
         $enriched = $this->findEnriched($contractId, true) ?? ['id' => $contractId];
         AuditLogger::log(
@@ -1870,8 +1909,7 @@ final class ContractsService extends ModelService
             'user_id' => $userId > 0 ? $userId : null,
             'request_id' => null,
             'reason' => $reason,
-            'has_exception' => 0,
-            'excepted_policy' => null,
+            ...$this->exceptionColumnsForMovement(),
             'reversed_movement_id' => null,
             'created_at' => $nowUtc,
         ]);
@@ -1915,8 +1953,7 @@ final class ContractsService extends ModelService
             'user_id' => $userId > 0 ? $userId : null,
             'request_id' => null,
             'reason' => $reason,
-            'has_exception' => 0,
-            'excepted_policy' => null,
+            ...$this->exceptionColumnsForMovement(),
             'reversed_movement_id' => null,
             'created_at' => $nowUtc,
         ]);
@@ -1989,8 +2026,7 @@ final class ContractsService extends ModelService
             'user_id' => $userId > 0 ? $userId : null,
             'request_id' => null,
             'reason' => $reason,
-            'has_exception' => 0,
-            'excepted_policy' => null,
+            ...$this->exceptionColumnsForMovement(),
             'reversed_movement_id' => null,
             'created_at' => $nowUtc,
         ]);
@@ -2029,11 +2065,28 @@ final class ContractsService extends ModelService
             'user_id' => $movementExtra['user_id'] ?? null,
             'request_id' => null,
             'reason' => (string) ($movementExtra['reason'] ?? ''),
-            'has_exception' => 0,
-            'excepted_policy' => null,
+            ...$this->exceptionColumnsForMovement(),
             'reversed_movement_id' => null,
             'created_at' => $nowUtc,
         ]);
+    }
+
+    /**
+     * Columnas de excepción comercial a insertar en `movements` (RF-11.4 / RF-11.5).
+     *
+     * @return array{has_exception:int,excepted_policy:?string,overdue_balance_at_exception:?string}
+     */
+    private function exceptionColumnsForMovement(): array
+    {
+        if ($this->lifecycleExceptionFlags === null) {
+            return [
+                'has_exception' => 0,
+                'excepted_policy' => null,
+                'overdue_balance_at_exception' => null,
+            ];
+        }
+
+        return $this->lifecycleExceptionFlags;
     }
 
     private function todayInMexicoCity(): string

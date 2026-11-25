@@ -42,6 +42,8 @@ export type AuthUser = {
   segment_id: number | null
   segment_name: AllowedSegment | string
   permissions: PermissionsMap
+  /** RF-11.4 — permiso independiente para autorizar excepciones comerciales. */
+  can_authorize_exceptions?: boolean
   scope: 'enterprise'
 }
 
@@ -92,7 +94,6 @@ export const MODULE_KEYS: ModuleKey[] = [
 export const READ_ONLY_MODULE_KEYS: ReadonlySet<ModuleKey> = new Set([
   'dashboard',
   'sales_promotions',
-  'segment_profitability',
   'config_audit_logs',
 ])
 

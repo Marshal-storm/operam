@@ -214,12 +214,22 @@ final class FinancialCalculator
         return $matches[1];
     }
 
-    /** Normaliza un monto string a exactamente 2 decimales vía BCMath. */
+    /**
+     * Normaliza un monto string a exactamente 2 decimales vía BCMath.
+     * Acepta signo opcional `+`/`-` (deltas de movements / reversiones RNF-3).
+     * Rechaza texto no numérico (`ddd`, `12a`, `NaN`) con InvalidArgumentException → HTTP 422.
+     */
     public static function normalizeMoney(string $amount): string
     {
-        $trimmed = trim(str_replace(',', '', $amount));
-        if ($trimmed === '' || !is_numeric($trimmed)) {
-            throw new InvalidArgumentException("Monto inválido: {$amount}");
+        $trimmed = trim(str_replace([',', ' '], '', $amount));
+        // Quitar `+` explícito; BCMath no lo acepta, pero sí el `-`.
+        if (str_starts_with($trimmed, '+')) {
+            $trimmed = substr($trimmed, 1);
+        }
+        if ($trimmed === '' || !preg_match('/^-?\d+(\.\d+)?$/', $trimmed)) {
+            throw new InvalidArgumentException(
+                'El monto debe ser un número válido (ej. 1500.00).',
+            );
         }
 
         return bcadd($trimmed, '0', self::SCALE);

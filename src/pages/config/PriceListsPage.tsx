@@ -8,6 +8,7 @@ import { ArrowLeft, Check, ListChecks, Pencil, Plus, Save, Trash2 } from 'lucide
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { moneySchema } from '@/lib/validationSchemas'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
@@ -275,7 +276,7 @@ const listSettingsSchema = z.object({
 const addItemSchema = z.object({
   service_id: z.string().min(1),
   frequency: z.enum(['monthly', 'annual', 'single']),
-  unit_price: z.string().regex(/^\d+(\.\d{1,2})?$/),
+  unit_price: moneySchema({ allowZero: true }),
 })
 
 type ListSettingsForm = z.infer<typeof listSettingsSchema>
@@ -995,15 +996,14 @@ export function PriceListsPage() {
                           <label className="text-[10px] uppercase text-slate-400">
                             Desde
                             <AppInput
-                              type="number"
-                              min={1}
+                              numericMode="integer"
                               mono
-                              value={tier.min_quantity}
+                              value={String(tier.min_quantity)}
                               disabled={!canEdit('config_prices')}
                               onChange={(e) => {
                                 enableVolumeUi(group.servicioId)
                                 updateTier(group.servicioId, tier.localKey, {
-                                  min_quantity: Math.max(1, Number(e.target.value) || 1),
+                                  min_quantity: Math.max(1, Number(e.target.value || '1') || 1),
                                 })
                               }}
                               error={Boolean(err)}
@@ -1013,11 +1013,10 @@ export function PriceListsPage() {
                           <label className="text-[10px] uppercase text-slate-400">
                             Hasta
                             <AppInput
-                              type="number"
-                              min={1}
+                              numericMode="integer"
                               mono
                               placeholder="∞"
-                              value={tier.max_quantity ?? ''}
+                              value={tier.max_quantity == null ? '' : String(tier.max_quantity)}
                               disabled={!canEdit('config_prices')}
                               onChange={(e) => {
                                 enableVolumeUi(group.servicioId)
@@ -1162,13 +1161,12 @@ export function PriceListsPage() {
                           <label className="flex-1 text-[10px] uppercase text-slate-400">
                             Desde
                             <AppInput
-                              type="number"
-                              min={1}
+                              numericMode="integer"
                               mono
-                              value={tier.min_quantity}
+                              value={String(tier.min_quantity)}
                               onChange={(e) =>
                                 updateTier(group.servicioId, tier.localKey, {
-                                  min_quantity: Math.max(1, Number(e.target.value) || 1),
+                                  min_quantity: Math.max(1, Number(e.target.value || '1') || 1),
                                 })
                               }
                               error={Boolean(err)}
@@ -1178,11 +1176,10 @@ export function PriceListsPage() {
                           <label className="flex-1 text-[10px] uppercase text-slate-400">
                             Hasta
                             <AppInput
-                              type="number"
-                              min={1}
+                              numericMode="integer"
                               mono
                               placeholder="∞"
-                              value={tier.max_quantity ?? ''}
+                              value={tier.max_quantity == null ? '' : String(tier.max_quantity)}
                               onChange={(e) => {
                                 const raw = e.target.value.trim()
                                 updateTier(group.servicioId, tier.localKey, {
