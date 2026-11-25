@@ -18,7 +18,10 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ContractBalancesPanel } from '@/components/contracts/ContractBalancesPanel'
+import { GrantBalanceModal } from '@/components/contracts/GrantBalanceModal'
 import { LifecycleOperationModal } from '@/components/contracts/LifecycleOperationModal'
+import { RegisterConsumptionModal } from '@/components/contracts/RegisterConsumptionModal'
 import { ReverseMovementModal } from '@/components/contracts/ReverseMovementModal'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
@@ -28,11 +31,16 @@ import {
   AppRowActionsMenu,
 } from '@/components/ui/AppRowActionsMenu'
 import { AppTableHeadRow, AppTableWrapper } from '@/components/ui/AppTableWrapper'
+import { AppTabs } from '@/components/ui/AppTabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/context/ToastContext'
+import { useBalanceMutations, useContractBalances } from '@/hooks/useBalances'
 import { useContractDetail } from '@/hooks/useContractDetail'
 import { usePermissions } from '@/hooks/usePermissions'
-import { useScreenPreferences } from '@/context/ScreenPreferencesContext'
+import {
+  useScreenPreferences,
+  type PageSizeOption,
+} from '@/context/ScreenPreferencesContext'
 import { cn, formatCurrencyMx, formatDateEsMx } from '@/lib/utils'
 import { fetchEmitters, fetchPriceLists, fetchServices } from '@/services/catalogService'
 import type {
@@ -120,6 +128,19 @@ export function ContractDetailPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [reversalMovement, setReversalMovement] = useState<ContractMovement | null>(null)
   const [reversalOpen, setReversalOpen] = useState(false)
+  const [detailTab, setDetailTab] = useState<'lines' | 'consumptions' | 'movements'>('lines')
+  const [consumeOpen, setConsumeOpen] = useState(false)
+  const [grantOpen, setGrantOpen] = useState(false)
+  const [consumptionsPage, setConsumptionsPage] = useState(1)
+  const [consumptionsPageSize, setConsumptionsPageSize] =
+    useState<PageSizeOption>(25)
+
+  const balancesQuery = useContractBalances(contractId, {
+    page: consumptionsPage,
+    perPage: consumptionsPageSize,
+    enabled: Number.isFinite(contractId) && contractId > 0,
+  })
+  const { consumeMutation, grantMutation } = useBalanceMutations(contractId)
 
   const servicesQuery = useQuery({
     queryKey: ['catalog', 'services', 'active', contract?.segment_id],
@@ -172,6 +193,20 @@ export function ContractDetailPage() {
         })),
     [servicesOnPriceList],
   )
+
+  const balanceServiceOptions = useMemo(() => {
+    const fromBags = (balancesQuery.data?.services ?? []).map((s) => ({
+      value: String(s.service_id),
+      label: `${s.service_code || s.service_id} — ${s.service_name}`,
+    }))
+    if (fromBags.length > 0) return fromBags
+    return (servicesQuery.data?.items ?? [])
+      .filter((s) => s.is_active)
+      .map((s) => ({
+        value: String(s.id),
+        label: `${s.code} — ${s.name}`,
+      }))
+  }, [balancesQuery.data?.services, servicesQuery.data?.items])
 
   const issuerOptions = useMemo(
     () =>
@@ -606,64 +641,87 @@ export function ContractDetailPage() {
           </div>
         </div>
 
-        {canOperate ? (
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <AppButton className="rounded-xl">
-                Operaciones de ciclo de vida
-                <ChevronDown className="ml-1 h-4 w-4" />
-              </AppButton>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content align="end" sideOffset={6} className={LIFECYCLE_MENU_SURFACE}>
-                {isActive ? (
-                  <>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {canEdit('contracts') ? (
+            <AppButton variant="secondary" onClick={() => setConsumeOpen(true)}>
+              Registrar consumo
+            </AppButton>
+          ) : null}
+          {canEdit('contracts') ? (
+            <AppButton variant="outline" onClick={() => setGrantOpen(true)}>
+              Acreditar bolsa
+            </AppButton>
+          ) : null}
+          {canOperate ? (
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <AppButton className="rounded-xl">
+                  Operaciones de ciclo de vida
+                  <ChevronDown className="ml-1 h-4 w-4" />
+                </AppButton>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content align="end" sideOffset={6} className={LIFECYCLE_MENU_SURFACE}>
+                  {isActive ? (
+                    <>
+                      <LifecycleMenuItem
+                        icon={<PlusCircle className="h-4 w-4" />}
+                        label="Expandir contrato (+servicio / +cantidad)"
+                        onClick={() => openLifecycle('expansion')}
+                      />
+                      <LifecycleMenuItem
+                        icon={<MinusCircle className="h-4 w-4" />}
+                        label="Contraer contrato"
+                        onClick={() => openLifecycle('contraction')}
+                      />
+                      <LifecycleMenuItem
+                        icon={<DollarSign className="h-4 w-4" />}
+                        label="Ajustar precio"
+                        onClick={() => openLifecycle('price_adjustment')}
+                      />
+                      <LifecycleMenuItem
+                        icon={<Repeat className="h-4 w-4" />}
+                        label="Cambiar frecuencia (Mensual ↔ Anual)"
+                        onClick={() => openLifecycle('frequency_change')}
+                      />
+                      <LifecycleMenuItem
+                        icon={<Building2 className="h-4 w-4" />}
+                        label="Transferir de emisor"
+                        onClick={() => openLifecycle('issuer_transfer')}
+                      />
+                      <DropdownMenu.Separator className="my-1 h-px bg-slate-200/70 dark:bg-white/[0.08]" />
+                      <LifecycleMenuItem
+                        icon={<Ban className="h-4 w-4" />}
+                        label="Cancelar contrato (Churn)"
+                        danger
+                        onClick={() => openLifecycle('churn')}
+                      />
+                    </>
+                  ) : null}
+                  {canReactivate ? (
                     <LifecycleMenuItem
-                      icon={<PlusCircle className="h-4 w-4" />}
-                      label="Expandir contrato (+servicio / +cantidad)"
-                      onClick={() => openLifecycle('expansion')}
+                      icon={<RefreshCw className="h-4 w-4" />}
+                      label="Reactivar contrato"
+                      onClick={() => openLifecycle('reactivation')}
                     />
-                    <LifecycleMenuItem
-                      icon={<MinusCircle className="h-4 w-4" />}
-                      label="Contraer contrato"
-                      onClick={() => openLifecycle('contraction')}
-                    />
-                    <LifecycleMenuItem
-                      icon={<DollarSign className="h-4 w-4" />}
-                      label="Ajustar precio"
-                      onClick={() => openLifecycle('price_adjustment')}
-                    />
-                    <LifecycleMenuItem
-                      icon={<Repeat className="h-4 w-4" />}
-                      label="Cambiar frecuencia (Mensual ↔ Anual)"
-                      onClick={() => openLifecycle('frequency_change')}
-                    />
-                    <LifecycleMenuItem
-                      icon={<Building2 className="h-4 w-4" />}
-                      label="Transferir de emisor"
-                      onClick={() => openLifecycle('issuer_transfer')}
-                    />
-                    <DropdownMenu.Separator className="my-1 h-px bg-slate-200/70 dark:bg-white/[0.08]" />
-                    <LifecycleMenuItem
-                      icon={<Ban className="h-4 w-4" />}
-                      label="Cancelar contrato (Churn)"
-                      danger
-                      onClick={() => openLifecycle('churn')}
-                    />
-                  </>
-                ) : null}
-                {canReactivate ? (
-                  <LifecycleMenuItem
-                    icon={<RefreshCw className="h-4 w-4" />}
-                    label="Reactivar contrato"
-                    onClick={() => openLifecycle('reactivation')}
-                  />
-                ) : null}
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
-        ) : null}
+                  ) : null}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          ) : null}
+        </div>
       </header>
+
+      <AppTabs
+        aria-label="Detalle del contrato"
+        value={detailTab}
+        onChange={(id) => setDetailTab(id as 'lines' | 'consumptions' | 'movements')}
+        items={[
+          { id: 'lines', label: 'Líneas y saldos' },
+          { id: 'consumptions', label: 'Consumos e historial' },
+          { id: 'movements', label: 'Bitácora de movimientos' },
+        ]}
+      />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {kpiCards.map((kpi) => (
@@ -683,7 +741,9 @@ export function ContractDetailPage() {
         ))}
       </div>
 
-      <section className="space-y-3">
+      {detailTab === 'lines' ? (
+      <section className="space-y-5">
+        <div className="space-y-3">
         <h2 className="font-heading text-lg font-semibold tracking-[-0.4px]">
           Líneas vigentes del contrato
         </h2>
@@ -773,8 +833,47 @@ export function ContractDetailPage() {
             ))}
           </div>
         </AppTableWrapper>
-      </section>
+        </div>
 
+        <ContractBalancesPanel
+          data={balancesQuery.data}
+          isLoading={balancesQuery.isLoading}
+          isError={balancesQuery.isError}
+          onRetry={() => void balancesQuery.refetch()}
+          consumptionsPage={consumptionsPage}
+          consumptionsPageSize={consumptionsPageSize}
+          onConsumptionsPageChange={setConsumptionsPage}
+          onConsumptionsPageSizeChange={(size) => {
+            setConsumptionsPageSize(size)
+            setConsumptionsPage(1)
+          }}
+          showBags
+          showConsumptions={false}
+          showBalanceMovements={false}
+        />
+      </section>
+      ) : null}
+
+      {detailTab === 'consumptions' ? (
+        <ContractBalancesPanel
+          data={balancesQuery.data}
+          isLoading={balancesQuery.isLoading}
+          isError={balancesQuery.isError}
+          onRetry={() => void balancesQuery.refetch()}
+          consumptionsPage={consumptionsPage}
+          consumptionsPageSize={consumptionsPageSize}
+          onConsumptionsPageChange={setConsumptionsPage}
+          onConsumptionsPageSizeChange={(size) => {
+            setConsumptionsPageSize(size)
+            setConsumptionsPage(1)
+          }}
+          showBags={false}
+          showConsumptions
+          showBalanceMovements
+        />
+      ) : null}
+
+      {detailTab === 'movements' ? (
       <section className="space-y-3">
         <div>
           <h2 className="font-heading text-lg font-semibold tracking-[-0.4px]">
@@ -901,6 +1000,7 @@ export function ContractDetailPage() {
           </div>
         </AppTableWrapper>
       </section>
+      ) : null}
 
       <LifecycleOperationModal
         open={modalOpen}
@@ -924,6 +1024,40 @@ export function ContractDetailPage() {
         movement={reversalMovement}
         isSubmitting={isReversalPending}
         onConfirm={handleConfirmReversal}
+      />
+
+      <RegisterConsumptionModal
+        open={consumeOpen}
+        onOpenChange={setConsumeOpen}
+        contractId={contractId}
+        serviceOptions={balanceServiceOptions}
+        isSubmitting={consumeMutation.isPending}
+        onSubmit={async (input) => {
+          try {
+            await consumeMutation.mutateAsync(input)
+            toast.success('Consumo registrado')
+          } catch (error) {
+            toast.apiError(error)
+            throw error
+          }
+        }}
+      />
+
+      <GrantBalanceModal
+        open={grantOpen}
+        onOpenChange={setGrantOpen}
+        contractId={contractId}
+        serviceOptions={balanceServiceOptions}
+        isSubmitting={grantMutation.isPending}
+        onSubmit={async (input) => {
+          try {
+            await grantMutation.mutateAsync(input)
+            toast.success('Bolsa acreditada')
+          } catch (error) {
+            toast.apiError(error)
+            throw error
+          }
+        }}
       />
     </div>
   )

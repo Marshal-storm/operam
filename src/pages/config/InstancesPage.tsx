@@ -6,7 +6,7 @@ import {
 } from '@tanstack/react-table'
 
 const instancesTableFeatures = tableFeatures({})
-import { Pencil, Plus } from 'lucide-react'
+import { KeyRound, Pencil, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -115,10 +115,15 @@ export function InstancesPage() {
     refetch,
     createInstance,
     updateInstance,
+    rotateInstanceToken,
+    isRotatingToken,
   } = useInstancesConfig(params)
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<CatalogInstance | null>(null)
+  const [tokenModalOpen, setTokenModalOpen] = useState(false)
+  const [tokenPlain, setTokenPlain] = useState<string | null>(null)
+  const [tokenInstanceName, setTokenInstanceName] = useState('')
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -196,6 +201,12 @@ export function InstancesPage() {
                   onClick: () => openEdit(row.original),
                   hidden: !canEdit('config_instances'),
                 },
+                {
+                  label: 'Generar / rotar token API',
+                  icon: <KeyRound className="h-4 w-4" />,
+                  onClick: () => void handleRotateToken(row.original),
+                  hidden: !canEdit('config_instances'),
+                },
               ]}
             />
           </div>
@@ -238,6 +249,19 @@ export function InstancesPage() {
       status: row.status,
     })
     setModalOpen(true)
+  }
+
+  async function handleRotateToken(row: CatalogInstance) {
+    try {
+      const result = await rotateInstanceToken(row.id)
+      setTokenInstanceName(row.name)
+      setTokenPlain(result.api_token)
+      setTokenModalOpen(true)
+      toast.success('Token generado', 'Cópialo ahora; no se volverá a mostrar.')
+      void refetch()
+    } catch (error) {
+      toast.apiError(error)
+    }
   }
 
   async function onSubmit(values: FormValues) {
@@ -444,6 +468,12 @@ export function InstancesPage() {
                             onClick: () => openEdit(row),
                             hidden: !canEdit('config_instances'),
                           },
+                          {
+                            label: 'Generar / rotar token API',
+                            icon: <KeyRound className="h-4 w-4" />,
+                            onClick: () => void handleRotateToken(row),
+                            hidden: !canEdit('config_instances'),
+                          },
                         ]}
                       />
                     </div>
@@ -545,6 +575,60 @@ export function InstancesPage() {
               {editing ? 'Guardar' : 'Registrar'}
             </AppButton>
           </form>
+        </AppModalContent>
+      </AppModal>
+
+      <AppModal
+        open={tokenModalOpen}
+        onOpenChange={(open) => {
+          setTokenModalOpen(open)
+          if (!open) setTokenPlain(null)
+        }}
+      >
+        <AppModalContent className="max-w-lg">
+          <AppModalHeader>
+            <AppModalTitle>Token API de instancia</AppModalTitle>
+            <AppModalDescription>
+              {tokenInstanceName
+                ? `Bearer generado para ${tokenInstanceName}. Guárdalo en un lugar seguro (RNF-8).`
+                : 'Bearer generado. Guárdalo en un lugar seguro (RNF-8).'}
+            </AppModalDescription>
+          </AppModalHeader>
+          <div className="space-y-3">
+            <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+              Este token solo se muestra una vez. No se almacena en texto plano en Operam.
+            </p>
+            <AppInput
+              mono
+              readOnly
+              value={tokenPlain ?? ''}
+              aria-label="Token API"
+            />
+            <div className="flex justify-end gap-2">
+              <AppButton
+                type="button"
+                variant="ghost"
+                onClick={() => setTokenModalOpen(false)}
+              >
+                Cerrar
+              </AppButton>
+              <AppButton
+                type="button"
+                isLoading={isRotatingToken}
+                onClick={async () => {
+                  if (!tokenPlain) return
+                  try {
+                    await navigator.clipboard.writeText(tokenPlain)
+                    toast.success('Token copiado')
+                  } catch (error) {
+                    toast.apiError(error)
+                  }
+                }}
+              >
+                Copiar token
+              </AppButton>
+            </div>
+          </div>
         </AppModalContent>
       </AppModal>
     </div>

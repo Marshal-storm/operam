@@ -7,6 +7,8 @@ import type {
   PriceList,
   PriceListItem,
   Promotion,
+  PromotionMode,
+  PromotionScope,
   ServiceType,
   ServiceUnit,
   InstanceStatus,
@@ -166,6 +168,61 @@ function mapPromotionSegment(raw: unknown): Promotion {
   const segmentId = Number(row.segment_id)
   row.segment_name = name === '' ? null : name
   row.segment_id = Number.isFinite(segmentId) && segmentId > 0 ? segmentId : null
+
+  const promoMode: PromotionMode =
+    String(row.promo_mode ?? 'price_discount') === 'extra_units'
+      ? 'extra_units'
+      : 'price_discount'
+  row.promo_mode = promoMode
+
+  const serviceId = Number(row.service_id)
+  row.service_id = Number.isFinite(serviceId) && serviceId > 0 ? serviceId : null
+  row.service_name =
+    row.service_name != null && row.service_name !== '' ? String(row.service_name) : null
+  row.service_code =
+    row.service_code != null && row.service_code !== '' ? String(row.service_code) : null
+
+  const minQty = Number(row.min_quantity)
+  row.min_quantity = Number.isFinite(minQty) && minQty > 0 ? minQty : null
+  row.extra_units_pct =
+    row.extra_units_pct != null && row.extra_units_pct !== ''
+      ? String(row.extra_units_pct)
+      : null
+  row.is_active = Boolean(Number(row.is_active ?? 0))
+  row.visible_in_portal =
+    row.visible_in_portal != null ? Boolean(Number(row.visible_in_portal)) : true
+
+  const rawScopes = Array.isArray(row.scopes) ? row.scopes : []
+  row.scopes = rawScopes
+    .filter((s): s is Record<string, unknown> => Boolean(s && typeof s === 'object'))
+    .map(
+      (s): PromotionScope => ({
+        id: s.id != null ? Number(s.id) : undefined,
+        segment_id:
+          s.segment_id != null && Number(s.segment_id) > 0 ? Number(s.segment_id) : null,
+        segment_name:
+          s.segment_name != null && s.segment_name !== '' ? String(s.segment_name) : null,
+        client_id:
+          s.client_id != null && Number(s.client_id) > 0 ? Number(s.client_id) : null,
+        client_name:
+          s.client_name != null && s.client_name !== '' ? String(s.client_name) : null,
+      }),
+    )
+
+  if (typeof row.benefit_label !== 'string' || row.benefit_label.trim() === '') {
+    if (promoMode === 'extra_units') {
+      const pct = String(row.extra_units_pct ?? '0').replace(/\.00$/, '')
+      const min = Number(row.min_quantity ?? 0).toLocaleString('es-MX')
+      row.benefit_label = `+${pct}% extra desde ${min} u.`
+    } else if (row.discount_type === 'percentage') {
+      row.benefit_label = `${String(row.discount_value ?? '0').replace(/\.00$/, '')}% descuento`
+    } else if (row.discount_type === 'free_months') {
+      row.benefit_label = `${Number(row.discount_value ?? 0)} mes(es) gratis`
+    } else {
+      row.benefit_label = `$${String(row.discount_value ?? '0.00')} fijo`
+    }
+  }
+
   return row as Promotion
 }
 
@@ -562,15 +619,23 @@ export async function saveVolumeMatrix(plan: VolumeMatrixSavePlan): Promise<void
 export type PromotionWriteInput = {
   code: string
   name: string
+  promo_mode?: PromotionMode
   segment_id?: number | null
-  discount_type: DiscountType
-  discount_value: string
+  service_id?: number | null
+  min_quantity?: number | null
+  extra_units_pct?: string | null
+  discount_type?: DiscountType
+  discount_value?: string
   applies_to?: 'recurring' | 'single' | 'both'
   valid_from: string
   valid_until?: string | null
   max_uses?: number | null
   current_uses?: number
   is_active?: boolean
+  visible_in_portal?: boolean
+  scopes?: Array<{ segment_id?: number | null; client_id?: number | null }>
+  segment_ids?: number[]
+  client_ids?: number[]
 }
 
 export async function createPromotion(input: PromotionWriteInput): Promise<void> {
@@ -582,7 +647,7 @@ export async function updatePromotion(
   input: Partial<PromotionWriteInput>,
 ): Promise<void> {
   await apiRequest(`promotions/${id}`, {
-    method: 'PATCH',
+    method: 'PUT',
     body: JSON.stringify(input),
   })
 }
@@ -591,7 +656,10 @@ export async function togglePromotionActive(
   id: number,
   isActive: boolean,
 ): Promise<void> {
-  await updatePromotion(id, { is_active: isActive })
+  await apiRequest(`promotions/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_active: isActive }),
+  })
 }
 
 /* ── Instancias ───────────────────────────────────────────── */
@@ -618,4 +686,14 @@ export async function updateInstance(
     method: 'PATCH',
     body: JSON.stringify(input),
   })
+}
+
+/** Rota el Bearer de instancia; el plain solo se muestra una vez (RNF-8). */
+export async function rotateInstanceApiToken(id: number): Promise<{
+  id: number
+  api_token: string
+  api_token_last4: string
+  warning?: string
+}> {
+  return apiRequest(`instances/${id}/rotate-token`, { method: 'POST', body: '{}' })
 }

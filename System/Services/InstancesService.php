@@ -41,6 +41,14 @@ final class InstancesService extends ModelService
         $id = $context->getData('_resource_id');
         $auth = $context->getData('auth', []);
         $request = RbacAuthHelper::applySegmentFilterToQuery($auth, $context->getRequest());
+        $uri = strtolower(trim($context->getUri(), '/'));
+        $parts = $uri === '' ? [] : explode('/', $uri);
+        $action = isset($parts[2]) ? strtolower((string) $parts[2]) : null;
+
+        // POST /api/instances/{id}/rotate-token — token API de instancia (RNF-8).
+        if ($method === 'POST' && $id !== null && $action === 'rotate-token') {
+            return $this->rotateApiToken((int) $id, $auth);
+        }
 
         if ($method === 'GET' && $id === null) {
             if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'view')) {
@@ -188,6 +196,7 @@ final class InstancesService extends ModelService
                 'i.access_url',
                 'i.server_ip',
                 'i.status',
+                'i.api_token_last4',
             ]);
 
         $items = $rows->map(static function (object $row): array {
@@ -202,6 +211,10 @@ final class InstancesService extends ModelService
                 'access_url' => $row->access_url !== null ? (string) $row->access_url : null,
                 'server_ip' => $row->server_ip !== null ? (string) $row->server_ip : null,
                 'status' => (string) $row->status,
+                'api_token_last4' => $row->api_token_last4 !== null
+                    ? (string) $row->api_token_last4
+                    : null,
+                'has_api_token' => $row->api_token_last4 !== null && (string) $row->api_token_last4 !== '',
             ];
         })->all();
 
@@ -287,6 +300,63 @@ final class InstancesService extends ModelService
     }
 
     /**
+     * Genera un Bearer de instancia: guarda solo SHA-256 + last4; el plain se muestra una vez.
+     *
+     * @param array<string, mixed> $auth
+     */
+    private function rotateApiToken(int $instanceId, array $auth): Result
+    {
+        if (!RbacAuthHelper::can($auth, self::MODULE_KEY, 'edit')) {
+            return Result::fail('Sin permiso para rotar el token de instancia.', 403);
+        }
+
+        $before = $this->instanceSnapshot($instanceId);
+        if ($before === null) {
+            return Result::fail('Instancia no encontrada.', 404);
+        }
+        $denied = RbacAuthHelper::assertSegmentWriteAllowed($auth, [
+            'segment_id' => $before['segment_id'],
+        ]);
+        if ($denied !== null) {
+            return Result::fail($denied, 403);
+        }
+
+        $plain = bin2hex(random_bytes(32));
+        $hash = hash('sha256', $plain);
+        $last4 = substr($plain, -4);
+        $nowUtc = gmdate('Y-m-d H:i:s');
+
+        Capsule::table('instances')->where('id', $instanceId)->update([
+            'api_token_hash' => $hash,
+            'api_token_last4' => $last4,
+            'updated_at' => $nowUtc,
+        ]);
+
+        AuditLogger::log(
+            $auth,
+            self::MODULE_KEY,
+            'instance',
+            (string) $instanceId,
+            'update',
+            'Se rotó el token API de la instancia ' . (string) $before['name'],
+            [
+                'api_token_last4' => $before['api_token_last4'] ?? null,
+            ],
+            [
+                'api_token_last4' => $last4,
+                'api_token_rotated' => true,
+            ],
+        );
+
+        return Result::ok([
+            'id' => $instanceId,
+            'api_token' => $plain,
+            'api_token_last4' => $last4,
+            'warning' => 'Copia el token ahora. No volverá a mostrarse en texto plano.',
+        ], 'Token de instancia generado');
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     private function instanceSnapshot(int $id): ?array
@@ -300,6 +370,7 @@ final class InstancesService extends ModelService
             'access_url',
             'server_ip',
             'status',
+            'api_token_last4',
         ]);
         if ($row === null) {
             return null;
@@ -314,6 +385,7 @@ final class InstancesService extends ModelService
             'access_url' => $row->access_url !== null ? (string) $row->access_url : null,
             'server_ip' => $row->server_ip !== null ? (string) $row->server_ip : null,
             'status' => (string) $row->status,
+            'api_token_last4' => $row->api_token_last4 !== null ? (string) $row->api_token_last4 : null,
         ];
     }
 

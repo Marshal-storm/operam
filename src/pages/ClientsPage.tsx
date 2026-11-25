@@ -39,11 +39,14 @@ import {
   AppRowActionsMenu,
 } from '@/components/ui/AppRowActionsMenu'
 import { AppSwitch } from '@/components/ui/AppSwitch'
+import { AppTabs } from '@/components/ui/AppTabs'
 import { AppTableHeadRow, AppTableWrapper } from '@/components/ui/AppTableWrapper'
+import { ClientContactsTab } from '@/components/clients/ClientContactsTab'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useScreenPreferences } from '@/context/ScreenPreferencesContext'
 import { useToast } from '@/context/ToastContext'
+import { useClientContacts } from '@/hooks/useClientContacts'
 import { useClients } from '@/hooks/useClients'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useSegments } from '@/hooks/useSegments'
@@ -131,9 +134,14 @@ export function ClientsPage() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [detailTab, setDetailTab] = useState<'general' | 'contacts'>('general')
   const [editing, setEditing] = useState<Client | null>(null)
   const [detailClient, setDetailClient] = useState<Client | null>(null)
   const [creditInheritedNote, setCreditInheritedNote] = useState<string | null>(null)
+
+  const { contacts: detailContacts } = useClientContacts(
+    detailOpen && detailClient ? detailClient.id : null,
+  )
 
   useEffect(() => {
     setLocalPageSize(preferredSize)
@@ -300,6 +308,7 @@ export function ClientsPage() {
 
   function openDetail(client: Client) {
     setDetailClient(client)
+    setDetailTab('general')
     setDetailOpen(true)
   }
 
@@ -954,59 +963,81 @@ export function ClientsPage() {
       </AppModal>
 
       <AppModal open={detailOpen} onOpenChange={setDetailOpen}>
-        <AppModalContent className="sm:max-w-lg">
+        <AppModalContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <AppModalHeader>
             <AppModalTitle>{detailClient?.name ?? 'Cliente'}</AppModalTitle>
             <AppModalDescription>
-              Vista rápida de datos fiscales, contacto y reglas de cobranza
+              Vista rápida de datos fiscales, contactos y reglas de cobranza
             </AppModalDescription>
           </AppModalHeader>
           {detailClient ? (
             <div className="space-y-4 text-sm">
-              <div className="grid gap-2">
-                <p>
-                  <span className="text-slate-500">Razón social:</span>{' '}
-                  {detailClient.legal_name}
-                </p>
-                <p>
-                  <span className="text-slate-500">RFC:</span>{' '}
-                  <span className="font-mono tabular-nums">{detailClient.rfc}</span>
-                </p>
-                <p>
-                  <span className="text-slate-500">ID ERP:</span>{' '}
-                  <span className="font-mono">{detailClient.erp_client_id || '—'}</span>
-                </p>
-                <p>
-                  <span className="text-slate-500">Contacto:</span>{' '}
-                  {detailClient.contact_name || '—'}
-                  {detailClient.contact_email ? ` · ${detailClient.contact_email}` : ''}
-                  {detailClient.contact_phone ? ` · ${detailClient.contact_phone}` : ''}
-                </p>
-                <p>
-                  <span className="text-slate-500">Segmento / Emisor:</span>{' '}
-                  {detailClient.segment_name ?? '—'} / {detailClient.issuer_name ?? '—'}
-                </p>
-                <p className="tabular-nums">
-                  <span className="text-slate-500">Crédito:</span>{' '}
-                  {detailClient.credit_days} días
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  <AppBadge
-                    label={detailClient.active ? 'Activo' : 'Inactivo'}
-                    tone={detailClient.active ? 'success' : 'danger'}
-                  />
-                  {detailClient.stamp_on_issue ? (
-                    <AppBadge label="Timbrado automático" tone="info" />
-                  ) : null}
-                  {detailClient.exclude_suspension ? (
-                    <AppBadge label="Excluido de suspensión" tone="warning" />
-                  ) : null}
-                  <AppBadge
-                    label={`${detailClient.active_contracts_count} contratos activos`}
-                    tone="neutral"
-                  />
+              <AppTabs
+                value={detailTab}
+                onChange={(id) => setDetailTab(id as 'general' | 'contacts')}
+                aria-label="Pestañas del detalle de cliente"
+                items={[
+                  { id: 'general', label: 'Información general' },
+                  {
+                    id: 'contacts',
+                    label: 'Contactos',
+                    badge: detailContacts.length,
+                  },
+                ]}
+              />
+
+              {detailTab === 'general' ? (
+                <div className="grid gap-2">
+                  <p>
+                    <span className="text-slate-500">Razón social:</span>{' '}
+                    {detailClient.legal_name}
+                  </p>
+                  <p>
+                    <span className="text-slate-500">RFC:</span>{' '}
+                    <span className="font-mono tabular-nums">{detailClient.rfc}</span>
+                  </p>
+                  <p>
+                    <span className="text-slate-500">ID ERP:</span>{' '}
+                    <span className="font-mono">{detailClient.erp_client_id || '—'}</span>
+                  </p>
+                  <p>
+                    <span className="text-slate-500">Contacto principal:</span>{' '}
+                    {detailClient.contact_name || '—'}
+                    {detailClient.contact_email ? ` · ${detailClient.contact_email}` : ''}
+                    {detailClient.contact_phone ? ` · ${detailClient.contact_phone}` : ''}
+                  </p>
+                  <p>
+                    <span className="text-slate-500">Segmento / Emisor:</span>{' '}
+                    {detailClient.segment_name ?? '—'} / {detailClient.issuer_name ?? '—'}
+                  </p>
+                  <p className="tabular-nums">
+                    <span className="text-slate-500">Crédito:</span>{' '}
+                    {detailClient.credit_days} días
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    <AppBadge
+                      label={detailClient.active ? 'Activo' : 'Inactivo'}
+                      tone={detailClient.active ? 'success' : 'danger'}
+                    />
+                    {detailClient.stamp_on_issue ? (
+                      <AppBadge label="Timbrado automático" tone="info" />
+                    ) : null}
+                    {detailClient.exclude_suspension ? (
+                      <AppBadge label="Excluido de suspensión" tone="warning" />
+                    ) : null}
+                    <AppBadge
+                      label={`${detailClient.active_contracts_count} contratos activos`}
+                      tone="neutral"
+                    />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <ClientContactsTab
+                  clientId={detailClient.id}
+                  clientName={detailClient.name}
+                />
+              )}
+
               <AppModalFooter>
                 <AppButton
                   type="button"

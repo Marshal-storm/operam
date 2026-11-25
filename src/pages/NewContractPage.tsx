@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Gift, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AppBadge } from '@/components/ui/AppBadge'
@@ -27,6 +27,7 @@ import {
   nonNegativeIntSchema,
   positiveIntSchema,
 } from '@/lib/validationSchemas'
+import { previewBenefitRules } from '@/services/benefitRulesService'
 import {
   fetchInstances,
   fetchPriceLists,
@@ -480,6 +481,24 @@ export function NewContractPage() {
     [anniversaryDate, frequency],
   )
 
+  const validBenefitLines = useMemo(
+    () =>
+      lines
+        .filter((l) => Number(l.serviceId) > 0 && l.quantity >= 1)
+        .map((l) => ({
+          service_id: Number(l.serviceId),
+          quantity: l.quantity,
+        })),
+    [lines],
+  )
+
+  const benefitPreviewQuery = useQuery({
+    queryKey: ['benefit-rules', 'preview', validBenefitLines],
+    queryFn: () => previewBenefitRules({ lines: validBenefitLines }),
+    enabled: validBenefitLines.length > 0,
+    staleTime: 10_000,
+  })
+
   const canSubmit =
     Boolean(clientId) &&
     Boolean(priceListId) &&
@@ -813,6 +832,12 @@ export function NewContractPage() {
                   </div>
                 )
               })}
+              {benefitPreviewQuery.data?.message ? (
+                <div className="flex items-start gap-2.5 rounded-2xl border border-[#0A84FF]/25 bg-[#0A84FF]/5 px-4 py-3 text-sm text-[#0066FF] dark:border-[#0A84FF]/30 dark:bg-[#0A84FF]/10 dark:text-[#60A5FA]">
+                  <Gift className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>{benefitPreviewQuery.data.message}</p>
+                </div>
+              ) : null}
             </AppCardContent>
           </AppCard>
 

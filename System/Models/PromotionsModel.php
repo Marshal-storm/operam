@@ -18,7 +18,11 @@ final class PromotionsModel extends Model
     protected $fillable = [
         'code',
         'name',
+        'promo_mode',
         'segment_id',
+        'service_id',
+        'min_quantity',
+        'extra_units_pct',
         'discount_type',
         'discount_value',
         'applies_to',
@@ -27,17 +31,22 @@ final class PromotionsModel extends Model
         'max_uses',
         'current_uses',
         'is_active',
+        'visible_in_portal',
     ];
 
     /** @var array<string, string> */
     protected $casts = [
         'segment_id' => 'integer',
+        'service_id' => 'integer',
+        'min_quantity' => 'integer',
+        'extra_units_pct' => 'decimal:2',
         'discount_value' => 'decimal:2',
         'valid_from' => 'date',
         'valid_until' => 'date',
         'max_uses' => 'integer',
         'current_uses' => 'integer',
         'is_active' => 'boolean',
+        'visible_in_portal' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

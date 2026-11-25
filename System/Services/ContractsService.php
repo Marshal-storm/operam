@@ -715,6 +715,12 @@ final class ContractsService extends ModelService
             );
         }
 
+        // RF-2.6: otorga bolsas included según reglas de beneficio activas.
+        $this->syncContractBenefitBalances(
+            (int) $created,
+            (int) ($this->authContext['user_id'] ?? 0) ?: null,
+        );
+
         $enriched = $this->findEnriched((int) $created) ?? ['id' => (int) $created];
         AuditLogger::log(
             $this->authContext,
@@ -734,6 +740,16 @@ final class ContractsService extends ModelService
         );
 
         return Result::ok($enriched, 'Contrato creado', 201);
+    }
+
+    /**
+     * Sincroniza bolsas included con reglas de beneficio (RF-2.6).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function syncContractBenefitBalances(int $contractId, ?int $userId = null): array
+    {
+        return \System\Support\BenefitRulesEngine::syncContractBenefitBalances($contractId, $userId);
     }
 
     /**
@@ -1336,6 +1352,14 @@ final class ContractsService extends ModelService
                     'reactivation' => $this->lifecycleReactivation($locked, $reason, $effectiveDate),
                     default => throw new \RuntimeException('Operación no implementada.'),
                 };
+
+                // RF-2.6: recalcula bolsas included tras cambio de cantidades.
+                if (in_array($operation, ['expansion', 'contraction'], true)) {
+                    $this->syncContractBenefitBalances(
+                        $contractId,
+                        (int) ($this->authContext['user_id'] ?? 0) ?: null,
+                    );
+                }
             });
         } catch (Throwable $exception) {
             $this->lifecycleExceptionFlags = null;

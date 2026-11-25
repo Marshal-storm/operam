@@ -23,6 +23,8 @@ final class InstancesModel extends Model
         'access_url',
         'server_ip',
         'status',
+        'api_token_hash',
+        'api_token_last4',
     ];
 
     /** @var array<string, string> */

@@ -741,21 +741,42 @@ final class SegmentProfitabilityService extends CustomService
             ->orderByDesc('billed_amount_mxn')
             ->get();
 
+        // RF-2.8 / Pág. 12 y 17: unidades regaladas (promotion) del mes por segmento+servicio.
+        $giftedByKey = $this->giftedUnitsBySegmentService($month, $segmentFilter);
+        $giftedBySegment = [];
+        foreach ($giftedByKey as $key => $units) {
+            $segPart = (int) explode(':', (string) $key)[0];
+            $giftedBySegment[$segPart] = ($giftedBySegment[$segPart] ?? 0) + $units;
+        }
+
         $all = [];
         foreach ($rows as $row) {
+            $segId = $row->segment_id !== null ? (int) $row->segment_id : null;
+            $svcId = (int) $row->service_id;
+            $gifted = 0;
+            if ($segId !== null) {
+                $exactKey = $segId . ':' . $svcId;
+                if ($svcId > 0 && isset($giftedByKey[$exactKey])) {
+                    $gifted = (int) $giftedByKey[$exactKey];
+                } else {
+                    // Sin service_id en la factura: asigna el total del segmento (una sola vez
+                    // se repartirá al primer renglón del segmento en la lista paginada).
+                    $gifted = (int) ($giftedBySegment[$segId] ?? 0);
+                    unset($giftedBySegment[$segId]);
+                }
+            }
             $all[] = [
-                'service_id' => (int) $row->service_id,
+                'service_id' => $svcId,
                 'service_name' => (string) $row->service_name,
                 'invoice_type' => (string) ($row->invoice_type ?? 'one_time'),
-                'segment_id' => $row->segment_id !== null ? (int) $row->segment_id : null,
+                'segment_id' => $segId,
                 'segment_name' => $row->segment_name !== null ? (string) $row->segment_name : null,
                 'month' => (string) $row->month,
                 'operations_count' => (int) $row->operations_count,
                 'billed_amount_mxn' => FinancialCalculator::normalizeMoney(
                     (string) ($row->billed_amount_mxn ?? '0'),
                 ),
-                // Lista para Bloque B (promociones / unidades regaladas).
-                'gifted_units' => 0,
+                'gifted_units' => $gifted,
             ];
         }
 
@@ -771,6 +792,46 @@ final class SegmentProfitabilityService extends CustomService
             'total_pages' => (int) max(1, (int) ceil($total / max(1, $perPage))),
             'month' => $month,
         ];
+    }
+
+    /**
+     * Suma unidades regaladas (balance_movements.movement_type = promotion)
+     * del mes en America/Mexico_City, indexadas por "segment_id:service_id".
+     *
+     * @return array<string, int>
+     */
+    private function giftedUnitsBySegmentService(string $month, ?int $segmentFilter): array
+    {
+        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
+            return [];
+        }
+        [$year, $mon] = array_map('intval', explode('-', $month));
+        $tz = new \DateTimeZone('America/Mexico_City');
+        $startMx = new \DateTimeImmutable(sprintf('%04d-%02d-01 00:00:00', $year, $mon), $tz);
+        $endMx = $startMx->modify('last day of this month')->setTime(23, 59, 59);
+        $startUtc = $startMx->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+        $endUtc = $endMx->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+
+        $builder = Capsule::table('balance_movements as bm')
+            ->join('balances as b', 'b.id', '=', 'bm.balance_id')
+            ->join('contracts as c', 'c.id', '=', 'b.contract_id')
+            ->where('bm.movement_type', 'promotion')
+            ->where('bm.units', '>', 0)
+            ->whereBetween('bm.created_at', [$startUtc, $endUtc])
+            ->groupBy('c.segment_id', 'b.service_id')
+            ->selectRaw('c.segment_id, b.service_id, SUM(bm.units) as gifted_units');
+
+        if ($segmentFilter !== null) {
+            $builder->where('c.segment_id', $segmentFilter);
+        }
+
+        $map = [];
+        foreach ($builder->get() as $row) {
+            $key = (int) $row->segment_id . ':' . (int) $row->service_id;
+            $map[$key] = (int) $row->gifted_units;
+        }
+
+        return $map;
     }
 
     /**

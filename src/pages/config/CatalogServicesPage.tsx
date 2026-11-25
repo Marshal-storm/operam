@@ -7,12 +7,13 @@ import {
 
 const catalogTableFeatures = tableFeatures({})
 import { useQuery } from '@tanstack/react-query'
-import { Pencil, Plus } from 'lucide-react'
+import { Gift, Package, Pencil, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 import { positiveIntSchema } from '@/lib/validationSchemas'
 import { fetchServices } from '@/services/catalogService'
+import { BenefitRulesTab } from '@/components/catalog/BenefitRulesTab'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
@@ -31,6 +32,7 @@ import {
   AppRowActionsMenu,
 } from '@/components/ui/AppRowActionsMenu'
 import { AppSwitch } from '@/components/ui/AppSwitch'
+import { AppTabs } from '@/components/ui/AppTabs'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useScreenPreferences } from '@/context/ScreenPreferencesContext'
@@ -153,6 +155,8 @@ export function CatalogServicesPage() {
     toggleService,
   } = useServicesConfig(queryParams)
 
+  const [activeTab, setActiveTab] = useState<'services' | 'benefit_rules'>('services')
+  const [benefitRuleCreateSignal, setBenefitRuleCreateSignal] = useState(0)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<CatalogService | null>(null)
 
@@ -420,16 +424,45 @@ export function CatalogServicesPage() {
             Catálogo de servicios
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Busca, filtra y pagina cientos de productos desde MySQL
+            {activeTab === 'services'
+              ? 'Busca, filtra y pagina cientos de productos desde MySQL'
+              : 'Reglas de beneficios incluidos (consumibles otorgados por producto contratado)'}
           </p>
         </div>
-        {canCreate('config_catalog') && (
-          <AppButton onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Nuevo producto
-          </AppButton>
-        )}
+        {canCreate('config_catalog') &&
+          (activeTab === 'services' ? (
+            <AppButton onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Nuevo producto
+            </AppButton>
+          ) : (
+            <AppButton onClick={() => setBenefitRuleCreateSignal((n) => n + 1)}>
+              <Plus className="h-4 w-4" /> Nueva regla
+            </AppButton>
+          ))}
       </header>
 
+      <AppTabs
+        value={activeTab}
+        onChange={(id) => setActiveTab(id as 'services' | 'benefit_rules')}
+        aria-label="Secciones de catálogo de servicios"
+        items={[
+          {
+            id: 'services',
+            label: 'Productos y servicios',
+            icon: <Package className="h-4 w-4" />,
+          },
+          {
+            id: 'benefit_rules',
+            label: 'Reglas de beneficio',
+            icon: <Gift className="h-4 w-4" />,
+          },
+        ]}
+      />
+
+      {activeTab === 'benefit_rules' ? (
+        <BenefitRulesTab createSignal={benefitRuleCreateSignal} />
+      ) : (
+        <>
       <AppFilterBar
         searchValue={search}
         onSearchChange={(value) => {
@@ -600,6 +633,8 @@ export function CatalogServicesPage() {
             />
           </div>
         </AppCard>
+      )}
+        </>
       )}
 
       <AppModal open={modalOpen} onOpenChange={setModalOpen}>

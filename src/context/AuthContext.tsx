@@ -17,7 +17,10 @@ import {
   type AuthError,
 } from '@/services/authService'
 import { configureCatalogAuth } from '@/services/catalogService'
+import { configureBenefitRulesAuth } from '@/services/benefitRulesService'
+import { configureBalancesAuth } from '@/services/balancesService'
 import { configureClientsAuth } from '@/services/clientsService'
+import { configureClientContactsAuth } from '@/services/clientContactsService'
 import { configureCollectionsAuth } from '@/services/collectionsService'
 import { configureContractsAuth } from '@/services/contractsService'
 import { configureRequestsAuth } from '@/services/requestsService'
@@ -74,11 +77,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     configureDashboardAuth(getToken, () => logout())
     configureCatalogAuth(getToken)
+    configureBenefitRulesAuth(getToken)
     configureClientsAuth(getToken)
+    configureClientContactsAuth(getToken)
     configureContractsAuth(getToken)
     configureRequestsAuth(getToken)
     configureCollectionsAuth(getToken)
     configureProfitabilityAuth(getToken)
+    configureBalancesAuth(getToken)
     configureRbacAuth(getToken)
     configureSystemAuth(getToken)
   }, [getToken, logout])

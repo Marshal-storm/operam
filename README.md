@@ -210,7 +210,9 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 - [x] **Módulo 4 Paso 1:** Bandeja de Solicitudes — `service_requests` / `service_request_items`, cotizar/aprobar/rechazar/cancelar (`can_delete`), solicitudes mixtas (solo recurring toca MRR), trazabilidad `Origen: SOL-XXXX` en bitácora.
 - [x] **Módulo 4 Paso 2:** Cobranza — `invoices` / `payments`, emisión FAC-XXXX, antigüedad 5 tramos, CLI `run_collections_suspension.php`, Dashboard aging en vivo.
 - [x] **Bloque A — Utilidad por Segmento, Costos Operativos, Ingresos No Recurrentes y Permiso/Reporte de Excepciones (RF-10, RF-11.4, RF-11.5):** checkpoint oficial cerrado — `/utilidad-segmento` (4 pestañas Kit Atómico), KPIs + unit economics sin scroll, CRUD `segment_costs`, ingresos no recurrentes, reporte de excepciones, `can_authorize_exceptions`, RNF-8 servicios externos, RNF-15 validación numérica + manejador JSON global en `Api/index.php`.
-- [ ] **Módulo 4 (resto):** Portal Cliente con Magic Links e IntegroPAY (RF-4 a RF-8).
+- [x] **Bloque B Paso 1 — Motor de Saldos / Bolsas / Consumos + API de Instancias (RF-4.1–RF-4.6):** `balances`, `consumptions` (RNF-3), `balance_movements`, `portal_access_tokens`, tokens SHA-256 en `instances`, `/api/balances/*`, `/api/instance-api/*`, UI en detalle de contrato + rotación de token.
+- [x] **Bloque B — Motor de Saldos, Bolsas, Consumos, Reglas de Beneficio, Promociones RF-2.8, Contactos y API para Instancias:** checkpoint oficial cerrado — pulidos visuales de bolsas, `benefit_rules` (RF-2.6) con sync en alta/expansión/contracción, promociones `extra_units` + `promotion_scopes` (RF-2.8), `client_contacts` (RF-1.5), `gifted_units` en utilidad, Kit Atómico (`AppTabs`), PHPUnit + build en verde.
+- [ ] **Módulo 4 (resto):** Portal Cliente con Magic Links e IntegroPAY (RF-5 a RF-8).
 
 ---
 
@@ -227,6 +229,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `composer.json` / `composer.lock` | Dependencias PHP 8.3 + `phpunit/phpunit` ^11 en require-dev. |
 | `phinx.php` / `phpunit.xml` | Phinx y PHPUnit (suite `tests/Unit`). |
 | `tests/Unit/FinancialRulesTest.php` | Suite oficial RNF-1 / RF-2 / RNF-3 (Puente MRR, paquetes de 5, reversión, inmutabilidad). |
+| `tests/Unit/BenefitsAndExtraUnitsPromoTest.php` | Bloque B Paso 2: beneficios RF-2.6 + unidades extra RF-2.8 (floor BCMath, no acumulables). |
 | `tests/Unit/NormalizeMoneyValidationTest.php` | RNF-15: `FinancialCalculator::normalizeMoney` rechaza `ddd`/`12a`/`NaN` y acepta deltas con signo. |
 | `tests/Unit/AuditLoggerTest.php` | Sanitización de secretos y diff de auditoría. |
 | `tests/Unit/ClientRulesTest.php` | Normalización de RFC y herencia de días de crédito por segmento. |
@@ -355,7 +358,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 
 | Área | Descripción |
 |------|-------------|
-| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `clients` + `contracts` + `requests` + `collections` + `movements` + `segment-profitability` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs`. RNF-15: `display_errors=0` + `try/catch` global JSON (422/500 + `error_id`). |
+| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `clients` + `client-contacts` + `benefit-rules` + `contracts` + `requests` + `collections` + `movements` + `segment-profitability` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs` + `balances`. RNF-15: `display_errors=0` + `try/catch` global JSON (422/500 + `error_id`). |
 | `Api/services.routes.inc` | Índice documentado de rutas (incl. `/api/requests`, `/api/collections` y `/api/segment-profitability`). |
 | `System/Services/SegmentProfitabilityService.php` | Summary + CRUD `segment_costs` + no recurrentes + excepciones; RBAC `segment_profitability` + alcance segmento. |
 | `System/Support/SegmentProfitabilityCalculator.php` | Motor puro BCMath: utilidad bruta, margen, unit economics, usuarios concurrentes. |
@@ -363,6 +366,24 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `System/Models/SegmentCostsModel.php` | Eloquent `segment_costs` (`alias = scost`). |
 | `database/migrations/20261125000001_create_segment_costs_and_exceptions_fields.php` | Tabla `segment_costs` + `users.can_authorize_exceptions` + `overdue_balance_at_exception`. |
 | `tests/Unit/SegmentProfitabilityTest.php` | BCMath utilidad/margen/unit economics + bloqueo RF-11.4. |
+| `tests/Unit/BalancesAndConsumptionTest.php` | RF-4: orden included→prepaid, tolerancia ≤2, RNF-3 consumptions. |
+| `tests/Unit/BenefitsAndExtraUnitsPromoTest.php` | RF-2.6/RF-2.8: 7×50=350, floor 1010×25%=252, no acumulables, alcance cliente, purchase vs promotion. |
+| `System/Support/BalanceRules.php` / `BalanceEngine.php` | Motor puro + persistencia de bolsas/consumos (lockForUpdate, idempotencia); crédito prepaid + promo separada. |
+| `System/Support/BenefitRulesEngine.php` | Sync de bolsas `included` + preview humano (RF-2.6). |
+| `System/Support/PromotionCalculator.php` | Unidades extra % con BCMath floor; pickBest no acumulable (RF-2.8). |
+| `System/Services/BalancesService.php` | `/api/balances/contract|consume|grant` (RBAC `contracts`) + `syncContractBenefitBalances`. |
+| `System/Services/BenefitRulesService.php` | CRUD `/api/benefit-rules` + preview (RBAC `config_catalog`). |
+| `System/Services/ClientContactsService.php` | CRUD `/api/client-contacts` (RBAC `clients` + segmento). |
+| `System/Services/InstanceApiService.php` | `/api/instance-api/*` con Bearer de instancia (balance, consumption, collection-status, portal-link). |
+| `System/Models/BalancesModel.php` / `ConsumptionsModel.php` / `BalanceMovementsModel.php` | Eloquent de bolsas + bitácora inmutable de consumos. |
+| `System/Models/BenefitRulesModel.php` / `ClientContactsModel.php` | Eloquent `benefit_rules` / `client_contacts`. |
+| `database/migrations/20261125000002_create_balances_consumptions_and_instance_tokens.php` | Tablas balances/consumptions/balance_movements/portal_access_tokens + tokens de instancia + triggers RNF-3. |
+| `database/migrations/20261125000003_create_benefits_promo_scopes_and_contacts.php` | `benefit_rules`, extensión `promotions` (extra_units), `promotion_scopes`, `client_contacts`. |
+| `components/contracts/RegisterConsumptionModal.tsx` / `GrantBalanceModal.tsx` / `ContractBalancesPanel.tsx` | UI de saldos/consumos; oculta Incluida 0/0; badges TIPO en español. |
+| `components/catalog/BenefitRulesTab.tsx` | Pestaña Reglas de beneficio en Catálogo (tabla + modal Kit Atómico). |
+| `components/clients/ClientContactsTab.tsx` | Pestaña Contactos en detalle de cliente (RF-1.5). |
+| `types/balance.ts` / `services/balancesService.ts` / `hooks/useBalances.ts` | Tipos + HTTP JWT + TanStack Query de bolsas. |
+| `services/benefitRulesService.ts` / `services/clientContactsService.ts` / `hooks/useClientContacts.ts` | HTTP + hooks de reglas de beneficio y contactos. |
 | `System/Services/ServiceRequestsService.php` | `/api/requests`: listado+KPIs, pending-count, create, quote, approve (one_time vs expansion + puente factura), reject/cancel; RBAC `requests` + segmento. |
 | `System/Services/CollectionsService.php` | `/api/collections`: invoices, payments, cartera, recalculo `collection_statuses`, suspensión +90d; RBAC `collections`. |
 | `System/Support/ServiceRequestRules.php` | Motor puro BCMath: precios, tipo, gate de cartera, payload expansion con `request_id`. |

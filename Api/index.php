@@ -14,10 +14,14 @@ use System\Core\Result;
 use System\Models\UsersModel;
 use System\Services\AppService;
 use System\Services\AuditLogsService;
+use System\Services\BalancesService;
+use System\Services\BenefitRulesService;
+use System\Services\ClientContactsService;
 use System\Services\ClientsService;
 use System\Services\CollectionsService;
 use System\Services\ContractsService;
 use System\Services\DashboardMetricsService;
+use System\Services\InstanceApiService;
 use System\Services\InstancesService;
 use System\Services\IssuersService;
 use System\Services\LoginService;
@@ -50,7 +54,7 @@ operam_boot_eloquent();
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
 header('Access-Control-Allow-Origin: ' . $origin);
 header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Allow-Headers: Authorization, Content-Type, Accept, X-Requested-With');
+header('Access-Control-Allow-Headers: Authorization, Content-Type, Accept, X-Requested-With, X-Instance-Token');
 header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
 header('Content-Type: application/json; charset=utf-8');
 
@@ -111,7 +115,10 @@ try {
 
     $result = null;
 
-    if ($uri === 'login' && $method === 'POST') {
+    // API de instancias: autenticación por token propio (no JWT enterprise).
+    if (str_starts_with($uri, 'instance-api')) {
+        $result = (new InstanceApiService())->handle($context);
+    } elseif ($uri === 'login' && $method === 'POST') {
         $loginService = new LoginService($loginHooks);
         $result = $loginService->handle($context);
     } else {
@@ -134,6 +141,8 @@ try {
                 'price_list_items', 'price-list-items' => 'price-list-items',
                 'catalog/instances' => 'instances',
                 'catalog/promotions' => 'promotions',
+                'benefit-rules', 'benefit_rules', 'catalog/benefit-rules' => 'benefit-rules',
+                'client-contacts', 'client_contacts' => 'client-contacts',
                 'emisores', 'emitters', 'catalog/issuers' => 'issuers',
                 'clientes', 'catalog/clients' => 'clients',
                 'contratos', 'catalog/contracts' => 'contracts',
@@ -185,6 +194,8 @@ try {
                 'price-lists' => (new PriceListsService())->handle($context),
                 'price-list-items' => (new PriceListItemsService())->handle($context),
                 'promotions' => (new PromotionsService())->handle($context),
+                'benefit-rules' => (new BenefitRulesService())->handle($context),
+                'client-contacts' => (new ClientContactsService())->handle($context),
                 'issuers' => (new IssuersService())->handle($context),
                 'clients' => (new ClientsService())->handle($context),
                 'contracts' => (new ContractsService())->handle($context),
@@ -193,6 +204,7 @@ try {
                 'movements' => (new MovementsService())->handle($context),
                 'dashboard' => (new DashboardMetricsService())->handle($context),
                 'segment-profitability' => (new SegmentProfitabilityService())->handle($context),
+                'balances' => (new BalancesService())->handle($context),
                 'segments' => (new SegmentsService())->handle($context),
                 'system-settings' => (new SystemSettingsService())->handle($context),
                 'audit-logs' => (new AuditLogsService())->handle($context),

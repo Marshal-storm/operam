@@ -16,6 +16,7 @@ import {
   fetchSegments,
   fetchServices,
   removeProductFromPriceList,
+  rotateInstanceApiToken,
   savePriceEdits,
   saveVolumeMatrix,
   toggleIssuerActive,
@@ -37,9 +38,18 @@ import {
   type ServiceWriteInput,
   type VolumeMatrixSavePlan,
 } from '@/services/catalogService'
+import {
+  BenefitRulesApiError,
+  createBenefitRule,
+  fetchBenefitRules,
+  patchBenefitRule,
+  updateBenefitRule,
+  type BenefitRuleWriteInput,
+} from '@/services/benefitRulesService'
 
 const KEYS = {
   services: ['config', 'services'] as const,
+  benefitRules: ['config', 'benefit-rules'] as const,
   priceLists: ['config', 'price-lists'] as const,
   promotions: ['config', 'promotions'] as const,
   instances: ['config', 'instances'] as const,
@@ -254,6 +264,10 @@ export function useInstancesConfig(params: InstancesQueryParams) {
       updateInstance(id, data),
     [KEYS.instances, KEYS.emitters],
   )
+  const rotateToken = useLockedMutation(
+    (id: number) => rotateInstanceApiToken(id),
+    [KEYS.instances],
+  )
 
   return {
     items: query.data?.items ?? [],
@@ -269,5 +283,58 @@ export function useInstancesConfig(params: InstancesQueryParams) {
     refetch: query.refetch,
     createInstance: create.mutateAsync,
     updateInstance: update.mutateAsync,
+    rotateInstanceToken: rotateToken.mutateAsync,
+    isRotatingToken: rotateToken.isPending,
   }
 }
+
+/**
+ * Hook CRUD de reglas de beneficio (RF-2.6) con candado global Operam.
+ */
+export function useBenefitRules() {
+  const query = useQuery({
+    queryKey: KEYS.benefitRules,
+    queryFn: () => fetchBenefitRules({ active: 'all' }),
+    staleTime: 15_000,
+  })
+  const services = useQuery({
+    queryKey: [...KEYS.services, { page: 1, per_page: 200 }],
+    queryFn: () => fetchServices({ page: 1, per_page: 200 }),
+    staleTime: 30_000,
+  })
+
+  const create = useLockedMutation(
+    createBenefitRule,
+    [KEYS.benefitRules],
+    'Guardando regla de beneficio...',
+  )
+  const update = useLockedMutation(
+    ({ id, data }: { id: number; data: BenefitRuleWriteInput }) =>
+      updateBenefitRule(id, data),
+    [KEYS.benefitRules],
+    'Actualizando regla de beneficio...',
+  )
+  const patch = useLockedMutation(
+    ({ id, data }: { id: number; data: Partial<BenefitRuleWriteInput> }) =>
+      patchBenefitRule(id, data),
+    [KEYS.benefitRules],
+    'Actualizando estado de regla...',
+  )
+
+  return {
+    rules: query.data ?? [],
+    services: services.data?.items ?? [],
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    isApiError: query.error instanceof BenefitRulesApiError || query.isError,
+    errorMessage:
+      query.error instanceof Error
+        ? query.error.message
+        : 'Error al cargar reglas de beneficio',
+    refetch: query.refetch,
+    createBenefitRule: create.mutateAsync,
+    updateBenefitRule: update.mutateAsync,
+    patchBenefitRule: patch.mutateAsync,
+  }
+}
+

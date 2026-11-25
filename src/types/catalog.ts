@@ -40,6 +40,16 @@ export type DiscountType = 'percentage' | 'fixed_amount' | 'free_months'
 
 export type PromotionAppliesTo = 'recurring' | 'single' | 'both'
 
+export type PromotionMode = 'price_discount' | 'extra_units'
+
+export type PromotionScope = {
+  id?: number
+  segment_id: number | null
+  segment_name?: string | null
+  client_id: number | null
+  client_name?: string | null
+}
+
 export type CatalogService = {
   id: number
   code: string
@@ -72,6 +82,8 @@ export type CatalogInstance = {
   access_url: string | null
   server_ip: string | null
   status: InstanceStatus
+  api_token_last4?: string | null
+  has_api_token?: boolean
 }
 
 export type PriceListItem = {
@@ -105,8 +117,14 @@ export type Promotion = {
   id: number
   code: string
   name: string
+  promo_mode: PromotionMode
   segment_name: string | null
   segment_id: number | null
+  service_id: number | null
+  service_name?: string | null
+  service_code?: string | null
+  min_quantity: number | null
+  extra_units_pct: string | null
   discount_type: DiscountType
   discount_value: string
   applies_to: PromotionAppliesTo
@@ -115,6 +133,9 @@ export type Promotion = {
   max_uses: number | null
   current_uses: number
   is_active: boolean
+  visible_in_portal: boolean
+  scopes: PromotionScope[]
+  benefit_label: string
 }
 
 export type CatalogSnapshot = {

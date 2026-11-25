@@ -1,6 +1,7 @@
 import { Check, Copy, Gift } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
 import { AppFilterBar } from '@/components/ui/AppFilterBar'
@@ -169,10 +170,21 @@ export function SalesPromotionsPage() {
             key={promo.id}
             className="rounded-3xl border-emerald-500/40 bg-emerald-50/40 p-5 dark:bg-emerald-950/20"
           >
-            <p className="font-mono text-2xl font-bold tracking-wide tabular-nums">
-              {promo.code}
-            </p>
-            <p className="mt-2 text-sm font-medium">{benefitLabel(promo)}</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-mono text-2xl font-bold tracking-wide tabular-nums">
+                {promo.code}
+              </p>
+              <AppBadge
+                label={promo.benefit_label || benefitLabel(promo)}
+                tone={promo.promo_mode === 'extra_units' ? 'info' : 'success'}
+              />
+            </div>
+            <p className="mt-2 text-sm font-medium">{promo.name}</p>
+            {promo.promo_mode === 'extra_units' && promo.service_name ? (
+              <p className="mt-1 text-xs text-slate-600 dark:text-zinc-300">
+                Consumible: {promo.service_name}
+              </p>
+            ) : null}
             <p className="mt-1 text-xs text-slate-500">
               {promo.segment_name || 'Todos los segmentos'} · vigente hasta{' '}
               {promo.valid_until?.slice(0, 10) ?? 'sin fecha fin'}

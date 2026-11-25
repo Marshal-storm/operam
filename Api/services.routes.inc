@@ -40,6 +40,16 @@
  *
  * Alias: /api/utilidad-segmento → segment-profitability
  * RBAC: segment_profitability (CRUD completo para captura de costos)
+ *
+ * Bloque B Paso 1 — Saldos / bolsas / consumos + API de instancias (RF-4):
+ *   GET    /api/balances/contract/{id}     — bolsas + historiales
+ *   POST   /api/balances/consume           — consumo manual (Soporte)
+ *   POST   /api/balances/grant             — acreditar bolsa (Admin)
+ *   POST   /api/instances/{id}/rotate-token
+ *   GET    /api/instance-api/balance?service_code=
+ *   POST   /api/instance-api/consumption
+ *   GET    /api/instance-api/collection-status
+ *   GET    /api/instance-api/portal-link
  */
 
 declare(strict_types=1);

@@ -832,6 +832,14 @@ final class ServiceRequestsService extends ModelService
                 // Puente Cobranza (M4 Paso 2): one_time / consumption → invoice FAC-XXXX.
                 (new CollectionsService())->issueInvoiceFromApprovedRequest($locked, $userId, $nowUtc);
 
+                // Bloque B: solicitudes de consumo acreditan bolsa prepaid.
+                if ((string) $requestType === 'consumption') {
+                    \System\Support\BalanceEngine::creditPrepaidFromApprovedRequest(
+                        $locked,
+                        $userId,
+                    );
+                }
+
                 Capsule::table('service_requests')->where('id', (int) $locked->id)->update([
                     'status' => 'approved',
                     'with_exception' => $withException && $exceptionPolicy !== null ? 1 : 0,
