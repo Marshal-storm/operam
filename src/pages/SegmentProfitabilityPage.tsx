@@ -16,6 +16,7 @@ import { AppButton } from '@/components/ui/AppButton'
 import { AppCard, AppCardContent, AppCardHeader } from '@/components/ui/AppCard'
 import { AppFilterBar } from '@/components/ui/AppFilterBar'
 import { AppInput } from '@/components/ui/AppInput'
+import { AppTabs } from '@/components/ui/AppTabs'
 import {
   AppActionsColumnHeader,
   AppRowActionsMenu,
@@ -220,11 +221,15 @@ export function SegmentProfitabilityPage() {
     }
   }
 
-  const tabs: Array<{ key: TabKey; label: string; badge?: number }> = [
-    { key: 'summary', label: 'Resumen financiero' },
-    { key: 'costs', label: 'Costos operativos', badge: costsTotal },
-    { key: 'non_recurring', label: 'Ingresos no recurrentes' },
-    { key: 'exceptions', label: 'Excepciones' },
+  const tabItems = [
+    { id: 'summary', label: 'Resumen financiero' },
+    {
+      id: 'costs',
+      label: 'Costos operativos',
+      badge: costsTotal > 0 ? costsTotal : undefined,
+    },
+    { id: 'non_recurring', label: 'Ingresos no recurrentes' },
+    { id: 'exceptions', label: 'Excepciones' },
   ]
 
   return (
@@ -294,32 +299,12 @@ export function SegmentProfitabilityPage() {
         }}
       />
 
-      <AppCard className="w-full p-1.5 sm:p-2">
-        <div className="flex w-full flex-wrap items-center gap-1.5">
-          {tabs.map((t) => (
-            <AppButton
-              key={t.key}
-              variant={tab === t.key ? 'primary' : 'ghost'}
-              onClick={() => setTab(t.key)}
-              className="gap-2 rounded-full"
-            >
-              {t.label}
-              {t.badge != null && t.badge > 0 ? (
-                <span
-                  className={cn(
-                    'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums',
-                    tab === t.key
-                      ? 'bg-white/25 text-white'
-                      : 'bg-slate-200/80 text-slate-600 dark:bg-white/10 dark:text-zinc-300',
-                  )}
-                >
-                  {t.badge}
-                </span>
-              ) : null}
-            </AppButton>
-          ))}
-        </div>
-      </AppCard>
+      <AppTabs
+        aria-label="Vistas de utilidad por segmento"
+        value={tab}
+        onChange={(id) => setTab(id as TabKey)}
+        items={tabItems}
+      />
 
       {tab === 'summary' && (
         <SummaryTab
@@ -545,26 +530,17 @@ function SummaryTab({
               Promedios en español natural, sin scroll horizontal
             </p>
           </div>
-          <div className="inline-flex rounded-full border border-slate-200/80 bg-slate-100/70 p-1 dark:border-white/[0.08] dark:bg-white/[0.05]">
-            <AppButton
-              type="button"
-              size="sm"
-              variant={unitMode === 'contract' ? 'primary' : 'ghost'}
-              className="rounded-full"
-              onClick={() => setUnitMode('contract')}
-            >
-              Por contrato activo
-            </AppButton>
-            <AppButton
-              type="button"
-              size="sm"
-              variant={unitMode === 'user' ? 'primary' : 'ghost'}
-              className="rounded-full"
-              onClick={() => setUnitMode('user')}
-            >
-              Por usuario concurrente
-            </AppButton>
-          </div>
+          <AppTabs
+            aria-label="Modo de unit economics"
+            fullWidth={false}
+            value={unitMode}
+            onChange={(id) => setUnitMode(id as UnitMode)}
+            items={[
+              { id: 'contract', label: 'Por contrato activo' },
+              { id: 'user', label: 'Por usuario concurrente' },
+            ]}
+            className="shrink-0"
+          />
         </AppCardHeader>
         <AppCardContent>
           {visibleSegments.length === 0 ? (

@@ -21,6 +21,7 @@ import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
 import { AppFilterBar } from '@/components/ui/AppFilterBar'
+import { AppTabs } from '@/components/ui/AppTabs'
 import {
   AppModal,
   AppModalContent,
@@ -619,28 +620,18 @@ export function CollectionsPage() {
         </div>
       </AppCard>
 
-      <div className="flex gap-2 rounded-full border border-slate-200/80 bg-white/70 p-1 dark:border-white/[0.08] dark:bg-white/[0.03]">
-        <AppButton
-          variant={tab === 'invoices' ? 'primary' : 'ghost'}
-          className="rounded-full"
-          onClick={() => {
-            setTab('invoices')
-            setPage(1)
-          }}
-        >
-          Documentos / Facturas
-        </AppButton>
-        <AppButton
-          variant={tab === 'contracts' ? 'primary' : 'ghost'}
-          className="rounded-full"
-          onClick={() => {
-            setTab('contracts')
-            setPage(1)
-          }}
-        >
-          Cartera por contrato
-        </AppButton>
-      </div>
+      <AppTabs
+        aria-label="Vistas de cobranza"
+        value={tab}
+        onChange={(id) => {
+          setTab(id as 'invoices' | 'contracts')
+          setPage(1)
+        }}
+        items={[
+          { id: 'invoices', label: 'Documentos / Facturas' },
+          { id: 'contracts', label: 'Cartera por contrato' },
+        ]}
+      />
 
       {tab === 'invoices' ? (
         <AppFilterBar

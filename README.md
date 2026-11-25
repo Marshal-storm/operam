@@ -188,7 +188,7 @@ Obligatorios para quien continúe el proyecto:
 - DB: solo migraciones/seeders Phinx — **prohibido `.sql` sueltos**.
 - Auth: JWT del framework — **prohibido Sanctum**.
 - **Cero mockups** fuera del Dashboard (Login, Catálogo, Contratos, Clientes, Cobranza, Solicitudes, Utilidad por segmento).
-- **Kit atómico (Single Source of Truth):** prohibido `<select>` / `<input>` / `<textarea>` / `<button>` nativos en `src/pages/**` o componentes de negocio. Importar solo desde `src/components/ui/` (`AppCard`, `AppInput`, `AppSelect`, `AppButton`, `AppBadge`, `AppModal`, `AppSwitch`, `AppTableWrapper`, `AppFilterBar`, `AppRowActionsMenu`). Un cambio visual global = un archivo del kit.
+- **Kit atómico (Single Source of Truth):** prohibido `<select>` / `<input>` / `<textarea>` / `<button>` nativos en `src/pages/**` o componentes de negocio. Importar solo desde `src/components/ui/` (`AppCard`, `AppInput`, `AppSelect`, `AppButton`, `AppBadge`, `AppModal`, `AppSwitch`, `AppTableWrapper`, `AppFilterBar`, `AppRowActionsMenu`, `AppTabs`). Un cambio visual global = un archivo del kit. **PROHIBIDO** barras de pestañas manuales: usar exclusivamente `<AppTabs />`.
 - **Filtros homologados (`AppFilterBar`):** toda barra de búsqueda/filtros de listados usa `<AppFilterBar />` (§3.2) con etiquetas en mayúsculas; catálogos dinámicos desde MySQL.
 - **RNF-15 — Validación numérica estricta y errores API:** montos/precios/cantidades con Zod (`src/lib/validationSchemas.ts`: `moneySchema`, `exchangeRateSchema`, `positiveIntSchema`, `nonNegativeIntSchema`) + `AppInput.numericMode` antes de cualquier HTTP; `Api/index.php` con `display_errors=0` y `try/catch` global (`InvalidArgumentException` → HTTP 422 JSON; demás → HTTP 500 JSON con `error_id`); cliente `apiClient` / `parseOperamApiResponse` jamás trata HTML o `success≠true` como éxito.
 - **RNF-8 — Cero hardcodeo de servicios externos:** URLs, hosts, API keys y parámetros operativos (SMTP, ERP, Slack, Banxico, PAC, webhooks) viven en Configuración → Servicios externos / MySQL; secretos solo por `secret_ref` hacia `.env` / Secret Manager.
@@ -263,6 +263,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `hooks/useSegments.ts` | Hook central TanStack Query → `GET /api/segments` (mapa id→nombre, opciones de filtro). |
 | `hooks/useSegmentLock.ts` | Filtro de segmento dinámico + bloqueo JWT (sin nombres quemados). |
 | `components/ui/AppFilterBar.tsx` | Estándar homologado de filtros (§3.2): buscador cápsula + selects píldora con labels en mayúsculas + Limpiar filtros. |
+| `components/ui/AppTabs.tsx` | Barras de pestañas cápsula Liquid Glass (§3.1): `items`/`value`/`onChange`/`badge`; única forma de tabs en producto. |
 | `components/ui/AppFilterField.tsx` | Campo suelto con label (complemento; listados usan `AppFilterBar`). |
 | `components/ui/AppRowActionsMenu.tsx` | Menú `⋮` de acciones de fila (§3.3) + encabezado `ACCIONES`; Liquid Glass Radix Dropdown. |
 | `context/ScreenPreferencesContext.tsx` | pageSize (10/25/50/100) + densidad + `toastPosition` (6 anclas) en `localStorage`. |
@@ -293,8 +294,8 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `pages/DashboardPage.tsx` | Dashboard KPIs + switch Mockup/API (única excepción). |
 | `pages/ClientsPage.tsx` | `/clientes` — directorio CRUD (KPIs, filtros dinámicos, tabla paginada, modales crear/editar/detalle) con Kit Atómico (`clients`). |
 | `pages/RequestsPage.tsx` | `/solicitudes` — bandeja M4 Paso 1: KPIs, `AppFilterBar`, tabla/tarjetas UI-4, cotizar/aprobar/rechazar (`requests`). |
-| `pages/CollectionsPage.tsx` | `/cobranza` — M4 Paso 2: KPIs, aging 5 tramos, pestañas Documentos/Cartera, `AppFilterBar`, emisión/pagos/cancelación/suspensión (`collections`). |
-| `pages/SegmentProfitabilityPage.tsx` | `/utilidad-segmento` — 4 pestañas en `AppCard`: Resumen financiero, Costos operativos, Ingresos no recurrentes, Excepciones; `AppFilterBar` + unit economics en tarjetas (`segment_profitability`). |
+| `pages/CollectionsPage.tsx` | `/cobranza` — M4 Paso 2: KPIs, aging 5 tramos, `<AppTabs />` Documentos/Cartera, `AppFilterBar`, emisión/pagos/cancelación/suspensión (`collections`). |
+| `pages/SegmentProfitabilityPage.tsx` | `/utilidad-segmento` — `<AppTabs />` (Resumen / Costos / No recurrentes / Excepciones) + unit economics; `AppFilterBar` (`segment_profitability`). |
 | `components/profitability/SegmentCostModal.tsx` | Modal RHF+Zod de captura/edición de `segment_costs`. |
 | `hooks/useProfitability.ts` | TanStack Query summary/costs/non-recurring/exceptions + mutaciones con `useLoadingLock`. |
 | `services/profitabilityService.ts` | HTTP JWT contra `/api/segment-profitability/*`. |

@@ -37,6 +37,8 @@ Actúa como Arquitecto de Software y Desarrollador Full Stack SENIOR. Aplica est
   - `AppTableWrapper` (contenedor de tabla: cabecera de cristal, estados UI-7, pie paginación/acciones)
   - `AppFilterBar` (estándar homologado de búsqueda/filtros en listados y directorios)
   - `AppRowActionsMenu` (menú `⋮` de acciones de fila — única forma de agrupar acciones en tablas)
+  - `AppTabs` (barras de pestañas cápsula Liquid Glass — única forma de navegación por tabs)
+- **PROHIBIDO** inventar barras de pestañas manuales (`<div…><button>/<AppButton>…</div>`) o envolver pestañas con `<AppCard>` sueltos dentro de `src/pages/**` o `src/components/**` (excepto el primitivo interno de `AppTabs`). Toda navegación por pestañas **debe** importar exclusivamente `<AppTabs />` (`src/components/ui/AppTabs.tsx`).
 - **Objetivo de mantenibilidad:** un cambio global de borde/sombra/radio/focus se hace en **un solo archivo** del kit y se propaga a todos los módulos.
 
 ### 3.2 Estándar Homologado de Filtros — `AppFilterBar` (inquebrantable)
