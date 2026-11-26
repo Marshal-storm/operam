@@ -2,7 +2,7 @@ import { Clock, KeyRound, PlayCircle } from 'lucide-react'
 import { useState } from 'react'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
-import { AppCard, AppCardContent, AppCardFooter, AppCardHeader, AppCardTitle } from '@/components/ui/AppCard'
+import { AppCard } from '@/components/ui/AppCard'
 import {
   AppModal,
   AppModalContent,
@@ -80,10 +80,10 @@ export function ScheduledJobsTab({ canOperate }: Props) {
     }
   }
 
-  function scheduleHint(jobName: JobName): string | null {
+  function scheduleHint(jobName: JobName): string {
     const field = JOB_META[jobName].scheduleField
     const hour = field ? jobsConfig?.[field] : null
-    return hour ? `Programado diario ${String(hour)} (${timezone})` : null
+    return hour ? `Diario ${String(hour)} (${timezone})` : 'Ejecución programada / manual'
   }
 
   function rowActions(row: JobRun): RowActionItem[] {
@@ -91,90 +91,99 @@ export function ScheduledJobsTab({ canOperate }: Props) {
   }
 
   return (
-    <div className="space-y-5">
-      <AppCard className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm text-slate-600 dark:text-zinc-300">
-        <span className="flex items-start gap-2">
-          <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-[#0066FF] dark:text-[#0A84FF]" />
+    <div className="space-y-4">
+      <AppCard className="flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-2.5 text-xs text-slate-600 dark:text-zinc-300">
+        <span className="flex items-center gap-2">
+          <KeyRound className="h-4 w-4 shrink-0 text-[#0066FF] dark:text-[#0A84FF]" />
           <span>
-            Cloud Scheduler invoca <span className="font-mono text-xs">POST /api/jobs/run/&#123;job&#125;</span>{' '}
-            con el header <span className="font-mono text-xs">X-Job-Secret</span>; Cloud Run Jobs usa{' '}
-            <span className="font-mono text-xs">php scripts/jobs/run_job.php</span>.
+            Cloud Scheduler invoca <span className="font-mono text-[11px]">POST /api/jobs/run/&#123;job&#125;</span>{' '}
+            con <span className="font-mono text-[11px]">X-Job-Secret</span>; CLI usa{' '}
+            <span className="font-mono text-[11px]">php scripts/jobs/run_job.php</span>.
           </span>
         </span>
         {runsQuery.data ? (
           <AppBadge
-            label={runsQuery.data.secret_configured ? 'Secreto del job configurado' : 'Secreto del job pendiente en .env'}
+            label={runsQuery.data.secret_configured ? 'Secreto .env OK' : 'Secreto pendiente en .env'}
             tone={runsQuery.data.secret_configured ? 'success' : 'warning'}
           />
         ) : null}
       </AppCard>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         {JOB_ORDER.map((jobName) => {
           const meta = JOB_META[jobName]
           const Icon = meta.icon
           const last = latest?.[jobName] ?? null
           const hint = scheduleHint(jobName)
+          const lastMeta = last ? JOB_STATUS_META[last.status] : null
+          const lastTooltip = last
+            ? `Última corrida: ${formatWhen(last.started_at)} · ${last.processed_count.toLocaleString('es-MX')} procesado(s)${last.error_message ? ` · Error: ${last.error_message}` : ''}`
+            : 'Sin corridas registradas'
+
           return (
-            <AppCard key={jobName} className="flex flex-col">
-              <AppCardHeader className="flex-row items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-500/10 text-[#0066FF] dark:text-[#0A84FF]">
-                  <Icon className="h-5 w-5" />
-                </span>
-                <div className="min-w-0">
-                  <AppCardTitle>{meta.title}</AppCardTitle>
-                  <p className="font-mono text-[11px] text-slate-500 dark:text-zinc-400">{jobName}</p>
-                </div>
-              </AppCardHeader>
-              <AppCardContent className="flex-1 space-y-3">
-                <p className="text-sm text-slate-500 dark:text-zinc-400">{meta.description}</p>
-                {hint ? (
-                  <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-zinc-400">
-                    <Clock className="h-3.5 w-3.5" />
-                    {hint}
-                  </p>
-                ) : null}
-                {runsQuery.isLoading ? (
-                  <Skeleton className="h-16 w-full rounded-xl" />
-                ) : last ? (
-                  <div className="space-y-1.5 rounded-xl border border-slate-200/80 p-3 dark:border-white/[0.08]">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <StatusBadge run={last} />
-                      <AppBadge label={JOB_TRIGGER_LABELS[last.trigger_source]} tone="neutral" />
-                    </div>
-                    <p className="font-mono text-xs tabular-nums text-slate-500 dark:text-zinc-400">
-                      Última corrida {formatWhen(last.started_at)}
+            <AppCard key={jobName} className="flex flex-col justify-between gap-2.5 p-3.5">
+              <div className="space-y-2">
+                <div className="flex items-start gap-2.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-[#0066FF] dark:text-[#0A84FF]">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className="truncate font-heading text-sm font-semibold leading-tight text-slate-900 dark:text-white"
+                      title={meta.title}
+                    >
+                      {meta.title}
                     </p>
-                    <p className="text-sm">
-                      <span className="font-mono font-semibold tabular-nums">
-                        {last.processed_count.toLocaleString('es-MX')}
-                      </span>{' '}
-                      procesado(s) · {formatDuration(last.duration_seconds)}
+                    <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-slate-500 dark:text-zinc-400">
+                      <Clock className="h-3 w-3 shrink-0 opacity-75" />
+                      <span className="truncate">{hint}</span>
                     </p>
-                    {last.error_message ? (
-                      <p className="line-clamp-2 text-xs text-red-600 dark:text-red-400">{last.error_message}</p>
-                    ) : null}
                   </div>
-                ) : (
-                  <p className="text-sm text-slate-500 dark:text-zinc-400">Sin corridas registradas.</p>
-                )}
-              </AppCardContent>
-              {canOperate ? (
-                <AppCardFooter>
+                </div>
+
+                <p
+                  className="line-clamp-2 text-xs text-slate-500 dark:text-zinc-400"
+                  title={meta.description}
+                >
+                  {meta.description}
+                </p>
+              </div>
+
+              <div className="space-y-2.5 pt-0.5">
+                <div className="flex items-center justify-between gap-2" title={lastTooltip}>
+                  {runsQuery.isLoading ? (
+                    <Skeleton className="h-5 w-28 rounded-full" />
+                  ) : last && lastMeta ? (
+                    <AppBadge
+                      label={`${lastMeta.label} · ${formatDuration(last.duration_seconds)}`}
+                      tone={lastMeta.tone}
+                    />
+                  ) : (
+                    <AppBadge label="Sin corridas" tone="neutral" />
+                  )}
+                  {last ? (
+                    <span className="truncate font-mono text-[11px] tabular-nums text-slate-400 dark:text-zinc-500">
+                      {last.processed_count.toLocaleString('es-MX')} proc.
+                    </span>
+                  ) : null}
+                </div>
+
+                {canOperate ? (
                   <AppButton
                     variant="secondary"
+                    size="sm"
                     className="w-full"
                     onClick={() => setConfirmJob(jobName)}
                     disabled={runMutation.isPending || last?.status === 'running'}
                     isLoading={runMutation.isPending && runMutation.variables === jobName}
                   >
                     {!(runMutation.isPending && runMutation.variables === jobName) ? (
-                      <PlayCircle className="h-4 w-4" />
+                      <PlayCircle className="h-3.5 w-3.5" />
                     ) : null}
                     Ejecutar ahora
                   </AppButton>
-                </AppCardFooter>
-              ) : null}
+                ) : null}
+              </div>
             </AppCard>
           )
         })}

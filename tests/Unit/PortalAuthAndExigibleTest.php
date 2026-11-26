@@ -12,6 +12,7 @@ use Illuminate\Events\Dispatcher;
 use PHPUnit\Framework\TestCase;
 use System\Core\Context;
 use System\Services\AppService;
+use System\Services\ClientContactsService;
 use System\Services\PortalAuthService;
 use System\Services\PortalService;
 use System\Support\ExigibleCalculator;
@@ -26,7 +27,12 @@ use System\Support\PortalSession;
  */
 final class PortalAuthAndExigibleTest extends TestCase
 {
-    private const FREE_URIS = ['login', 'POST portal/auth/request-link', 'POST portal/auth/exchange'];
+    private const FREE_URIS = [
+        'login',
+        'GET portal/auth/config',
+        'POST portal/auth/request-link',
+        'POST portal/auth/exchange',
+    ];
 
     private ?string $previousKey = null;
 
@@ -74,6 +80,44 @@ final class PortalAuthAndExigibleTest extends TestCase
             $table->string('origin', 20);
             $table->dateTime('expires_at');
             $table->dateTime('used_at')->nullable();
+            $table->dateTime('created_at')->nullable();
+        });
+        $schema->create('portal_sessions', static function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('session_token_hash', 64)->unique();
+            $table->unsignedInteger('client_id');
+            $table->unsignedInteger('contact_id')->nullable();
+            $table->dateTime('last_activity_at');
+            $table->dateTime('expires_at');
+            $table->dateTime('revoked_at')->nullable();
+            $table->dateTime('created_at')->nullable();
+            $table->dateTime('updated_at')->nullable();
+        });
+        $schema->create('system_settings', static function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('setting_key', 80)->unique();
+            $table->string('setting_value', 255);
+            $table->string('value_type', 20)->default('string');
+            $table->string('description', 255)->nullable();
+            $table->unsignedInteger('updated_by')->nullable();
+            $table->dateTime('created_at')->nullable();
+            $table->dateTime('updated_at')->nullable();
+        });
+        $schema->create('audit_logs', static function (Blueprint $table): void {
+            $table->increments('id');
+            $table->unsignedInteger('user_id')->nullable();
+            $table->string('user_name_snapshot', 120)->nullable();
+            $table->string('user_email_snapshot', 150)->nullable();
+            $table->unsignedInteger('segment_id')->nullable();
+            $table->string('module_key', 50);
+            $table->string('entity_type', 60);
+            $table->string('entity_id', 50)->nullable();
+            $table->string('action', 40);
+            $table->string('description', 255);
+            $table->text('old_values')->nullable();
+            $table->text('new_values')->nullable();
+            $table->string('ip_address', 45)->default('0.0.0.0');
+            $table->string('user_agent', 255)->nullable();
             $table->dateTime('created_at')->nullable();
         });
         $schema->create('external_service_configs', static function (Blueprint $table): void {
@@ -144,6 +188,22 @@ final class PortalAuthAndExigibleTest extends TestCase
         Capsule::table('contracts')->insert([
             ['id' => 100, 'client_id' => 1, 'folio' => 'PF-1001'],
             ['id' => 200, 'client_id' => 2, 'folio' => 'PF-2001'],
+        ]);
+        Capsule::table('system_settings')->insert([
+            [
+                'setting_key' => 'portal_idle_timeout_minutes',
+                'setting_value' => '5',
+                'value_type' => 'integer',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'setting_key' => 'portal_magic_link_ttl_minutes',
+                'setting_value' => '15',
+                'value_type' => 'integer',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
         ]);
     }
 
@@ -249,12 +309,16 @@ final class PortalAuthAndExigibleTest extends TestCase
         self::assertIsArray($data);
         self::assertSame('client_portal', $data['profile']['scope']);
         self::assertSame(1, $data['profile']['client_id']);
-        self::assertSame(PortalSession::TTL_SECONDS, $data['expires_in']);
+        self::assertSame(5, $data['idle_timeout_minutes']);
+        self::assertSame(300, $data['expires_in']);
+        self::assertNotEmpty($data['expires_at']);
 
         $decoded = PortalSession::decode((string) $data['token']);
         self::assertSame(PortalSession::SCOPE, PortalSession::scopeOf($decoded));
         self::assertSame(1, (int) $decoded->client_id);
+        self::assertNotEmpty((string) ($decoded->sid ?? ''));
         self::assertSame(PortalSession::TTL_SECONDS, (int) $decoded->exp - (int) $decoded->iat);
+        self::assertSame(1, Capsule::table('portal_sessions')->count());
 
         // Segundo canje del mismo token → 401 con el mensaje oficial.
         $second = $service->exchange($token);
@@ -307,12 +371,51 @@ final class PortalAuthAndExigibleTest extends TestCase
 
         self::assertTrue($known->isSuccess());
         self::assertTrue($unknown->isSuccess());
-        self::assertSame(PortalAuthService::GENERIC_REQUEST_MESSAGE, $known->getMessage());
+        self::assertSame(PortalAuthService::buildRequestLinkMessage(15), $known->getMessage());
         self::assertSame($known->getMessage(), $unknown->getMessage());
-        // Solo el contacto registrado genera una liga.
+        self::assertSame(15, $known->getData()['ttl_minutes'] ?? null);
+        self::assertSame(15, $unknown->getData()['ttl_minutes'] ?? null);
+        // Solo el contacto registrado genera una liga y el outbox incluye ttl_minutes.
         self::assertSame(1, Capsule::table('portal_access_tokens')->count());
-        self::assertSame(1, Capsule::table('outbox')->where('operation', 'send_magic_link')->count());
+        $outboxRow = Capsule::table('outbox')->where('operation', 'send_magic_link')->first();
+        self::assertNotNull($outboxRow);
+        $payload = json_decode((string) $outboxRow->payload_json, true);
+        self::assertSame(15, $payload['ttl_minutes'] ?? null);
         self::assertSame(422, $service->requestLink('no-es-correo')->getHttpCode());
+    }
+
+    public function testPublicConfigAndRequestLinkReflectDynamicSystemSettings(): void
+    {
+        Capsule::table('system_settings')->updateOrInsert(
+            ['setting_key' => 'portal_magic_link_ttl_minutes'],
+            ['setting_value' => '30', 'updated_at' => gmdate('Y-m-d H:i:s')],
+        );
+        Capsule::table('system_settings')->updateOrInsert(
+            ['setting_key' => 'portal_idle_timeout_minutes'],
+            ['setting_value' => '12', 'updated_at' => gmdate('Y-m-d H:i:s')],
+        );
+
+        $configContext = $this->contextFor('GET', 'portal/auth/config', null);
+        AppService::beforeGetHook($configContext, self::FREE_URIS);
+        self::assertFalse($configContext->hasResult(), 'GET portal/auth/config debe ser público');
+
+        $service = new PortalAuthService();
+        $configRes = $service->handle($configContext);
+        self::assertTrue($configRes->isSuccess());
+        self::assertSame(30, $configRes->getData()['magic_link_ttl_minutes'] ?? null);
+        self::assertSame(12, $configRes->getData()['idle_timeout_minutes'] ?? null);
+
+        $linkRes = $service->requestLink('ana@cliente-uno.test');
+        self::assertTrue($linkRes->isSuccess());
+        self::assertSame(30, $linkRes->getData()['ttl_minutes'] ?? null);
+        self::assertStringContainsString('30 minutos', $linkRes->getMessage());
+
+        $outboxRow = Capsule::table('outbox')->where('operation', 'send_magic_link')->orderByDesc('id')->first();
+        self::assertNotNull($outboxRow);
+        $payload = json_decode((string) $outboxRow->payload_json, true);
+        self::assertSame(30, $payload['ttl_minutes'] ?? null);
+        self::assertStringContainsString('30 minutos', (string) ($payload['text'] ?? ''));
+        self::assertStringContainsString('30 minutos', (string) ($payload['html'] ?? ''));
     }
 
     public function testInactiveContactCannotExchangeAnIssuedLink(): void
@@ -327,13 +430,7 @@ final class PortalAuthAndExigibleTest extends TestCase
 
     public function testClientPortalJwtIsForbiddenOutsidePortalRoutes(): void
     {
-        $jwt = PortalSession::issueToken([
-            'client_id' => 1,
-            'contact_id' => 10,
-            'contact_name' => 'Ana Pérez',
-            'contact_email' => 'ana@cliente-uno.test',
-            'contract_id' => null,
-        ]);
+        $jwt = $this->issueActivePortalJwt();
 
         foreach (['contracts', 'clients', 'users', 'issuers', 'dashboard'] as $adminUri) {
             $context = $this->contextFor('GET', $adminUri, $jwt);
@@ -369,13 +466,7 @@ final class PortalAuthAndExigibleTest extends TestCase
         self::assertSame('operam_portal_session', PortalSession::COOKIE_NAME);
         self::assertSame('/api/portal', PortalSession::COOKIE_PATH);
 
-        $portalJwt = PortalSession::issueToken([
-            'client_id' => 1,
-            'contact_id' => 10,
-            'contact_name' => 'Ana Pérez',
-            'contact_email' => 'ana@cliente-uno.test',
-            'contract_id' => null,
-        ]);
+        $portalJwt = $this->issueActivePortalJwt();
 
         // 1. JWT del portal (`scope: 'client_portal'`) → HTTP 403 en `/api/contracts`.
         $contractsWithPortalBearer = $this->contextFor('GET', 'contracts', $portalJwt);
@@ -466,7 +557,134 @@ final class PortalAuthAndExigibleTest extends TestCase
         self::assertSame(401, (new PortalService())->handle($context)->getHttpCode());
     }
 
+    // ── Sesión deslizante por inactividad + Logout inmediato + Liga dual ─────────────────
+
+    public function testPortalSessionExpiresAfterIdleTimeoutWithSpecificCode(): void
+    {
+        $jwt = $this->issueActivePortalJwt();
+        $decoded = PortalSession::decode($jwt);
+        $hash = PortalSession::hashSessionId((string) $decoded->sid);
+
+        // Simula inactividad más allá de `portal_idle_timeout_minutes`.
+        Capsule::table('portal_sessions')
+            ->where('session_token_hash', $hash)
+            ->update(['expires_at' => gmdate('Y-m-d H:i:s', time() - 10)]);
+
+        $context = $this->contextFor('GET', 'portal/overview', $jwt);
+        AppService::beforeGetHook($context, self::FREE_URIS);
+
+        self::assertTrue($context->hasResult());
+        $result = $context->getResult();
+        self::assertNotNull($result);
+        self::assertSame(401, $result->getHttpCode());
+        self::assertSame('PORTAL_SESSION_EXPIRED', $result->getCode());
+        self::assertSame('PORTAL_SESSION_EXPIRED', $result->toArray()['code'] ?? null);
+    }
+
+    public function testActiveRequestWithinIdleWindowExtendsExpiresAt(): void
+    {
+        // Configura timeout dinámico en 10 minutos y deja la sesión a 20s de expirar.
+        Capsule::table('system_settings')
+            ->where('setting_key', 'portal_idle_timeout_minutes')
+            ->update(['setting_value' => '10']);
+
+        $jwt = $this->issueActivePortalJwt();
+        $decoded = PortalSession::decode($jwt);
+        $hash = PortalSession::hashSessionId((string) $decoded->sid);
+        $almostExpired = gmdate('Y-m-d H:i:s', time() + 20);
+        Capsule::table('portal_sessions')
+            ->where('session_token_hash', $hash)
+            ->update(['expires_at' => $almostExpired]);
+
+        $context = $this->contextFor('POST', 'portal/auth/keepalive', $jwt);
+        AppService::beforeGetHook($context, self::FREE_URIS);
+        self::assertFalse($context->hasResult());
+
+        $keepalive = (new PortalAuthService())->handle($context);
+        self::assertTrue($keepalive->isSuccess());
+        self::assertSame(10, $keepalive->getData()['idle_timeout_minutes']);
+
+        $updated = Capsule::table('portal_sessions')->where('session_token_hash', $hash)->first();
+        self::assertNotNull($updated);
+        self::assertGreaterThan(strtotime($almostExpired), strtotime((string) $updated->expires_at));
+    }
+
+    public function testLogoutImmediatelyRevokesPortalSessionAndRejectsSubsequentRequests(): void
+    {
+        $jwt = $this->issueActivePortalJwt();
+        $decoded = PortalSession::decode($jwt);
+        $hash = PortalSession::hashSessionId((string) $decoded->sid);
+
+        $logoutContext = $this->contextFor('POST', 'portal/auth/logout', $jwt);
+        AppService::beforeGetHook($logoutContext, self::FREE_URIS);
+        self::assertFalse($logoutContext->hasResult());
+        $logoutResult = (new PortalAuthService())->handle($logoutContext);
+        self::assertTrue($logoutResult->isSuccess());
+
+        $sessionRow = Capsule::table('portal_sessions')->where('session_token_hash', $hash)->first();
+        self::assertNotNull($sessionRow);
+        self::assertNotNull($sessionRow->revoked_at);
+
+        // Cualquier intento posterior con el mismo JWT queda rechazado con 401.
+        $afterLogout = $this->contextFor('GET', 'portal/overview', $jwt);
+        AppService::beforeGetHook($afterLogout, self::FREE_URIS);
+        self::assertTrue($afterLogout->hasResult());
+        self::assertSame(401, $afterLogout->getResult()?->getHttpCode());
+        self::assertSame('PORTAL_SESSION_EXPIRED', $afterLogout->getResult()?->getCode());
+    }
+
+    public function testGeneratePortalLinkSupportsSendEmailFalseAndTrue(): void
+    {
+        $adminAuth = [
+            'user_id' => 1,
+            'name' => 'Admin Operam',
+            'email' => 'admin@operam.mx',
+            'segment_id' => null,
+            'permissions' => [
+                'clients' => ['view' => true, 'create' => true, 'edit' => true, 'delete' => true],
+            ],
+            'scope' => 'enterprise',
+        ];
+
+        // 1) `send_email: false` → crea token sin insertar nada en `outbox`.
+        $onlyGenContext = new Context(['send_email' => false], []);
+        $onlyGenContext->setMethod('POST');
+        $onlyGenContext->setUri('client-contacts/10/generate-portal-link');
+        $onlyGenContext->setData('_resource_id', 10);
+        $onlyGenContext->setData('auth', $adminAuth);
+
+        $onlyGenResult = (new ClientContactsService())->handle($onlyGenContext);
+        self::assertTrue($onlyGenResult->isSuccess(), $onlyGenResult->getMessage());
+        self::assertFalse($onlyGenResult->getData()['email_queued']);
+        self::assertSame(15, $onlyGenResult->getData()['ttl_minutes']);
+        self::assertSame(1, Capsule::table('portal_access_tokens')->count());
+        self::assertSame(0, Capsule::table('outbox')->count());
+
+        // 2) `send_email: true` → crea nuevo token y SÍ encola correo en `outbox`.
+        $withEmailContext = new Context(['send_email' => true], []);
+        $withEmailContext->setMethod('POST');
+        $withEmailContext->setUri('client-contacts/10/generate-portal-link');
+        $withEmailContext->setData('_resource_id', 10);
+        $withEmailContext->setData('auth', $adminAuth);
+
+        $withEmailResult = (new ClientContactsService())->handle($withEmailContext);
+        self::assertTrue($withEmailResult->isSuccess(), $withEmailResult->getMessage());
+        self::assertTrue($withEmailResult->getData()['email_queued']);
+        self::assertSame(2, Capsule::table('portal_access_tokens')->count());
+        self::assertSame(1, Capsule::table('outbox')->where('operation', 'send_magic_link')->count());
+    }
+
     // ── Utilidades ───────────────────────────────────────────────────────────────────────
+
+    /** Emite un JWT de portal respaldado por una fila activa en `portal_sessions`. */
+    private function issueActivePortalJwt(): string
+    {
+        $token = $this->issueTokenForContact();
+        $result = (new PortalAuthService())->exchange($token);
+        self::assertTrue($result->isSuccess(), $result->getMessage());
+
+        return (string) $result->getData()['token'];
+    }
 
     /** Emite una liga para el contacto 10 y devuelve el token en claro extraído de la URL. */
     private function issueTokenForContact(): string

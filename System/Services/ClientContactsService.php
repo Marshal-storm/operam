@@ -111,7 +111,7 @@ final class ClientContactsService extends ModelService
         $action = strtolower(explode('/', trim($context->getUri(), '/'))[2] ?? '');
         if ($action === 'generate-portal-link') {
             return $method === 'POST'
-                ? $this->generatePortalLink($existing)
+                ? $this->generatePortalLink($existing, $request)
                 : Result::fail('Método no soportado.', 405);
         }
 
@@ -161,11 +161,14 @@ final class ClientContactsService extends ModelService
     }
 
     /**
-     * Genera una liga mágica de 15 minutos para un contacto autorizado, encola el correo en
-     * `outbox` y devuelve la URL al administrador (la liga no se guarda en claro: solo su hash).
+     * Genera una liga mágica de un solo uso (vigencia dinámica desde `system_settings`).
+     * Si `send_email === true` (default) encola el correo en `outbox`; si es `false`, solo
+     * genera el token y devuelve la URL lista para copiar sin encolar correo.
      * Requiere `canEdit('clients')`.
+     *
+     * @param array<string, mixed> $request
      */
-    private function generatePortalLink(object $contact): Result
+    private function generatePortalLink(object $contact, array $request = []): Result
     {
         if (!RbacAuthHelper::can($this->authContext, self::MODULE_KEY, 'edit')) {
             return Result::fail('Sin permiso para generar ligas del portal.', 403);
@@ -177,31 +180,51 @@ final class ClientContactsService extends ModelService
             );
         }
 
-        $issued = PortalMagicLinkIssuer::issueForContact($contact);
+        $sendEmail = true;
+        if (array_key_exists('send_email', $request)) {
+            $parsed = filter_var($request['send_email'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($parsed !== null) {
+                $sendEmail = $parsed;
+            }
+        }
+
+        $issued = PortalMagicLinkIssuer::issueForContact($contact, null, $sendEmail);
+        $ttlMinutes = (int) $issued['ttl_minutes'];
 
         $label = sprintf('%s <%s>', (string) $contact->name, (string) $contact->email);
+        $modeLabel = $sendEmail ? 'Generar y enviar por correo' : 'Solo generar';
         AuditLogger::log(
             $this->authContext,
             self::MODULE_KEY,
             'client_contact',
             (string) $contact->id,
             'create',
-            "Se generó una liga mágica de portal para {$label}",
+            $sendEmail
+                ? "Se generó y envió por correo una liga mágica de portal para {$label}"
+                : "Se generó (sin envío de correo) una liga mágica de portal para {$label}",
             null,
-            // Sin la liga ni claves con "token": la bitácora solo registra el hecho y la vigencia.
-            ['contact_id' => (int) $contact->id, 'link_expires_at' => $issued['expires_at']],
+            // Sin la liga ni claves con "token": la bitácora solo registra el hecho, modo y vigencia.
+            [
+                'contact_id' => (int) $contact->id,
+                'link_expires_at' => $issued['expires_at'],
+                'ttl_minutes' => $ttlMinutes,
+                'email_queued' => $sendEmail,
+                'mode' => $modeLabel,
+            ],
         );
 
         return Result::ok([
             'url' => $issued['url'],
             'expires_at' => $issued['expires_at'],
-            'expires_in_seconds' => PortalMagicLinkIssuer::TTL_MINUTES * 60,
+            'ttl_minutes' => $ttlMinutes,
+            'expires_in_seconds' => $ttlMinutes * 60,
+            'email_queued' => $sendEmail,
             'contact' => [
                 'id' => (int) $contact->id,
                 'name' => (string) $contact->name,
                 'email' => (string) $contact->email,
             ],
-        ], 'Liga mágica generada');
+        ], $sendEmail ? 'Liga mágica generada y enviada por correo' : 'Liga mágica generada');
     }
 
     /**

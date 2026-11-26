@@ -6,16 +6,9 @@ import { z } from 'zod'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppFilterBar } from '@/components/ui/AppFilterBar'
 import { AppInput } from '@/components/ui/AppInput'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalFooter,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
 import { AppSelect } from '@/components/ui/AppSelect'
 import {
   AppActionsColumnHeader,
@@ -447,133 +440,134 @@ export function BenefitRulesTab({ createSignal }: BenefitRulesTabProps) {
         </div>
       </AppTableWrapper>
 
-      <AppModal open={modalOpen} onOpenChange={setModalOpen}>
-        <AppModalContent>
-          <AppModalHeader>
-            <AppModalTitle>
-              {editing ? 'Editar regla de beneficio' : 'Nueva regla de beneficio'}
-            </AppModalTitle>
-            <AppModalDescription>
-              Configura qué consumibles incluidos otorga automáticamente un producto al contratarse.
-            </AppModalDescription>
-          </AppModalHeader>
-          <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
-            <label className="block text-sm">
-              Servicio origen
-              <AppSelect
+      <AppDrawer
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        size="lg"
+        title={editing ? 'Editar regla de beneficio' : 'Nueva regla de beneficio'}
+        description="Configura qué consumibles incluidos otorga automáticamente un producto al contratarse."
+        footer={
+          <>
+            <AppButton
+              type="button"
+              variant="outline"
+              onClick={() => setModalOpen(false)}
+            >
+              Cancelar
+            </AppButton>
+            <AppButton type="submit" form="benefit-rule-form">
+              {editing ? 'Guardar cambios' : 'Crear regla'}
+            </AppButton>
+          </>
+        }
+      >
+        <form
+          id="benefit-rule-form"
+          className="min-w-0 space-y-4"
+          onSubmit={form.handleSubmit(onSubmit)}
+        >
+          <label className="block min-w-0 text-sm">
+            Servicio origen
+            <AppSelect
+              withLabelSpacing
+              placeholder="Selecciona servicio origen…"
+              value={form.watch('source_service_id') || undefined}
+              onValueChange={(v) =>
+                form.setValue('source_service_id', v, { shouldValidate: true })
+              }
+              error={Boolean(form.formState.errors.source_service_id)}
+              options={serviceOptions}
+            />
+            {form.formState.errors.source_service_id ? (
+              <span className="mt-1 block text-xs text-red-500">
+                {form.formState.errors.source_service_id.message}
+              </span>
+            ) : null}
+          </label>
+
+          <label className="block min-w-0 text-sm">
+            Beneficio otorgado
+            <AppSelect
+              withLabelSpacing
+              placeholder="Selecciona servicio consumible…"
+              value={form.watch('benefit_service_id') || undefined}
+              onValueChange={(v) =>
+                form.setValue('benefit_service_id', v, { shouldValidate: true })
+              }
+              error={Boolean(form.formState.errors.benefit_service_id)}
+              options={serviceOptions}
+            />
+            {form.formState.errors.benefit_service_id ? (
+              <span className="mt-1 block text-xs text-red-500">
+                {form.formState.errors.benefit_service_id.message}
+              </span>
+            ) : null}
+          </label>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block min-w-0 text-sm">
+              Unidades por unidad
+              <AppInput
                 withLabelSpacing
-                placeholder="Selecciona servicio origen…"
-                value={form.watch('source_service_id') || undefined}
-                onValueChange={(v) =>
-                  form.setValue('source_service_id', v, { shouldValidate: true })
-                }
-                error={Boolean(form.formState.errors.source_service_id)}
-                options={serviceOptions}
+                mono
+                numericMode="integer"
+                error={Boolean(form.formState.errors.units_per_unit)}
+                {...form.register('units_per_unit')}
               />
-              {form.formState.errors.source_service_id ? (
+              {form.formState.errors.units_per_unit ? (
                 <span className="mt-1 block text-xs text-red-500">
-                  {form.formState.errors.source_service_id.message}
+                  {form.formState.errors.units_per_unit.message}
                 </span>
               ) : null}
             </label>
 
-            <label className="block text-sm">
-              Beneficio otorgado
+            <label className="block min-w-0 text-sm">
+              Reinicio del periodo
               <AppSelect
                 withLabelSpacing
-                placeholder="Selecciona servicio consumible…"
-                value={form.watch('benefit_service_id') || undefined}
+                value={form.watch('reset_period')}
                 onValueChange={(v) =>
-                  form.setValue('benefit_service_id', v, { shouldValidate: true })
+                  form.setValue('reset_period', v as BenefitResetPeriod, {
+                    shouldValidate: true,
+                  })
                 }
-                error={Boolean(form.formState.errors.benefit_service_id)}
-                options={serviceOptions}
+                options={[
+                  { value: 'monthly', label: 'Mensual' },
+                  { value: 'anniversary', label: 'Aniversario' },
+                ]}
               />
-              {form.formState.errors.benefit_service_id ? (
-                <span className="mt-1 block text-xs text-red-500">
-                  {form.formState.errors.benefit_service_id.message}
-                </span>
-              ) : null}
             </label>
+          </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                Unidades por unidad
-                <AppInput
-                  withLabelSpacing
-                  mono
-                  numericMode="integer"
-                  error={Boolean(form.formState.errors.units_per_unit)}
-                  {...form.register('units_per_unit')}
-                />
-                {form.formState.errors.units_per_unit ? (
-                  <span className="mt-1 block text-xs text-red-500">
-                    {form.formState.errors.units_per_unit.message}
-                  </span>
-                ) : null}
-              </label>
+          <div className="space-y-3">
+            <label className="flex items-center gap-3 text-sm">
+              <AppSwitch
+                checked={form.watch('is_cumulative')}
+                onCheckedChange={(next) =>
+                  form.setValue('is_cumulative', next, { shouldValidate: true })
+                }
+                label="Acumulable entre periodos"
+              />
+              Acumulable entre periodos
+            </label>
+            <label className="flex items-center gap-3 text-sm">
+              <AppSwitch
+                checked={form.watch('active')}
+                onCheckedChange={(next) =>
+                  form.setValue('active', next, { shouldValidate: true })
+                }
+                label="Regla activa"
+              />
+              Regla activa
+            </label>
+          </div>
 
-              <label className="block text-sm">
-                Reinicio del periodo
-                <AppSelect
-                  withLabelSpacing
-                  value={form.watch('reset_period')}
-                  onValueChange={(v) =>
-                    form.setValue('reset_period', v as BenefitResetPeriod, {
-                      shouldValidate: true,
-                    })
-                  }
-                  options={[
-                    { value: 'monthly', label: 'Mensual' },
-                    { value: 'anniversary', label: 'Aniversario' },
-                  ]}
-                />
-              </label>
-            </div>
-
-            <div className="space-y-3">
-              <label className="flex items-center gap-3 text-sm">
-                <AppSwitch
-                  checked={form.watch('is_cumulative')}
-                  onCheckedChange={(next) =>
-                    form.setValue('is_cumulative', next, { shouldValidate: true })
-                  }
-                  label="Acumulable entre periodos"
-                />
-                Acumulable entre periodos
-              </label>
-              <label className="flex items-center gap-3 text-sm">
-                <AppSwitch
-                  checked={form.watch('active')}
-                  onCheckedChange={(next) =>
-                    form.setValue('active', next, { shouldValidate: true })
-                  }
-                  label="Regla activa"
-                />
-                Regla activa
-              </label>
-            </div>
-
-            <div className="flex items-start gap-2.5 rounded-2xl border border-[#0A84FF]/25 bg-[#0A84FF]/5 px-3.5 py-2.5 text-xs text-[#0066FF] dark:border-[#0A84FF]/30 dark:bg-[#0A84FF]/10 dark:text-[#60A5FA]">
-              <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
-              <p>{livePreview}</p>
-            </div>
-
-            <AppModalFooter>
-              <AppButton
-                type="button"
-                variant="outline"
-                onClick={() => setModalOpen(false)}
-              >
-                Cancelar
-              </AppButton>
-              <AppButton type="submit">
-                {editing ? 'Guardar cambios' : 'Crear regla'}
-              </AppButton>
-            </AppModalFooter>
-          </form>
-        </AppModalContent>
-      </AppModal>
+          <div className="flex items-start gap-2.5 rounded-2xl border border-[#0A84FF]/25 bg-[#0A84FF]/5 px-3.5 py-2.5 text-xs text-[#0066FF] dark:border-[#0A84FF]/30 dark:bg-[#0A84FF]/10 dark:text-[#60A5FA]">
+            <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>{livePreview}</p>
+          </div>
+        </form>
+      </AppDrawer>
     </div>
   )
 }

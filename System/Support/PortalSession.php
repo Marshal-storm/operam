@@ -22,8 +22,8 @@ final class PortalSession
     /** Valor del claim `scope` que aísla el portal del panel interno. */
     public const SCOPE = 'client_portal';
 
-    /** Vigencia de la sesión del portal: 8 horas (RNF-7). */
-    public const TTL_SECONDS = 28800;
+    /** Techo máximo de seguridad del JWT (24h); la expiración real por inactividad vive en `portal_sessions`. */
+    public const TTL_SECONDS = 86400;
 
     /** Cookie HttpOnly que respalda la sesión tras un F5 (el JWT en React vive solo en memoria). */
     public const COOKIE_NAME = 'operam_portal_session';
@@ -31,21 +31,37 @@ final class PortalSession
     /** Ruta estricta de enjaulamiento: el navegador jamás envía esta cookie a rutas internas. */
     public const COOKIE_PATH = '/api/portal';
 
+    /** Genera un identificador criptográfico de sesión (`sid`) para `portal_sessions`. */
+    public static function generateSessionId(): string
+    {
+        return bin2hex(random_bytes(24));
+    }
+
+    /** Hash SHA-256 persistido en `portal_sessions.session_token_hash` (nunca en claro). */
+    public static function hashSessionId(string $sessionId): string
+    {
+        return hash('sha256', $sessionId);
+    }
+
     /**
-     * Emite el JWT del portal.
+     * Emite el JWT del portal incluyendo el claim `sid` para la sesión deslizante en servidor.
      *
-     * @param array{client_id:int, contact_id:int|null, contact_name:string, contact_email:string, contract_id:int|null} $profile
+     * @param array{client_id:int, contact_id:int|null, contact_name:string, contact_email:string, contract_id:int|null, sid?:string} $profile
      */
-    public static function issueToken(array $profile, ?int $now = null): string
+    public static function issueToken(array $profile, ?int $now = null, ?string $sessionId = null): string
     {
         $key = self::signingKey();
         $issuedAt = $now ?? time();
+        $sid = $sessionId ?? (isset($profile['sid']) && is_string($profile['sid']) && $profile['sid'] !== ''
+            ? $profile['sid']
+            : self::generateSessionId());
 
         return JWT::encode([
             'iss' => getenv('JWT_TOKEN_ISSUER') ?: 'http://localhost:8080/',
             'iat' => $issuedAt,
             'exp' => $issuedAt + self::TTL_SECONDS,
             'scope' => self::SCOPE,
+            'sid' => $sid,
             'client_id' => $profile['client_id'],
             'contact_id' => $profile['contact_id'],
             'contact_name' => $profile['contact_name'],
@@ -83,12 +99,13 @@ final class PortalSession
     /**
      * Normaliza los claims del portal en un arreglo tipado.
      *
-     * @return array{scope:string, client_id:int, contact_id:int|null, contact_name:string, contact_email:string, contract_id:int|null}
+     * @return array{scope:string, sid:string, client_id:int, contact_id:int|null, contact_name:string, contact_email:string, contract_id:int|null}
      */
     public static function claimsFrom(object $decoded): array
     {
         return [
             'scope' => self::SCOPE,
+            'sid' => isset($decoded->sid) && is_string($decoded->sid) ? trim($decoded->sid) : '',
             'client_id' => (int) ($decoded->client_id ?? 0),
             'contact_id' => isset($decoded->contact_id) && (int) $decoded->contact_id > 0
                 ? (int) $decoded->contact_id
@@ -127,9 +144,10 @@ final class PortalSession
     }
 
     /** Escribe la cookie `operam_portal_session` (`HttpOnly; SameSite=Lax; Path=/api/portal` + `Secure` bajo HTTPS). */
-    public static function setCookie(string $jwt): void
+    public static function setCookie(string $jwt, ?int $ttlSeconds = null): void
     {
-        self::sendCookie($jwt, time() + self::TTL_SECONDS);
+        $ttl = $ttlSeconds !== null && $ttlSeconds > 0 ? $ttlSeconds : self::TTL_SECONDS;
+        self::sendCookie($jwt, time() + $ttl);
     }
 
     /** Expira únicamente `operam_portal_session` en `Path=/api/portal` (logout del portal). */

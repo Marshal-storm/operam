@@ -6,13 +6,8 @@
 /** Tarjeta de cristal del portal: radio orgánico iOS sobre la base `AppCard`. */
 export const PORTAL_CARD_CLASS = 'rounded-[28px]'
 
-/** Superficie flotante de cristal (píldora de escritorio y dock móvil). */
-export const PORTAL_GLASS_BAR_CLASS =
-  'border border-white/80 bg-white/70 ring-1 ring-slate-900/[0.06] backdrop-blur-2xl backdrop-saturate-150 ' +
-  'shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_14px_36px_-14px_rgba(15,23,42,0.22)] ' +
-  'dark:border-white/[0.12] dark:ring-white/[0.04] ' +
-  'dark:bg-[linear-gradient(135deg,rgba(36,36,42,0.72)_0%,rgba(16,16,20,0.78)_100%)] ' +
-  'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_36px_rgba(0,0,0,0.65)]'
+/** Superficie flotante iOS Liquid Glass (píldora de escritorio, header móvil y dock). */
+export const PORTAL_GLASS_BAR_CLASS = 'ios-liquid-glass'
 
 /** Tarjeta héroe: degradado azul iOS tipo tarjeta de Wallet (al corriente = verde esmeralda). */
 export const PORTAL_HERO_DUE_CLASS =

@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppTextarea } from '@/components/ui/AppInput'
 import {
   AppModal,
@@ -92,163 +93,19 @@ export function InvoiceDetailModal({
 
   return (
     <>
-      <AppModal open={open} onOpenChange={onOpenChange}>
-        <AppModalContent className="max-w-xl">
-          <AppModalHeader>
-            <AppModalTitle>
-              {data ? data.folio : 'Detalle del documento'}
-            </AppModalTitle>
-            <AppModalDescription>
-              {data
-                ? `${data.client_name} · ${data.contract_folio}`
-                : 'Factura e historial de pagos'}
-            </AppModalDescription>
-          </AppModalHeader>
-
-          {isLoading ? (
-            <div className="space-y-3 py-2">
-              <Skeleton className="h-6 w-40" />
-              <Skeleton className="h-20 w-full" />
-              <Skeleton className="h-24 w-full" />
-            </div>
-          ) : null}
-
-          {isError ? (
-            <div className="space-y-3 py-4 text-center">
-              <p className="text-sm text-red-500">No se pudo cargar el documento.</p>
-              <AppButton variant="outline" onClick={() => void refetch()}>
-                Reintentar
-              </AppButton>
-            </div>
-          ) : null}
-
-          {data && !isLoading ? (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <AppBadge
-                  label={STATUS_LABEL[data.status]}
-                  tone={STATUS_TONE[data.status]}
-                  className="whitespace-nowrap shrink-0"
-                />
-                {data.request_folio ? (
-                  <AppBadge
-                    label={data.request_folio}
-                    tone="info"
-                    className="whitespace-nowrap shrink-0"
-                  />
-                ) : null}
-              </div>
-
-              <p className="text-sm text-slate-600 dark:text-zinc-300">{data.concept}</p>
-
-              <div className="space-y-2 rounded-2xl border border-slate-200/80 p-3 dark:border-white/[0.08]">
-                <div className="flex justify-between gap-3 text-sm">
-                  <span className="text-slate-500">Subtotal</span>
-                  <span className="font-mono tabular-nums">
-                    {formatCurrencyMx(Number(data.subtotal), { fractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-3 text-sm">
-                  <span className="text-slate-500">IVA (16%)</span>
-                  <span className="font-mono tabular-nums">
-                    {formatCurrencyMx(Number(data.tax_amount), { fractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-3 border-t border-slate-200/70 pt-2 text-sm dark:border-white/[0.07]">
-                  <span className="font-semibold">Total</span>
-                  <span className="font-mono font-semibold tabular-nums">
-                    {formatCurrencyMx(Number(data.total), { fractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-3 pt-1 sm:grid-cols-3">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase text-slate-500">Pagado</p>
-                    <p className="font-mono text-sm tabular-nums">
-                      {formatCurrencyMx(Number(data.paid_amount), { fractionDigits: 2 })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase text-slate-500">
-                      Saldo pendiente
-                    </p>
-                    <p className="font-mono text-sm tabular-nums">
-                      {data.status === 'cancelled'
-                        ? '$0.00'
-                        : formatCurrencyMx(Number(data.balance), { fractionDigits: 2 })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase text-slate-500">Vence</p>
-                    <p className="text-sm">{formatDateEsMx(data.due_date)}</p>
-                    {data.days_overdue > 0 ? (
-                      <p className="text-xs font-medium text-red-500">
-                        +{data.days_overdue}d vencido
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="mb-2 text-sm font-semibold">Historial de pagos</h3>
-                {data.payments.length === 0 ? (
-                  <p className="text-sm text-slate-500 dark:text-zinc-400">
-                    Aún no hay pagos registrados.
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {data.payments.map((p) => (
-                      <li
-                        key={p.id}
-                        className="flex items-start justify-between gap-3 rounded-xl border border-slate-200/70 px-3 py-2 dark:border-white/[0.07]"
-                      >
-                        <div>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <p
-                              className={`font-mono text-sm tabular-nums ${p.is_reversed ? 'text-slate-400 line-through' : ''}`}
-                            >
-                              {formatCurrencyMx(Number(p.amount), { fractionDigits: 2 })}
-                            </p>
-                            {p.is_reversed ? (
-                              <AppBadge
-                                label="Revertido"
-                                variant="neutral"
-                                className="whitespace-nowrap shrink-0"
-                              />
-                            ) : null}
-                          </div>
-                          <p className="text-xs text-slate-500 dark:text-zinc-400">
-                            {METHOD_LABEL[p.payment_method]} · {formatDateEsMx(p.payment_date)}
-                            {p.reference ? ` · ${p.reference}` : ''}
-                          </p>
-                          {p.is_reversed && p.reversal_reason ? (
-                            <p className="mt-0.5 text-xs text-slate-400">
-                              Motivo: {p.reversal_reason}
-                            </p>
-                          ) : null}
-                        </div>
-                        {!p.is_reversed && canReverse && data.status !== 'cancelled' ? (
-                          <AppButton
-                            variant="ghost"
-                            className="h-8 shrink-0 px-2 text-xs text-red-500"
-                            onClick={() => {
-                              setReverseTarget(p)
-                              setReverseReason('')
-                            }}
-                          >
-                            Revertir pago
-                          </AppButton>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          ) : null}
-
-          <AppModalFooter>
-            <AppButton variant="ghost" onClick={() => onOpenChange(false)}>
+      <AppDrawer
+        open={open}
+        onClose={() => onOpenChange(false)}
+        size="lg"
+        title={data ? data.folio : 'Detalle del documento'}
+        description={
+          data
+            ? `${data.client_name} · ${data.contract_folio}`
+            : 'Factura e historial de pagos'
+        }
+        footer={
+          <>
+            <AppButton variant="outline" onClick={() => onOpenChange(false)}>
               Cerrar
             </AppButton>
             {canRecordPayment && data && Number(data.balance) > 0 && data.status !== 'cancelled' ? (
@@ -262,9 +119,151 @@ export function InvoiceDetailModal({
                 Registrar pago
               </AppButton>
             ) : null}
-          </AppModalFooter>
-        </AppModalContent>
-      </AppModal>
+          </>
+        }
+      >
+        {isLoading ? (
+          <div className="space-y-3 py-2">
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        ) : null}
+
+        {isError ? (
+          <div className="space-y-3 py-4 text-center">
+            <p className="text-sm text-red-500">No se pudo cargar el documento.</p>
+            <AppButton variant="outline" onClick={() => void refetch()}>
+              Reintentar
+            </AppButton>
+          </div>
+        ) : null}
+
+        {data && !isLoading ? (
+          <div className="min-w-0 space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <AppBadge
+                label={STATUS_LABEL[data.status]}
+                tone={STATUS_TONE[data.status]}
+                className="whitespace-nowrap shrink-0"
+              />
+              {data.request_folio ? (
+                <AppBadge
+                  label={data.request_folio}
+                  tone="info"
+                  className="whitespace-nowrap shrink-0"
+                />
+              ) : null}
+            </div>
+
+            <p className="text-sm text-slate-600 dark:text-zinc-300">{data.concept}</p>
+
+            <div className="space-y-2 rounded-2xl border border-slate-200/80 p-3 dark:border-white/[0.08]">
+              <div className="flex justify-between gap-3 text-sm">
+                <span className="text-slate-500">Subtotal</span>
+                <span className="font-mono tabular-nums">
+                  {formatCurrencyMx(Number(data.subtotal), { fractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3 text-sm">
+                <span className="text-slate-500">IVA (16%)</span>
+                <span className="font-mono tabular-nums">
+                  {formatCurrencyMx(Number(data.tax_amount), { fractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3 border-t border-slate-200/70 pt-2 text-sm dark:border-white/[0.07]">
+                <span className="font-semibold">Total</span>
+                <span className="font-mono font-semibold tabular-nums">
+                  {formatCurrencyMx(Number(data.total), { fractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-1 sm:grid-cols-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase text-slate-500">Pagado</p>
+                  <p className="font-mono text-sm tabular-nums">
+                    {formatCurrencyMx(Number(data.paid_amount), { fractionDigits: 2 })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase text-slate-500">
+                    Saldo pendiente
+                  </p>
+                  <p className="font-mono text-sm tabular-nums">
+                    {data.status === 'cancelled'
+                      ? '$0.00'
+                      : formatCurrencyMx(Number(data.balance), { fractionDigits: 2 })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase text-slate-500">Vence</p>
+                  <p className="text-sm">{formatDateEsMx(data.due_date)}</p>
+                  {data.days_overdue > 0 ? (
+                    <p className="text-xs font-medium text-red-500">
+                      +{data.days_overdue}d vencido
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Historial de pagos</h3>
+              {data.payments.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-zinc-400">
+                  Aún no hay pagos registrados.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {data.payments.map((p) => (
+                    <li
+                      key={p.id}
+                      className="flex items-start justify-between gap-3 rounded-xl border border-slate-200/70 px-3 py-2 dark:border-white/[0.07]"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p
+                            className={`font-mono text-sm tabular-nums ${p.is_reversed ? 'text-slate-400 line-through' : ''}`}
+                          >
+                            {formatCurrencyMx(Number(p.amount), { fractionDigits: 2 })}
+                          </p>
+                          {p.is_reversed ? (
+                            <AppBadge
+                              label="Revertido"
+                              variant="neutral"
+                              className="whitespace-nowrap shrink-0"
+                            />
+                          ) : null}
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-zinc-400">
+                          {METHOD_LABEL[p.payment_method]} · {formatDateEsMx(p.payment_date)}
+                          {p.reference ? ` · ${p.reference}` : ''}
+                        </p>
+                        {p.is_reversed && p.reversal_reason ? (
+                          <p className="mt-0.5 text-xs text-slate-400">
+                            Motivo: {p.reversal_reason}
+                          </p>
+                        ) : null}
+                      </div>
+                      {!p.is_reversed && canReverse && data.status !== 'cancelled' ? (
+                        <AppButton
+                          variant="ghost"
+                          className="h-8 shrink-0 px-2 text-xs text-red-500"
+                          onClick={() => {
+                            setReverseTarget(p)
+                            setReverseReason('')
+                          }}
+                        >
+                          Revertir pago
+                        </AppButton>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </AppDrawer>
 
       <AppModal
         open={reverseTarget !== null}

@@ -216,7 +216,7 @@ Obligatorios para quien continúe el proyecto:
 - DB: solo migraciones/seeders Phinx — **prohibido `.sql` sueltos**.
 - Auth: JWT del framework — **prohibido Sanctum**.
 - **Cero mockups** fuera del Dashboard (Login, Catálogo, Contratos, Clientes, Cobranza, Solicitudes, Utilidad por segmento).
-- **Kit atómico (Single Source of Truth):** prohibido `<select>` / `<input>` / `<textarea>` / `<button>` nativos en `src/pages/**` o componentes de negocio. Importar solo desde `src/components/ui/` (`AppCard`, `AppInput`, `AppSelect`, `AppButton`, `AppBadge`, `AppModal`, `AppSwitch`, `AppTableWrapper`, `AppFilterBar`, `AppRowActionsMenu`, `AppTabs`). Un cambio visual global = un archivo del kit. **PROHIBIDO** barras de pestañas manuales: usar exclusivamente `<AppTabs />`.
+- **Kit atómico (Single Source of Truth):** prohibido `<select>` / `<input>` / `<textarea>` / `<button>` nativos en `src/pages/**` o componentes de negocio. Importar solo desde `src/components/ui/` (`AppCard`, `AppInput`, `AppSelect`, `AppButton`, `AppBadge`, `AppModal`, `AppDrawer`, `AppSwitch`, `AppTableWrapper`, `AppFilterBar`, `AppRowActionsMenu`, `AppTabs`). Un cambio visual global = un archivo del kit. **PROHIBIDO** barras de pestañas manuales: usar exclusivamente `<AppTabs />`. Formularios y vistas de detalle siempre en `<AppDrawer />` (`z-50`, bajo el Header `z-[55]`); confirmaciones/alertas críticas siempre en `<AppModal />` (`z-[70]`).
 - **Filtros homologados (`AppFilterBar`):** toda barra de búsqueda/filtros de listados usa `<AppFilterBar />` (§3.2) con etiquetas en mayúsculas; catálogos dinámicos desde MySQL.
 - **RNF-15 — Validación numérica estricta y errores API:** montos/precios/cantidades con Zod (`src/lib/validationSchemas.ts`: `moneySchema`, `exchangeRateSchema`, `positiveIntSchema`, `nonNegativeIntSchema`) + `AppInput.numericMode` antes de cualquier HTTP; `Api/index.php` con `display_errors=0` y `try/catch` global (`InvalidArgumentException` → HTTP 422 JSON; demás → HTTP 500 JSON con `error_id`); cliente `apiClient` / `parseOperamApiResponse` jamás trata HTML o `success≠true` como éxito.
 - **RNF-8 — Cero hardcodeo de servicios externos:** URLs, hosts, API keys y parámetros operativos (SMTP, ERP, Slack, Banxico, PAC, webhooks) viven en Configuración → Servicios externos / MySQL; secretos solo por `secret_ref` hacia `.env` / Secret Manager.
@@ -317,7 +317,8 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `components/ui/AppSelect.tsx` | Select Radix Liquid Glass; buscador si >6 opciones; semáforo por opción. |
 | `components/ui/AppCard.tsx` | Tarjeta Liquid Glass (`Header` / `Content` / `Footer`). |
 | `components/ui/AppBadge.tsx` | Píldoras semáforo (`success` \| `warning` \| `danger` \| `info` \| `neutral` \| `slate`); siempre `whitespace-nowrap`. |
-| `components/ui/AppModal.tsx` | Diálogo accesible sobre `@radix-ui/react-dialog`. |
+| `components/ui/AppModal.tsx` | Diálogo accesible sobre `@radix-ui/react-dialog` (`z-[70]`) exclusivo para confirmaciones y alertas críticas. |
+| `components/ui/AppDrawer.tsx` | Panel lateral derecho Liquid Glass sobre `@radix-ui/react-dialog` (`top-14`, `z-50`, tamaños `md`/`lg`/`xl`/`2xl`, 3 zonas fijas) para formularios y vistas de detalle (§3.1). |
 | `components/ui/AppSwitch.tsx` | Interruptor estilo iOS. |
 | `components/ui/AppTableWrapper.tsx` | Contenedor de tabla (toolbar cristal, cuerpo, pie). |
 | `components/ui/StatusPill.tsx` / `IosSwitch.tsx` / `button.tsx` / `dialog.tsx` | Aliases de compatibilidad → kit `App*`. |
@@ -332,7 +333,8 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `components/dashboard/RecentMovementsTable.tsx` | Tabla/tarjetas + status pills. |
 | `pages/LoginPage.tsx` | Login 2 columnas Liquid Glass → `POST /api/login`. |
 | `pages/DashboardPage.tsx` | Dashboard KPIs + switch Mockup/API (única excepción). |
-| `pages/ClientsPage.tsx` | `/clientes` — directorio CRUD (KPIs, filtros dinámicos, tabla paginada, modales crear/editar/detalle) con Kit Atómico (`clients`). |
+| `pages/ClientsPage.tsx` | `/clientes` — directorio CRUD (KPIs, filtros dinámicos, tabla paginada, `<AppDrawer />` crear/editar `lg` y detalle `xl` con Contactos, acción directa "Generar liga mágica") con Kit Atómico (`clients`). |
+| `components/clients/ClientMagicLinkModal.tsx` | Modal compacto (`AppModal`) de acceso directo desde tabla de Clientes para elegir contacto autorizado, generar/copiar liga mágica o abrir Contactos en Drawer `xl`. |
 | `pages/RequestsPage.tsx` | `/solicitudes` — bandeja M4 Paso 1: KPIs, `AppFilterBar`, tabla/tarjetas UI-4, cotizar/aprobar/rechazar (`requests`). |
 | `pages/CollectionsPage.tsx` | `/cobranza` — M4 Paso 2: KPIs, aging 5 tramos, `<AppTabs />` Documentos/Cartera, `AppFilterBar`, emisión/pagos/cancelación/suspensión (`collections`). |
 | `pages/SegmentProfitabilityPage.tsx` | `/utilidad-segmento` — `<AppTabs />` (Resumen / Costos / No recurrentes / Excepciones) + unit economics; `AppFilterBar` (`segment_profitability`). |
@@ -454,6 +456,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `System/Support/PurchaseFulfillment.php` | Cumplimiento de compras de la Tienda: documento pagado + pago (tarjeta) o documento SPEI pendiente; acredita bolsa `prepaid` (`purchase`) y regalo (`promotion`) por separado, sin tocar MRR. |
 | `System/Support/PriceListResolver.php` / `ContractExigibleResolver.php` / `IssuerSpeiInstructions.php` | Escalones de precio por lista/frecuencia, exigible por contrato (compartido portal/solicitudes/pagos) e instrucciones SPEI del emisor. |
 | `database/migrations/20261125000007_extend_portal_requests_purchases_and_integropay.php` | `service_requests.origin = portal`, `plan_change`, `portal_request_type`; `invoices.purchase_id`; `purchases.payment_method`; `payment_links.transaction_id` / `paid_at`; servicio `integropay`. |
+| `database/migrations/20261126000001_add_portal_sessions_and_timeout_settings.php` | Tabla `portal_sessions` (sesión deslizante por inactividad y revocación inmediata) + parámetros `portal_idle_timeout_minutes` (5 min) y `portal_magic_link_ttl_minutes` (15 min) en `system_settings`. |
 | `tests/Unit/PortalStoreAndIntegroPayTest.php` | Bloque D Paso 2: compra 1,000 + 25% = 1,250 con movimientos separados y MRR intacto, webhook con token e idempotente, reactivación al pagar el exigible, `add_users` 422 con adeudo y `origin = portal` al corriente. |
 | `System/Support/ExigibleCalculator.php` | Motor BCMath del monto exigible devengado (adeudo previo + mensualidad × meses transcurridos − pagado). |
 | `System/Support/PortalSession.php` / `PortalMagicLinkIssuer.php` | Emisión/validación del JWT `client_portal` + cookie, y emisión de ligas mágicas (solo hash SHA-256 persistido). |

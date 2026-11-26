@@ -7,6 +7,7 @@ namespace System\Support;
 use DateTimeImmutable;
 use DateTimeZone;
 use Illuminate\Database\Capsule\Manager as Capsule;
+use System\Services\SystemSettingsService;
 use System\Support\Integrations\ExternalServiceRegistry;
 use System\Support\Integrations\OutboxDispatcher;
 
@@ -17,30 +18,40 @@ use System\Support\Integrations\OutboxDispatcher;
  * acción interna "Generar liga mágica" de Clientes):
  *  - Genera un token criptográfico `bin2hex(random_bytes(32))`.
  *  - Persiste ÚNICAMENTE `sha256(token)` en `portal_access_tokens` (nunca el token en claro).
- *  - Encola el correo en `outbox` (`smtp` / `send_magic_link`) con la liga
- *    `{FRONTEND_URL}/portal/acceso?t={TOKEN}`.
+ *  - Lee dinámicamente `portal_magic_link_ttl_minutes` desde `system_settings`.
+ *  - Si `$sendEmail === true`, encola el correo en `outbox` (`smtp` / `send_magic_link`).
  */
 final class PortalMagicLinkIssuer
 {
-    /** Vigencia de la liga: 15 minutos y de un solo uso. */
+    /** Fallback por defecto de vigencia de la liga: 15 minutos y de un solo uso. */
     public const TTL_MINUTES = 15;
 
     /** Tope de ligas por contacto en la ventana de vigencia (anti-spam de correos). */
     public const MAX_REQUESTS_PER_WINDOW = 5;
 
+    /** Vigencia dinámica de la liga mágica desde `system_settings` (acotada 1–1440 min). */
+    public static function ttlMinutes(): int
+    {
+        return SystemSettingsService::getPortalTimeouts()['portal_magic_link_ttl_minutes'];
+    }
+
     /**
-     * Genera la liga, guarda el hash y encola el correo.
+     * Genera la liga, guarda el hash y opcionalmente encola el correo en `outbox`.
      *
      * @param object $contact Fila de `client_contacts` (id, client_id, name, email).
-     * @return array{url: string, token_id: int, expires_at: string, outbox_id: int|null}
+     * @return array{url: string, token_id: int, expires_at: string, ttl_minutes: int, outbox_id: int|null, email_queued: bool}
      */
-    public static function issueForContact(object $contact, ?int $contractId = null): array
-    {
+    public static function issueForContact(
+        object $contact,
+        ?int $contractId = null,
+        bool $sendEmail = true,
+    ): array {
         $plainToken = bin2hex(random_bytes(32));
         $hash = hash('sha256', $plainToken);
+        $ttlMinutes = self::ttlMinutes();
 
         $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
-        $expires = $now->modify(sprintf('+%d minutes', self::TTL_MINUTES));
+        $expires = $now->modify(sprintf('+%d minutes', $ttlMinutes));
         $expiresAt = $expires->format('Y-m-d H:i:s');
 
         $tokenId = (int) Capsule::table('portal_access_tokens')->insertGetId([
@@ -55,33 +66,40 @@ final class PortalMagicLinkIssuer
         ]);
 
         $url = self::frontendBaseUrl() . '/portal/acceso?t=' . $plainToken;
+        $outboxId = null;
 
-        $segmentId = Capsule::table('clients')->where('id', (int) $contact->client_id)->value('segment_id');
-        $message = (new OutboxDispatcher())->enqueue(
-            'smtp',
-            'send_magic_link',
-            // La llave deriva del hash (no del token): encolar dos veces el mismo hash no duplica.
-            'send_magic_link:' . (int) $contact->id . ':' . substr($hash, 0, 24),
-            [
-                'to' => [(string) $contact->email],
-                'subject' => 'Tu acceso seguro al portal de Operam',
-                'text' => self::plainTextBody((string) $contact->name, $url),
-                'html' => self::htmlBody((string) $contact->name, $url),
-                'contact_id' => (int) $contact->id,
-                'client_id' => (int) $contact->client_id,
-                'expires_at' => $expires->format('Y-m-d\TH:i:s\Z'),
-            ],
-            null,
-            'portal_access_token',
-            (string) $tokenId,
-            $segmentId !== null ? (int) $segmentId : null,
-        );
+        if ($sendEmail) {
+            $segmentId = Capsule::table('clients')->where('id', (int) $contact->client_id)->value('segment_id');
+            $message = (new OutboxDispatcher())->enqueue(
+                'smtp',
+                'send_magic_link',
+                // La llave deriva del hash (no del token): encolar dos veces el mismo hash no duplica.
+                'send_magic_link:' . (int) $contact->id . ':' . substr($hash, 0, 24),
+                [
+                    'to' => [(string) $contact->email],
+                    'subject' => 'Tu acceso seguro al portal de Operam',
+                    'text' => self::plainTextBody((string) $contact->name, $url, $ttlMinutes),
+                    'html' => self::htmlBody((string) $contact->name, $url, $ttlMinutes),
+                    'contact_id' => (int) $contact->id,
+                    'client_id' => (int) $contact->client_id,
+                    'ttl_minutes' => $ttlMinutes,
+                    'expires_at' => $expires->format('Y-m-d\TH:i:s\Z'),
+                ],
+                null,
+                'portal_access_token',
+                (string) $tokenId,
+                $segmentId !== null ? (int) $segmentId : null,
+            );
+            $outboxId = isset($message['id']) ? (int) $message['id'] : null;
+        }
 
         return [
             'url' => $url,
             'token_id' => $tokenId,
             'expires_at' => $expires->format('Y-m-d\TH:i:s\Z'),
-            'outbox_id' => isset($message['id']) ? (int) $message['id'] : null,
+            'ttl_minutes' => $ttlMinutes,
+            'outbox_id' => $outboxId,
+            'email_queued' => $sendEmail,
         ];
     }
 
@@ -90,7 +108,7 @@ final class PortalMagicLinkIssuer
      */
     public static function isRateLimited(int $contactId): bool
     {
-        $windowStart = gmdate('Y-m-d H:i:s', time() - (self::TTL_MINUTES * 60));
+        $windowStart = gmdate('Y-m-d H:i:s', time() - (self::ttlMinutes() * 60));
         $count = Capsule::table('portal_access_tokens')
             ->where('contact_id', $contactId)
             ->where('origin', 'email')
@@ -123,26 +141,32 @@ final class PortalMagicLinkIssuer
         return rtrim($url, '/');
     }
 
-    private static function plainTextBody(string $name, string $url): string
+    private static function formatDurationLabel(int $ttlMinutes): string
+    {
+        return $ttlMinutes === 1 ? '1 minuto' : sprintf('%d minutos', $ttlMinutes);
+    }
+
+    private static function plainTextBody(string $name, string $url, int $ttlMinutes): string
     {
         return sprintf(
-            "Hola %s,\n\nUsa esta liga para entrar a tu portal de Operam. Es de un solo uso y expira en %d minutos:\n\n%s\n\n"
+            "Hola %s,\n\nUsa esta liga para entrar a tu portal de Operam. Es de un solo uso y expira en %s:\n\n%s\n\n"
             . "Si no la solicitaste, ignora este mensaje: nadie podrá entrar sin ella.",
             $name,
-            self::TTL_MINUTES,
+            self::formatDurationLabel($ttlMinutes),
             $url,
         );
     }
 
-    private static function htmlBody(string $name, string $url): string
+    private static function htmlBody(string $name, string $url, int $ttlMinutes): string
     {
         $safeName = htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $safeUrl = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $durationLabel = self::formatDurationLabel($ttlMinutes);
 
         return '<div style="font-family:Ubuntu,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#090D16">'
             . '<h2 style="margin:0 0 12px">Hola ' . $safeName . '</h2>'
             . '<p style="margin:0 0 20px;color:#475569">Usa el botón para entrar a tu portal de Operam. '
-            . 'La liga es de un solo uso y expira en ' . self::TTL_MINUTES . ' minutos.</p>'
+            . 'La liga es de un solo uso y expira en ' . $durationLabel . '.</p>'
             . '<a href="' . $safeUrl . '" style="display:inline-block;background:#0066FF;color:#fff;'
             . 'padding:12px 24px;border-radius:12px;text-decoration:none;font-weight:600">Entrar al portal</a>'
             . '<p style="margin:20px 0 0;font-size:12px;color:#94A3B8">Si no la solicitaste, ignora este mensaje.</p>'

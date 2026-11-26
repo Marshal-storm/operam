@@ -2,17 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { History } from 'lucide-react'
 import { useState } from 'react'
 import { AppBadge, type AppBadgeTone } from '@/components/ui/AppBadge'
+import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppRowActionsMenu } from '@/components/ui/AppRowActionsMenu'
 import { AppFilterBar } from '@/components/ui/AppFilterBar'
 import { AppInput } from '@/components/ui/AppInput'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
 import { AppTableHeadRow, AppTableWrapper } from '@/components/ui/AppTableWrapper'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -434,85 +429,84 @@ export function AuditLogsPage() {
         </div>
       </AppTableWrapper>
 
-      <AppModal
+      <AppDrawer
         open={selected != null}
-        onOpenChange={(open) => {
-          if (!open) setSelected(null)
-        }}
+        onClose={() => setSelected(null)}
+        size="xl"
+        title="Cambios del evento"
+        description={
+          selected
+            ? `${formatWhen(selected.created_at)} · ${moduleLabel(selected.module_key)} · ${selected.entity_type}${selected.entity_id ? ` #${selected.entity_id}` : ''}`
+            : undefined
+        }
+        footer={
+          <AppButton type="button" variant="outline" onClick={() => setSelected(null)}>
+            Cerrar
+          </AppButton>
+        }
       >
-        <AppModalContent className="max-w-4xl">
-          {selected && selectedMeta ? (
-            <>
-              <AppModalHeader>
-                <AppModalTitle>Cambios del evento</AppModalTitle>
-                <AppModalDescription>
-                  {formatWhen(selected.created_at)} · {moduleLabel(selected.module_key)} ·{' '}
-                  {selected.entity_type}
-                  {selected.entity_id ? ` #${selected.entity_id}` : ''}
-                </AppModalDescription>
-              </AppModalHeader>
+        {selected && selectedMeta ? (
+          <div className="min-w-0 space-y-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <AppBadge label={selectedMeta.label} tone={selectedMeta.tone} />
+              <span className="text-sm text-slate-600 dark:text-zinc-300">
+                {selected.description}
+              </span>
+            </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <AppBadge label={selectedMeta.label} tone={selectedMeta.tone} />
-                <span className="text-sm text-slate-600 dark:text-zinc-300">
-                  {selected.description}
-                </span>
+            {selectedRows.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Este evento no guardó valores anteriores ni nuevos.
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-white/[0.09]">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <AppTableHeadRow>
+                      <th className="px-3 py-2 font-medium">Campo</th>
+                      <th className="px-3 py-2 font-medium">Antes</th>
+                      <th className="px-3 py-2 font-medium">Después</th>
+                    </AppTableHeadRow>
+                  </thead>
+                  <tbody>
+                    {selectedRows.map((row) => (
+                      <tr
+                        key={row.key}
+                        className={
+                          row.changed
+                            ? 'bg-amber-500/10'
+                            : 'border-b border-slate-100 dark:border-white/[0.04]'
+                        }
+                      >
+                        <td className="px-3 py-2 font-mono">{row.key}</td>
+                        <td className="px-3 py-2 font-mono break-all text-slate-500">
+                          {row.before}
+                        </td>
+                        <td className="px-3 py-2 font-mono break-all">{row.after}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+            )}
 
-              {selectedRows.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  Este evento no guardó valores anteriores ni nuevos.
-                </p>
-              ) : (
-                <div className="max-h-80 overflow-auto rounded-xl border border-slate-200/80 dark:border-white/[0.09]">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <AppTableHeadRow>
-                        <th className="px-3 py-2 font-medium">Campo</th>
-                        <th className="px-3 py-2 font-medium">Antes</th>
-                        <th className="px-3 py-2 font-medium">Después</th>
-                      </AppTableHeadRow>
-                    </thead>
-                    <tbody>
-                      {selectedRows.map((row) => (
-                        <tr
-                          key={row.key}
-                          className={
-                            row.changed
-                              ? 'bg-amber-500/10'
-                              : 'border-b border-slate-100 dark:border-white/[0.04]'
-                          }
-                        >
-                          <td className="px-3 py-2 font-mono">{row.key}</td>
-                          <td className="px-3 py-2 font-mono break-all text-slate-500">
-                            {row.before}
-                          </td>
-                          <td className="px-3 py-2 font-mono break-all">{row.after}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              <dl className="grid gap-3 text-xs sm:grid-cols-2">
-                <div>
-                  <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                    Dirección IP
-                  </dt>
-                  <dd className="mt-1 font-mono">{selected.ip_address || '—'}</dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                    Agente de usuario
-                  </dt>
-                  <dd className="mt-1 break-all font-mono">{selected.user_agent || '—'}</dd>
-                </div>
-              </dl>
-            </>
-          ) : null}
-        </AppModalContent>
-      </AppModal>
+            <dl className="grid gap-3 rounded-2xl border border-slate-200/80 p-4 text-xs sm:grid-cols-2 dark:border-white/[0.08]">
+              <div className="min-w-0">
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  Dirección IP
+                </dt>
+                <dd className="mt-1 font-mono">{selected.ip_address || '—'}</dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  Agente de usuario
+                </dt>
+                <dd className="mt-1 break-all font-mono">{selected.user_agent || '—'}</dd>
+              </div>
+            </dl>
+          </div>
+        ) : null}
+      </AppDrawer>
     </div>
   )
 }

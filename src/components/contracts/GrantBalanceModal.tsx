@@ -3,15 +3,8 @@ import { useEffect } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { AppButton } from '@/components/ui/AppButton'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppInput, AppTextarea } from '@/components/ui/AppInput'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalFooter,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { positiveIntSchema } from '@/lib/validationSchemas'
 import type { GrantBalanceInput } from '@/types/balance'
@@ -92,92 +85,96 @@ export function GrantBalanceModal({
   }
 
   return (
-    <AppModal open={open} onOpenChange={onOpenChange}>
-      <AppModalContent className="max-w-lg">
-        <AppModalHeader>
-          <AppModalTitle>Acreditar bolsa</AppModalTitle>
-          <AppModalDescription>
-            Otorga unidades incluidas del periodo o prepago sin caducidad.
-          </AppModalDescription>
-        </AppModalHeader>
-        <form className="space-y-4" onSubmit={form.handleSubmit((v) => void handleSubmit(v))}>
-          <Controller
-            control={form.control}
-            name="service_id"
-            render={({ field }) => (
-              <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Servicio
-                </label>
-                <AppSelect
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  options={serviceOptions}
-                  placeholder="Selecciona servicio"
-                />
-              </div>
-            )}
-          />
-          <Controller
-            control={form.control}
-            name="bucket"
-            render={({ field }) => (
-              <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Bolsa
-                </label>
-                <AppSelect
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  options={[
-                    { value: 'included', label: 'Incluida (periodo)' },
-                    { value: 'prepaid', label: 'Prepagada (sin caducidad)' },
-                  ]}
-                />
-              </div>
-            )}
-          />
-          <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Unidades
-            </label>
-            <AppInput numericMode="integer" mono {...form.register('units')} />
-            {form.formState.errors.units ? (
-              <p className="mt-1 text-xs text-red-500">{form.formState.errors.units.message}</p>
-            ) : null}
-          </div>
-          {bucket === 'included' ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Inicio de periodo
-                </label>
-                <AppInput type="date" className="rounded-full" {...form.register('period_start')} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Reinicio / fin
-                </label>
-                <AppInput type="date" className="rounded-full" {...form.register('period_end')} />
-              </div>
+    <AppDrawer
+      open={open}
+      onClose={() => onOpenChange(false)}
+      size="lg"
+      title="Acreditar bolsa"
+      description="Otorga unidades incluidas del periodo o prepago sin caducidad."
+      footer={
+        <>
+          <AppButton type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </AppButton>
+          <AppButton type="submit" form="grant-balance-form" isLoading={isSubmitting}>
+            Acreditar
+          </AppButton>
+        </>
+      }
+    >
+      <form
+        id="grant-balance-form"
+        className="min-w-0 space-y-4"
+        onSubmit={form.handleSubmit((v) => void handleSubmit(v))}
+      >
+        <Controller
+          control={form.control}
+          name="service_id"
+          render={({ field }) => (
+            <div className="min-w-0">
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Servicio
+              </label>
+              <AppSelect
+                value={field.value}
+                onValueChange={field.onChange}
+                options={serviceOptions}
+                placeholder="Selecciona servicio"
+              />
             </div>
+          )}
+        />
+        <Controller
+          control={form.control}
+          name="bucket"
+          render={({ field }) => (
+            <div className="min-w-0">
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Bolsa
+              </label>
+              <AppSelect
+                value={field.value}
+                onValueChange={field.onChange}
+                options={[
+                  { value: 'included', label: 'Incluida (periodo)' },
+                  { value: 'prepaid', label: 'Prepagada (sin caducidad)' },
+                ]}
+              />
+            </div>
+          )}
+        />
+        <div className="min-w-0">
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Unidades
+          </label>
+          <AppInput numericMode="integer" mono {...form.register('units')} />
+          {form.formState.errors.units ? (
+            <p className="mt-1 text-xs text-red-500">{form.formState.errors.units.message}</p>
           ) : null}
-          <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Notas
-            </label>
-            <AppTextarea rows={3} {...form.register('notes')} />
+        </div>
+        {bucket === 'included' ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="min-w-0">
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Inicio de periodo
+              </label>
+              <AppInput type="date" className="rounded-full" {...form.register('period_start')} />
+            </div>
+            <div className="min-w-0">
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Reinicio / fin
+              </label>
+              <AppInput type="date" className="rounded-full" {...form.register('period_end')} />
+            </div>
           </div>
-          <AppModalFooter>
-            <AppButton type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </AppButton>
-            <AppButton type="submit" isLoading={isSubmitting}>
-              Acreditar
-            </AppButton>
-          </AppModalFooter>
-        </form>
-      </AppModalContent>
-    </AppModal>
+        ) : null}
+        <div className="min-w-0">
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Notas
+          </label>
+          <AppTextarea rows={3} {...form.register('notes')} />
+        </div>
+      </form>
+    </AppDrawer>
   )
 }

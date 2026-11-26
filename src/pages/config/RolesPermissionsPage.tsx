@@ -4,14 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppInput } from '@/components/ui/AppInput'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
 import { AppSwitch } from '@/components/ui/AppSwitch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/context/AuthContext'
@@ -341,51 +335,61 @@ export function RolesPermissionsPage() {
         </AppCard>
       </div>
 
-      <AppModal open={newRoleOpen} onOpenChange={setNewRoleOpen}>
-        <AppModalContent>
-          <AppModalHeader>
-            <AppModalTitle>Nuevo rol</AppModalTitle>
-            <AppModalDescription>
-              Se crea con permisos apagados; luego configuras la matriz multinivel.
-            </AppModalDescription>
-          </AppModalHeader>
-          <div className="space-y-3">
-            <label className="block text-sm">
-              Código
-              <AppInput
-                withLabelSpacing
-                mono
-                value={newRoleCodigo}
-                onChange={(e) => setNewRoleCodigo(e.target.value)}
-                placeholder="ej. gestor_promociones"
-              />
-            </label>
-            <label className="block text-sm">
-              Nombre
-              <AppInput
-                withLabelSpacing
-                value={newRoleNombre}
-                onChange={(e) => setNewRoleNombre(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm">
-              Descripción
-              <AppInput
-                withLabelSpacing
-                value={newRoleDesc}
-                onChange={(e) => setNewRoleDesc(e.target.value)}
-              />
-            </label>
+      <AppDrawer
+        open={newRoleOpen}
+        onClose={() => setNewRoleOpen(false)}
+        size="lg"
+        title="Nuevo rol"
+        description="Se crea con permisos apagados; luego configuras la matriz multinivel."
+        footer={
+          <>
             <AppButton
-              className="w-full"
+              type="button"
+              variant="outline"
+              disabled={createRoleMutation.isPending}
+              onClick={() => setNewRoleOpen(false)}
+            >
+              Cancelar
+            </AppButton>
+            <AppButton
+              type="button"
               isLoading={createRoleMutation.isPending}
               onClick={() => createRoleMutation.mutate()}
             >
               Crear rol
             </AppButton>
-          </div>
-        </AppModalContent>
-      </AppModal>
+          </>
+        }
+      >
+        <div className="min-w-0 space-y-4">
+          <label className="block min-w-0 text-sm">
+            Código
+            <AppInput
+              withLabelSpacing
+              mono
+              value={newRoleCodigo}
+              onChange={(e) => setNewRoleCodigo(e.target.value)}
+              placeholder="ej. gestor_promociones"
+            />
+          </label>
+          <label className="block min-w-0 text-sm">
+            Nombre
+            <AppInput
+              withLabelSpacing
+              value={newRoleNombre}
+              onChange={(e) => setNewRoleNombre(e.target.value)}
+            />
+          </label>
+          <label className="block min-w-0 text-sm">
+            Descripción
+            <AppInput
+              withLabelSpacing
+              value={newRoleDesc}
+              onChange={(e) => setNewRoleDesc(e.target.value)}
+            />
+          </label>
+        </div>
+      </AppDrawer>
     </div>
   )
 }

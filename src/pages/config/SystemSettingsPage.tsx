@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Cpu } from 'lucide-react'
-import { useState } from 'react'
+import { AlertTriangle, Clock, Cpu, Save } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { z } from 'zod'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
@@ -18,6 +19,7 @@ import { useLoadingLock } from '@/context/LoadingLockContext'
 import { useToast } from '@/context/ToastContext'
 import { usePermissions } from '@/hooks/usePermissions'
 import { formatDateEsMx } from '@/lib/utils'
+import { positiveIntSchema } from '@/lib/validationSchemas'
 import {
   fetchSystemSettings,
   purgeAuditLogs,
@@ -25,6 +27,19 @@ import {
   AUDIT_LOGS_QUERY_KEY,
   updateSystemSettings,
 } from '@/services/systemService'
+
+const portalTimeoutsSchema = z.object({
+  portal_idle_timeout_minutes: positiveIntSchema({
+    message: 'Ingresa un entero entre 1 y 240 minutos.',
+    min: 1,
+    max: 240,
+  }),
+  portal_magic_link_ttl_minutes: positiveIntSchema({
+    message: 'Ingresa un entero entre 1 y 1,440 minutos.',
+    min: 1,
+    max: 1440,
+  }),
+})
 
 /** Hoy en America/Mexico_City como `YYYY-MM-DD` para el input de depuración. */
 function todayInMexicoCity(): string {
@@ -59,12 +74,25 @@ export function SystemSettingsPage() {
 
   const [purgeDate, setPurgeDate] = useState(todayInMexicoCity)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [idleMinutesInput, setIdleMinutesInput] = useState('5')
+  const [linkTtlInput, setLinkTtlInput] = useState('15')
+  const [portalFormErrors, setPortalFormErrors] = useState<{
+    portal_idle_timeout_minutes?: string
+    portal_magic_link_ttl_minutes?: string
+  }>({})
 
   const settingsQuery = useQuery({
     queryKey: SYSTEM_SETTINGS_QUERY_KEY,
     queryFn: fetchSystemSettings,
     enabled: canView('config_system'),
   })
+
+  useEffect(() => {
+    if (!settingsQuery.data) return
+    setIdleMinutesInput(String(settingsQuery.data.portal_idle_timeout_minutes))
+    setLinkTtlInput(String(settingsQuery.data.portal_magic_link_ttl_minutes))
+    setPortalFormErrors({})
+  }, [settingsQuery.data])
 
   const saveMutation = useMutation({
     mutationFn: (auditLogsEnabled: boolean) =>
@@ -76,6 +104,23 @@ export function SystemSettingsPage() {
         snapshot.audit_logs_enabled
           ? 'Los eventos del sistema volverán a registrarse en la bitácora.'
           : 'El registro automático quedó en pausa. La depuración sigue disponible.',
+      )
+    },
+    onError: (error) => {
+      toast.apiError(error)
+    },
+  })
+
+  const savePortalTimeoutsMutation = useMutation({
+    mutationFn: (input: {
+      portal_idle_timeout_minutes: number
+      portal_magic_link_ttl_minutes: number
+    }) => updateSystemSettings(input),
+    onSuccess: (snapshot) => {
+      queryClient.setQueryData(SYSTEM_SETTINGS_QUERY_KEY, snapshot)
+      toast.success(
+        'Configuración del portal guardada',
+        `Inactividad: ${snapshot.portal_idle_timeout_minutes} min · Liga mágica: ${snapshot.portal_magic_link_ttl_minutes} min.`,
       )
     },
     onError: (error) => {
@@ -108,6 +153,44 @@ export function SystemSettingsPage() {
       await withScreenLock(
         () => saveMutation.mutateAsync(next),
         'Guardando configuración del sistema...',
+      )
+    } catch {
+      /* el toast de error vive en onError */
+    }
+  }
+
+  async function onSavePortalTimeouts(event: React.FormEvent) {
+    event.preventDefault()
+    if (!canEditSystem || savePortalTimeoutsMutation.isPending) return
+
+    const parsed = portalTimeoutsSchema.safeParse({
+      portal_idle_timeout_minutes: idleMinutesInput,
+      portal_magic_link_ttl_minutes: linkTtlInput,
+    })
+    if (!parsed.success) {
+      const nextErrors: {
+        portal_idle_timeout_minutes?: string
+        portal_magic_link_ttl_minutes?: string
+      } = {}
+      for (const issue of parsed.error.issues) {
+        const key = issue.path[0]
+        if (key === 'portal_idle_timeout_minutes' || key === 'portal_magic_link_ttl_minutes') {
+          nextErrors[key] = issue.message
+        }
+      }
+      setPortalFormErrors(nextErrors)
+      return
+    }
+    setPortalFormErrors({})
+
+    try {
+      await withScreenLock(
+        () =>
+          savePortalTimeoutsMutation.mutateAsync({
+            portal_idle_timeout_minutes: Number(parsed.data.portal_idle_timeout_minutes),
+            portal_magic_link_ttl_minutes: Number(parsed.data.portal_magic_link_ttl_minutes),
+          }),
+        'Guardando tiempos del Portal Cliente...',
       )
     } catch {
       /* el toast de error vive en onError */
@@ -219,6 +302,114 @@ export function SystemSettingsPage() {
                 </dd>
               </div>
             </dl>
+          </AppCard>
+
+          <AppCard className="space-y-5 p-5 md:p-6">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-500/10 text-[#0066FF] dark:text-[#0A84FF]">
+                <Clock className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="font-heading text-base font-semibold">
+                  Sesiones del Portal del Cliente
+                </h2>
+                <p className="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                  Controla cuánto tiempo permanece activa la sesión del cliente sin interacción y la vigencia de cada liga mágica antes de abrirse.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={(event) => void onSavePortalTimeouts(event)} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="min-w-0 space-y-1">
+                  <label
+                    htmlFor="portal-idle-timeout"
+                    className="block text-sm font-medium text-slate-800 dark:text-zinc-100"
+                  >
+                    Tiempo de inactividad del portal (minutos)
+                    <AppInput
+                      id="portal-idle-timeout"
+                      withLabelSpacing
+                      mono
+                      numericMode="integer"
+                      value={idleMinutesInput}
+                      disabled={!canEditSystem || savePortalTimeoutsMutation.isPending}
+                      error={Boolean(portalFormErrors.portal_idle_timeout_minutes)}
+                      onChange={(event) => {
+                        setIdleMinutesInput(event.target.value)
+                        if (portalFormErrors.portal_idle_timeout_minutes) {
+                          setPortalFormErrors((prev) => ({
+                            ...prev,
+                            portal_idle_timeout_minutes: undefined,
+                          }))
+                        }
+                      }}
+                    />
+                  </label>
+                  {portalFormErrors.portal_idle_timeout_minutes ? (
+                    <p className="text-xs text-red-500">
+                      {portalFormErrors.portal_idle_timeout_minutes}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-zinc-400">
+                      La sesión del cliente se mantiene viva mientras interactúa y expira automáticamente tras estos minutos de inactividad (1–240 min).
+                    </p>
+                  )}
+                </div>
+
+                <div className="min-w-0 space-y-1">
+                  <label
+                    htmlFor="portal-link-ttl"
+                    className="block text-sm font-medium text-slate-800 dark:text-zinc-100"
+                  >
+                    Vigencia de liga mágica antes de abrirse (minutos)
+                    <AppInput
+                      id="portal-link-ttl"
+                      withLabelSpacing
+                      mono
+                      numericMode="integer"
+                      value={linkTtlInput}
+                      disabled={!canEditSystem || savePortalTimeoutsMutation.isPending}
+                      error={Boolean(portalFormErrors.portal_magic_link_ttl_minutes)}
+                      onChange={(event) => {
+                        setLinkTtlInput(event.target.value)
+                        if (portalFormErrors.portal_magic_link_ttl_minutes) {
+                          setPortalFormErrors((prev) => ({
+                            ...prev,
+                            portal_magic_link_ttl_minutes: undefined,
+                          }))
+                        }
+                      }}
+                    />
+                  </label>
+                  {portalFormErrors.portal_magic_link_ttl_minutes ? (
+                    <p className="text-xs text-red-500">
+                      {portalFormErrors.portal_magic_link_ttl_minutes}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-zinc-400">
+                      Tiempo máximo para abrir una liga mágica de un solo uso desde que se genera (1–1,440 min).
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {canEditSystem ? (
+                <div className="flex justify-end">
+                  <AppButton
+                    type="submit"
+                    isLoading={savePortalTimeoutsMutation.isPending}
+                  >
+                    <Save className="h-4 w-4" />
+                    Guardar configuración
+                  </AppButton>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-zinc-400">
+                  Tu rol tiene acceso de solo lectura a la configuración del sistema.
+                </p>
+              )}
+            </form>
           </AppCard>
 
           <AppCard className="space-y-4 border-amber-400/50 bg-amber-500/[0.07] p-5 md:p-6 dark:border-amber-400/35 dark:bg-amber-400/10">

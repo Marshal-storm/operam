@@ -69,4 +69,37 @@ final class AuditLoggerTest extends TestCase
         $this->assertSame([], $diff['old']);
         $this->assertSame([], $diff['new']);
     }
+
+    public function testSkipsClientPortalScopeAndPortalApiRoutes(): void
+    {
+        $this->assertTrue(AuditLogger::shouldSkipPortalContext(['scope' => 'client_portal']));
+        $this->assertTrue(AuditLogger::shouldSkipPortalContext(['scope' => 'CLIENT_PORTAL']));
+        $this->assertTrue(AuditLogger::shouldSkipPortalContext([], '/api/portal/requests'));
+        $this->assertTrue(AuditLogger::shouldSkipPortalContext([], '/api/portal/store/checkout?contract_id=1'));
+        $this->assertTrue(AuditLogger::shouldSkipPortalContext([], 'api/portal/auth/exchange'));
+
+        $this->assertFalse(AuditLogger::shouldSkipPortalContext(['user_id' => 1], '/api/clients'));
+        $this->assertFalse(AuditLogger::shouldSkipPortalContext(['user_id' => 1, 'scope' => 'internal'], '/api/services'));
+        // Acciones de admin interno (generar liga mágica desde panel) NO deben omitirse.
+        $this->assertFalse(AuditLogger::shouldSkipPortalContext(['user_id' => 1], '/api/clients/10/contacts/2/magic-link'));
+    }
+
+    public function testLogReturnsImmediatelyForClientPortalEvenWhenForced(): void
+    {
+        // Sin Capsule inicializado, si intentara consultar/insertar en MySQL lanzaría error interno;
+        // al retornar en la guarda inicial, el flujo termina de inmediato sin tocar BD.
+        AuditLogger::log(
+            ['scope' => 'client_portal', 'name' => 'Cliente Portal', 'email' => 'cliente@ejemplo.com'],
+            'portal',
+            'purchases',
+            '42',
+            'create',
+            'Compra en tienda del portal',
+            null,
+            ['total' => '1160.00'],
+            true,
+        );
+
+        $this->assertTrue(true);
+    }
 }

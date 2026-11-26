@@ -67,45 +67,69 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Utilidad por segmento', to: '/utilidad-segmento', icon: PieChart, module: 'segment_profitability' },
 ]
 
-const CONFIG_SUBITEMS: ConfigSubItem[] = [
-  { label: 'Catálogo de servicios', to: '/configuracion/catalogo', icon: Package, module: 'config_catalog' },
-  { label: 'Listas de precios', to: '/configuracion/precios', icon: Tags, module: 'config_prices' },
-  { label: 'Promociones', to: '/configuracion/promociones', icon: BadgePercent, module: 'config_promotions' },
-  { label: 'Emisores', to: '/configuracion/emisores', icon: Landmark, module: 'config_issuers' },
-  { label: 'Instancias', to: '/configuracion/instancias', icon: Server, module: 'config_instances' },
-  { label: 'Usuarios', to: '/configuracion/usuarios', icon: Users, module: 'config_users' },
-  { label: 'Roles y permisos', to: '/configuracion/roles', icon: Shield, module: 'config_roles' },
-  { label: 'Empresa', to: '/configuracion/empresa', icon: Building2, module: 'config_company' },
-  { label: 'Sistema', to: '/configuracion/sistema', icon: Cpu, module: 'config_system' },
+type ConfigCategory = {
+  id: string
+  label: string
+  items: ConfigSubItem[]
+}
+
+const CONFIG_CATEGORIES: ConfigCategory[] = [
   {
-    label: 'Servicios externos',
-    to: '/configuracion/servicios',
-    icon: Plug,
-    module: 'config_external_services',
+    id: 'commercial',
+    label: 'COMERCIAL',
+    items: [
+      { label: 'Catálogo de servicios', to: '/configuracion/catalogo', icon: Package, module: 'config_catalog' },
+      { label: 'Listas de precios', to: '/configuracion/precios', icon: Tags, module: 'config_prices' },
+      { label: 'Promociones', to: '/configuracion/promociones', icon: BadgePercent, module: 'config_promotions' },
+    ],
   },
   {
-    label: 'Bitácora de auditoría',
-    to: '/configuracion/auditoria',
-    icon: History,
-    module: 'config_audit_logs',
+    id: 'infrastructure',
+    label: 'INFRAESTRUCTURA',
+    items: [
+      { label: 'Emisores', to: '/configuracion/emisores', icon: Landmark, module: 'config_issuers' },
+      { label: 'Instancias', to: '/configuracion/instancias', icon: Server, module: 'config_instances' },
+      {
+        label: 'Servicios externos',
+        to: '/configuracion/servicios',
+        icon: Plug,
+        module: 'config_external_services',
+      },
+    ],
   },
   {
-    label: 'Preferencias de pantalla',
-    to: '/configuracion/preferencias',
-    icon: SlidersHorizontal,
-    module: 'config_preferences',
+    id: 'security',
+    label: 'SEGURIDAD Y ACCESO',
+    items: [
+      { label: 'Usuarios', to: '/configuracion/usuarios', icon: Users, module: 'config_users' },
+      { label: 'Roles y permisos', to: '/configuracion/roles', icon: Shield, module: 'config_roles' },
+      {
+        label: 'Bitácora de auditoría',
+        to: '/configuracion/auditoria',
+        icon: History,
+        module: 'config_audit_logs',
+      },
+    ],
+  },
+  {
+    id: 'system',
+    label: 'SISTEMA',
+    items: [
+      { label: 'Empresa', to: '/configuracion/empresa', icon: Building2, module: 'config_company' },
+      { label: 'Sistema', to: '/configuracion/sistema', icon: Cpu, module: 'config_system' },
+      {
+        label: 'Preferencias de pantalla',
+        to: '/configuracion/preferencias',
+        icon: SlidersHorizontal,
+        module: 'config_preferences',
+      },
+    ],
   },
 ]
 
-/** Superficie iOS Liquid Glass (misma familia que AppRowActionsMenu). */
+/** Superficie iOS Liquid Glass para menús flotantes y flyouts del Sidebar. */
 const MENU_SURFACE_CLASS =
-  'z-50 min-w-[220px] rounded-2xl p-1.5 ' +
-  'bg-white/80 backdrop-blur-2xl backdrop-saturate-150 ' +
-  'border border-white/85 ring-1 ring-slate-900/[0.07] ' +
-  'shadow-[inset_0_1px_1px_rgba(255,255,255,0.95),0_18px_40px_-10px_rgba(15,23,42,0.18)] ' +
-  'dark:bg-[linear-gradient(145deg,rgba(36,36,42,0.86)_0%,rgba(16,16,20,0.92)_100%)] ' +
-  'dark:border-white/[0.13] dark:ring-1 dark:ring-white/[0.05] ' +
-  'dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_20px_48px_-10px_rgba(0,0,0,0.85)] ' +
+  'z-50 min-w-[220px] rounded-2xl p-1.5 ios-liquid-glass ' +
   'animate-in fade-in-0 zoom-in-95 duration-150'
 
 const MENU_ITEM_CLASS =
@@ -167,20 +191,30 @@ function ConfigAccordion({
   const [open, setOpen] = useState(inConfig)
   const [flyoutOpen, setFlyoutOpen] = useState(false)
 
-  const visibleSubitems = useMemo(
-    () => CONFIG_SUBITEMS.filter((item) => canView(item.module)),
+  const visibleCategories = useMemo(
+    () =>
+      CONFIG_CATEGORIES.map((category) => ({
+        ...category,
+        items: category.items.filter((item) => canView(item.module)),
+      })).filter((category) => category.items.length > 0),
     [canView],
+  )
+
+  const totalVisibleItems = useMemo(
+    () => visibleCategories.reduce((acc, category) => acc + category.items.length, 0),
+    [visibleCategories],
   )
 
   useEffect(() => {
     if (inConfig) setOpen(true)
   }, [inConfig])
 
-  if (!canViewAnyConfig || visibleSubitems.length === 0) {
+  if (!canViewAnyConfig || visibleCategories.length === 0) {
     return null
   }
 
   if (collapsed) {
+    const useTwoColumns = visibleCategories.length >= 2 && totalVisibleItems > 6
     return (
       <DropdownMenu.Root open={flyoutOpen} onOpenChange={setFlyoutOpen}>
         <DropdownMenu.Trigger asChild>
@@ -192,8 +226,8 @@ function ConfigAccordion({
             className={cn(
               'relative h-auto w-full justify-center rounded-xl px-2 py-2.5 font-normal',
               inConfig || flyoutOpen
-                ? 'border border-blue-500/20 bg-blue-50 text-blue-600 dark:bg-[#0A84FF]/15 dark:text-[#0A84FF]'
-                : 'text-slate-500 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-white/[0.05]',
+                ? 'border border-blue-500/20 bg-blue-50/90 text-blue-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] dark:bg-[#0A84FF]/15 dark:text-[#0A84FF]'
+                : 'text-slate-500 hover:bg-slate-900/[0.04] dark:text-zinc-400 dark:hover:bg-white/[0.06]',
             )}
           >
             <Settings className="h-4 w-4" />
@@ -204,32 +238,55 @@ function ConfigAccordion({
             side="right"
             align="start"
             sideOffset={12}
-            collisionPadding={8}
-            className={cn(MENU_SURFACE_CLASS, 'max-h-[min(70vh,28rem)] overflow-y-auto')}
+            collisionPadding={12}
+            className={cn(
+              MENU_SURFACE_CLASS,
+              'max-h-[min(80vh,34rem)] overflow-y-auto p-2',
+              useTwoColumns ? 'w-[460px] max-w-[calc(100vw-5.5rem)]' : 'w-64',
+            )}
             onCloseAutoFocus={(event) => event.preventDefault()}
           >
-            <p className="px-3 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-zinc-500">
+            <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-zinc-500">
               Configuración
             </p>
-            {visibleSubitems.map((item) => {
-              const Icon = item.icon
-              const active = location.pathname === item.to
-              return (
-                <DropdownMenu.Item
-                  key={item.to}
-                  className={cn(MENU_ITEM_CLASS, active && MENU_ITEM_ACTIVE_CLASS)}
-                  onSelect={(event) => {
-                    event.preventDefault()
-                    setFlyoutOpen(false)
-                    navigate(item.to)
-                    onNavigate?.()
-                  }}
-                >
-                  <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" />
-                  <span className="whitespace-nowrap">{item.label}</span>
-                </DropdownMenu.Item>
-              )
-            })}
+            <div
+              className={cn(
+                useTwoColumns ? 'grid grid-cols-2 gap-x-2 gap-y-1' : 'space-y-1',
+              )}
+            >
+              {visibleCategories.map((category) => (
+                <div key={category.id} className="min-w-0">
+                  <p className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
+                    {category.label}
+                  </p>
+                  <div className="space-y-0.5">
+                    {category.items.map((item) => {
+                      const Icon = item.icon
+                      const active = location.pathname === item.to
+                      return (
+                        <DropdownMenu.Item
+                          key={item.to}
+                          className={cn(
+                            MENU_ITEM_CLASS,
+                            'py-1.5 text-[13px]',
+                            active && MENU_ITEM_ACTIVE_CLASS,
+                          )}
+                          onSelect={(event) => {
+                            event.preventDefault()
+                            setFlyoutOpen(false)
+                            navigate(item.to)
+                            onNavigate?.()
+                          }}
+                        >
+                          <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" />
+                          <span className="truncate">{item.label}</span>
+                        </DropdownMenu.Item>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
@@ -264,28 +321,42 @@ function ConfigAccordion({
         )}
       >
         <div className="overflow-hidden">
-          <div className="relative ml-4 space-y-0.5 border-l border-slate-200 pl-3 dark:border-white/[0.09]">
-            {visibleSubitems.map((item) => {
-              const Icon = item.icon
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  onClick={onNavigate}
-                  className={({ isActive }) =>
-                    cn(
-                      'relative flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13px] transition-colors',
-                      isActive
-                        ? 'bg-blue-50 font-medium text-blue-600 before:absolute before:-left-[13px] before:top-1/2 before:h-5 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-[#0066FF] dark:bg-[#0A84FF]/15 dark:text-[#0A84FF] dark:before:bg-[#0A84FF]'
-                        : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-zinc-400 dark:hover:bg-white/[0.05] dark:hover:text-white',
-                    )
-                  }
+          <div className="relative ml-4 border-l border-slate-900/[0.07] pl-2.5 dark:border-white/[0.10]">
+            {visibleCategories.map((category, index) => (
+              <div key={category.id} className={cn(index === 0 ? 'pt-0.5' : 'pt-1')}>
+                <p
+                  className={cn(
+                    'px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500',
+                    index === 0 ? 'pt-1' : 'pt-2.5',
+                  )}
                 >
-                  <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" />
-                  <span className="truncate">{item.label}</span>
-                </NavLink>
-              )
-            })}
+                  {category.label}
+                </p>
+                <div className="space-y-0.5">
+                  {category.items.map((item) => {
+                    const Icon = item.icon
+                    return (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        onClick={onNavigate}
+                        className={({ isActive }) =>
+                          cn(
+                            'relative flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-[13px] transition-colors',
+                            isActive
+                              ? 'bg-blue-50/90 font-medium text-blue-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] before:absolute before:-left-[11px] before:top-1/2 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-[#0066FF] dark:bg-[#0A84FF]/15 dark:text-[#0A84FF] dark:before:bg-[#0A84FF]'
+                              : 'text-slate-500 hover:bg-slate-900/[0.04] hover:text-slate-900 dark:text-zinc-400 dark:hover:bg-white/[0.06] dark:hover:text-white',
+                          )
+                        }
+                      >
+                        <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" />
+                        <span className="truncate">{item.label}</span>
+                      </NavLink>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -315,7 +386,7 @@ function NavItems({
   )
 
   return (
-    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2">
+    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden px-3 py-2">
       {visibleItems.map((item) => {
         const Icon = item.icon
         const badge = item.badge
@@ -331,8 +402,8 @@ function NavItems({
                 'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',
                 collapsed && 'justify-center px-2',
                 isActive
-                  ? 'border border-blue-500/20 bg-blue-50 text-blue-600 before:absolute before:left-0 before:top-1/2 before:h-6 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-[#0066FF] dark:bg-[#0A84FF]/15 dark:text-[#0A84FF] dark:before:bg-[#0A84FF]'
-                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-zinc-400 dark:hover:bg-white/[0.05] dark:hover:text-white',
+                  ? 'border border-blue-500/20 bg-blue-50/90 text-blue-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] before:absolute before:left-0 before:top-1/2 before:h-6 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-[#0066FF] dark:bg-[#0A84FF]/15 dark:text-[#0A84FF] dark:before:bg-[#0A84FF]'
+                  : 'text-slate-500 hover:bg-slate-900/[0.04] hover:text-slate-900 dark:text-zinc-400 dark:hover:bg-white/[0.06] dark:hover:text-white',
                 isActive && collapsed && 'before:hidden',
               )
             }
@@ -378,7 +449,7 @@ function SidebarChrome({
     <div className="flex h-full w-full flex-col">
       <div
         className={cn(
-          'flex shrink-0 items-center px-3 py-3 dark:border-white/[0.07]',
+          'flex shrink-0 items-center px-3 py-3',
           collapsed ? 'justify-center px-2' : 'justify-between gap-2',
         )}
       >
@@ -405,7 +476,7 @@ function SidebarChrome({
 
       <div
         className={cn(
-          'mt-auto shrink-0 space-y-1 border-t border-slate-200/80 p-3 dark:border-white/[0.07]',
+          'mt-auto shrink-0 space-y-1 border-t border-slate-900/[0.07] p-3 dark:border-white/[0.10]',
           collapsed && 'px-2',
         )}
       >
@@ -499,7 +570,7 @@ function HeaderUserProfile() {
             align="end"
             sideOffset={8}
             collisionPadding={8}
-            className={cn(MENU_SURFACE_CLASS, 'w-[260px]')}
+            className={cn(MENU_SURFACE_CLASS, 'z-[60] w-[260px]')}
             onCloseAutoFocus={(event) => event.preventDefault()}
           >
             <div className="border-b border-slate-200/70 px-3 py-2.5 dark:border-white/[0.08]">
@@ -570,18 +641,24 @@ export function InternalLayout() {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F8FAFC] text-[#090D16] dark:bg-[#000000] dark:text-white">
+    <div className="relative flex h-screen overflow-hidden bg-[#F8FAFC] text-[#090D16] dark:bg-[#000000] dark:text-white">
+      {/* Resplandor ambiental fijo muy sutil y uniforme detrás del cristal del Sidebar */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-[radial-gradient(circle_at_12%_30%,rgba(0,102,255,0.06),transparent_52%),radial-gradient(circle_at_14%_78%,rgba(122,63,196,0.05),transparent_50%)] dark:bg-[radial-gradient(circle_at_12%_30%,rgba(10,132,255,0.11),transparent_52%),radial-gradient(circle_at_14%_78%,rgba(122,63,196,0.08),transparent_50%)]"
+      />
+
       <aside
         className={cn(
-          'hidden h-screen shrink-0 border-r border-slate-200/80 bg-white transition-[width] dark:border-white/[0.07] dark:bg-[#070708] lg:flex',
+          'relative left-0 top-0 z-20 hidden h-screen shrink-0 rounded-none border-y-0 border-l-0 border-r border-slate-200/80 transition-[width] ios-liquid-glass-sidebar dark:border-white/[0.10] lg:flex',
           collapsed ? 'w-[4.5rem]' : 'w-64',
         )}
       >
         <SidebarChrome collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="relative flex h-14 shrink-0 items-center border-b border-slate-200/80 bg-white px-4 dark:border-white/[0.07] dark:bg-[#000000]">
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="relative z-[55] flex h-14 shrink-0 items-center border-b border-slate-200/80 bg-white px-4 dark:border-white/[0.07] dark:bg-[#000000]">
           <AppButton
             type="button"
             variant="ghost"
@@ -621,8 +698,8 @@ export function InternalLayout() {
             aria-label="Cerrar menú"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex h-screen w-[min(18rem,85vw)] flex-col bg-white shadow-2xl dark:bg-[#070708]">
-            <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-3 dark:border-white/[0.07]">
+          <aside className="absolute inset-y-0 left-0 flex h-screen w-[min(18rem,85vw)] flex-col rounded-none border-y-0 border-l-0 border-r border-slate-200/80 ios-liquid-glass-sidebar dark:border-white/[0.10]">
+            <div className="flex items-center justify-between border-b border-slate-900/[0.07] px-4 py-3 dark:border-white/[0.10]">
               <p className="font-semibold">Menú</p>
               <AppButton
                 type="button"

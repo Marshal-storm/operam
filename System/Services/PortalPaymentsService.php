@@ -8,7 +8,6 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 use InvalidArgumentException;
 use System\Core\Context;
 use System\Core\Result;
-use System\Support\AuditLogger;
 use System\Support\ContractExigibleResolver;
 use System\Support\FinancialCalculator;
 use System\Support\Integrations\IntegroPayGateway;
@@ -150,22 +149,6 @@ final class PortalPaymentsService extends PortalScopedService
         } catch (Throwable $e) {
             return Result::fail($e->getMessage(), 422);
         }
-
-        AuditLogger::log(
-            $this->auditActor(),
-            self::AUDIT_MODULE,
-            'payment_links',
-            (string) $link['payment_link_id'],
-            'create',
-            sprintf('Liga de pago (%s) por $%s · Contrato %s', $modeLabel, $amount, (string) $contract->folio),
-            null,
-            [
-                'mode' => $mode,
-                'amount' => $amount,
-                'is_sandbox' => $link['is_sandbox'],
-                'documents' => array_column($documents, 'folio'),
-            ],
-        );
 
         return Result::ok($link + [
             'mode' => $mode,

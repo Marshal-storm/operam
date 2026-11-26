@@ -8,7 +8,6 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 use InvalidArgumentException;
 use System\Core\Context;
 use System\Core\Result;
-use System\Support\AuditLogger;
 use System\Support\CollectionRules;
 use System\Support\FinancialCalculator;
 use System\Support\Integrations\IntegroPayGateway;
@@ -267,31 +266,6 @@ final class PortalStoreService extends PortalScopedService
         } catch (Throwable $e) {
             return Result::fail($e->getMessage(), 422);
         }
-
-        AuditLogger::log(
-            $this->auditActor(),
-            self::AUDIT_MODULE,
-            'purchases',
-            (string) $outcome['purchase_id'],
-            'create',
-            sprintf(
-                'Compra en Tienda: %s × %d (+%d de regalo) por $%s vía %s',
-                $quote['service_name'],
-                $quote['quantity'],
-                $quote['extra_units'],
-                $quote['total'],
-                $paymentMethod === 'spei' ? 'SPEI' : 'tarjeta',
-            ),
-            null,
-            [
-                'service_id' => $quote['service_id'],
-                'quantity' => $quote['quantity'],
-                'gifted_units' => $quote['extra_units'],
-                'promotion_id' => $quote['promotion_id'],
-                'total' => $quote['total'],
-                'payment_method' => $paymentMethod,
-            ],
-        );
 
         return Result::ok([
             'purchase_id' => $outcome['purchase_id'],

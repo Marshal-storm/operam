@@ -15,9 +15,6 @@ use System\Core\Context;
  */
 abstract class PortalScopedService extends CustomService
 {
-    /** Llave de auditoría de toda acción iniciada desde el Portal. */
-    protected const AUDIT_MODULE = 'portal';
-
     /** Estados de documento con saldo por cobrar (pagables desde el portal). */
     public const OPEN_INVOICE_STATUSES = ['pending', 'partial', 'overdue'];
 
@@ -69,20 +66,6 @@ abstract class PortalScopedService extends CustomService
         }
 
         return $contract;
-    }
-
-    /**
-     * Actor de auditoría: el contacto autenticado del portal (sin `user_id` interno).
-     *
-     * @return array<string, mixed>
-     */
-    protected function auditActor(): array
-    {
-        return [
-            'name' => (string) ($this->claims['contact_name'] ?? 'Contacto del portal'),
-            'email' => (string) ($this->claims['contact_email'] ?? ''),
-            'segment_id' => $this->clientSegmentId() > 0 ? $this->clientSegmentId() : null,
-        ];
     }
 
     protected static function positiveInt(mixed $value): ?int

@@ -14,15 +14,8 @@ import { z } from 'zod'
 import { RequestImpactPreview } from '@/components/requests/RequestImpactPreview'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppInput, AppTextarea } from '@/components/ui/AppInput'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalFooter,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
 import { AppSelect, type AppSelectOption } from '@/components/ui/AppSelect'
 import { optimizeUserPackages, resolveTierPriceDetailed } from '@/lib/pricingCalculator'
 import { formatCurrencyMx } from '@/lib/utils'
@@ -225,7 +218,7 @@ function FieldSelect({
       control={control}
       name={name}
       render={({ field, fieldState }) => (
-        <div>
+        <div className="min-w-0">
           <label className={FIELD_LABEL}>{label}</label>
           <AppSelect
             value={typeof field.value === 'string' ? field.value : ''}
@@ -382,217 +375,215 @@ export function NewRequestModal({ open, onOpenChange, onSubmit }: NewRequestModa
   })
 
   return (
-    <AppModal open={open} onOpenChange={onOpenChange}>
-      <AppModalContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-        <AppModalHeader>
-          <AppModalTitle>Nueva solicitud</AppModalTitle>
-          <AppModalDescription>
-            Pedido de horas, timbres, compras sueltas o ampliación recurrente sobre un
-            contrato activo.
-          </AppModalDescription>
-        </AppModalHeader>
+    <AppDrawer
+      open={open}
+      onClose={() => onOpenChange(false)}
+      size="lg"
+      title="Nueva solicitud"
+      description="Pedido de horas, timbres, compras sueltas o ampliación recurrente sobre un contrato activo."
+      footer={
+        <>
+          <AppButton type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </AppButton>
+          <AppButton
+            type="submit"
+            form="new-request-form"
+            variant="primary"
+            disabled={
+              form.formState.isSubmitting ||
+              !selectedContract ||
+              hasPreviewError ||
+              preview.lines.length === 0
+            }
+            isLoading={form.formState.isSubmitting}
+          >
+            Crear solicitud
+          </AppButton>
+        </>
+      }
+    >
+      <form id="new-request-form" className="min-w-0 space-y-4" onSubmit={handleSubmit}>
+        <Controller
+          control={form.control}
+          name="contract_id"
+          render={({ field, fieldState }) => (
+            <div className="min-w-0">
+              <label className={FIELD_LABEL}>Contrato activo</label>
+              <AppSelect
+                value={field.value}
+                onValueChange={(v) => {
+                  field.onChange(v)
+                  form.setValue('items', [
+                    { service_id: '', quantity: 1, custom_unit_price: '' },
+                  ])
+                }}
+                options={contractOptions}
+                placeholder="Selecciona un contrato"
+                error={Boolean(fieldState.error)}
+              />
+              {fieldState.error ? (
+                <p className="mt-1 text-xs text-red-500">{fieldState.error.message}</p>
+              ) : null}
+            </div>
+          )}
+        />
 
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <Controller
-            control={form.control}
-            name="contract_id"
-            render={({ field, fieldState }) => (
-              <div>
-                <label className={FIELD_LABEL}>Contrato activo</label>
-                <AppSelect
-                  value={field.value}
-                  onValueChange={(v) => {
-                    field.onChange(v)
-                    form.setValue('items', [
-                      { service_id: '', quantity: 1, custom_unit_price: '' },
-                    ])
-                  }}
-                  options={contractOptions}
-                  placeholder="Selecciona un contrato"
-                  error={Boolean(fieldState.error)}
-                />
-                {fieldState.error ? (
-                  <p className="mt-1 text-xs text-red-500">{fieldState.error.message}</p>
-                ) : null}
-              </div>
+        {selectedContract ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/60 px-3 py-2.5 text-sm dark:border-white/[0.09] dark:bg-white/[0.03]">
+            <span className="font-medium">{selectedContract.client_name}</span>
+            <AppBadge label={selectedContract.segment_name} tone="neutral" />
+            {selectedContract.contract_is_current !== false &&
+            Number(selectedContract.contract_days_overdue ?? 0) <= 0 ? (
+              <AppBadge label="Al corriente" tone="success" />
+            ) : (
+              <AppBadge
+                label={`Adeudo ${formatCurrencyMx(selectedContract.contract_overdue_balance ?? '0', { fractionDigits: 2 })}`}
+                tone="warning"
+              />
             )}
-          />
+            <span className="font-mono text-xs tabular-nums text-slate-500">
+              Lista: {selectedContract.price_list_name ?? '—'}
+            </span>
+          </div>
+        ) : null}
 
-          {selectedContract ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/60 px-3 py-2.5 text-sm dark:border-white/[0.09] dark:bg-white/[0.03]">
-              <span className="font-medium">{selectedContract.client_name}</span>
-              <AppBadge label={selectedContract.segment_name} tone="neutral" />
-              {selectedContract.contract_is_current !== false &&
-              Number(selectedContract.contract_days_overdue ?? 0) <= 0 ? (
-                <AppBadge label="Al corriente" tone="success" />
-              ) : (
-                <AppBadge
-                  label={`Adeudo ${formatCurrencyMx(selectedContract.contract_overdue_balance ?? '0', { fractionDigits: 2 })}`}
-                  tone="warning"
-                />
-              )}
-              <span className="font-mono text-xs tabular-nums text-slate-500">
-                Lista: {selectedContract.price_list_name ?? '—'}
-              </span>
-            </div>
-          ) : null}
+        <div className="min-w-0 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className={FIELD_LABEL}>Servicios</p>
+            <AppButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={!selectedContract}
+              onClick={() =>
+                append({ service_id: '', quantity: 1, custom_unit_price: '' })
+              }
+            >
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              Agregar
+            </AppButton>
+          </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className={FIELD_LABEL}>Servicios</p>
-              <AppButton
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={!selectedContract}
-                onClick={() =>
-                  append({ service_id: '', quantity: 1, custom_unit_price: '' })
-                }
+          {fields.map((field, index) => {
+            const serviceId = watched.items?.[index]?.service_id
+            const service = servicesInList.find((s) => String(s.id) === serviceId)
+            const isOneTime = service?.service_type === 'single'
+            const linePreview = preview.lines[index]
+
+            return (
+              <div
+                key={field.id}
+                className="min-w-0 space-y-2 rounded-2xl border border-slate-200/70 p-3 dark:border-white/[0.08]"
               >
-                <Plus className="mr-1 h-3.5 w-3.5" />
-                Agregar
-              </AppButton>
-            </div>
-
-            {fields.map((field, index) => {
-              const serviceId = watched.items?.[index]?.service_id
-              const service = servicesInList.find((s) => String(s.id) === serviceId)
-              const isOneTime = service?.service_type === 'single'
-              const linePreview = preview.lines[index]
-
-              return (
-                <div
-                  key={field.id}
-                  className="space-y-2 rounded-2xl border border-slate-200/70 p-3 dark:border-white/[0.08]"
-                >
-                  <div className="flex flex-wrap items-end gap-2">
-                    <div className="min-w-[200px] flex-1">
-                      <FieldSelect
-                        label="Servicio"
-                        name={`items.${index}.service_id`}
-                        control={form.control}
-                        options={serviceOptions}
-                        placeholder={
-                          selectedContract
-                            ? 'Selecciona servicio'
-                            : 'Elige contrato primero'
-                        }
-                        disabled={!selectedContract}
-                      />
-                    </div>
-                    <div className="w-28">
-                      <Controller
-                        control={form.control}
-                        name={`items.${index}.quantity`}
-                        render={({ field: f }) => (
-                          <div>
-                            <label className={FIELD_LABEL}>Cantidad</label>
-                            <AppInput
-                              numericMode="integer"
-                              mono
-                              value={String(f.value ?? 1)}
-                              onChange={(e) =>
-                                f.onChange(Math.max(1, Number(e.target.value || '1') || 1))
-                              }
-                            />
-                          </div>
-                        )}
-                      />
-                    </div>
-                    {fields.length > 1 ? (
-                      <AppButton
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="mb-0.5 text-red-500"
-                        onClick={() => remove(index)}
-                        aria-label="Quitar línea"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </AppButton>
-                    ) : null}
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="min-w-0 flex-1 basis-[200px]">
+                    <FieldSelect
+                      label="Servicio"
+                      name={`items.${index}.service_id`}
+                      control={form.control}
+                      options={serviceOptions}
+                      placeholder={
+                        selectedContract
+                          ? 'Selecciona servicio'
+                          : 'Elige contrato primero'
+                      }
+                      disabled={!selectedContract}
+                    />
                   </div>
-
-                  {isOneTime ? (
+                  <div className="w-28 shrink-0">
                     <Controller
                       control={form.control}
-                      name={`items.${index}.custom_unit_price`}
+                      name={`items.${index}.quantity`}
                       render={({ field: f }) => (
                         <div>
-                          <label className={FIELD_LABEL}>
-                            Precio unitario personalizado (opcional)
-                          </label>
+                          <label className={FIELD_LABEL}>Cantidad</label>
                           <AppInput
+                            numericMode="integer"
                             mono
-                            placeholder={linePreview?.unitPrice || '0.00'}
-                            value={f.value ?? ''}
-                            onChange={f.onChange}
+                            value={String(f.value ?? 1)}
+                            onChange={(e) =>
+                              f.onChange(Math.max(1, Number(e.target.value || '1') || 1))
+                            }
                           />
                         </div>
                       )}
                     />
-                  ) : null}
-
-                  {linePreview && !linePreview.error ? (
-                    <p className="font-mono text-xs tabular-nums text-slate-500">
-                      {formatCurrencyMx(linePreview.unitPrice, { fractionDigits: 2 })} ×{' '}
-                      {linePreview.quantity} ={' '}
-                      {formatCurrencyMx(linePreview.subtotal, { fractionDigits: 2 })}
-                    </p>
-                  ) : null}
-                  {linePreview?.error ? (
-                    <p className="text-xs text-amber-600 dark:text-amber-400">
-                      {linePreview.error}
-                    </p>
+                  </div>
+                  {fields.length > 1 ? (
+                    <AppButton
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="mb-0.5 text-red-500"
+                      onClick={() => remove(index)}
+                      aria-label="Quitar línea"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </AppButton>
                   ) : null}
                 </div>
-              )
-            })}
-          </div>
 
-          <Controller
-            control={form.control}
-            name="notes"
-            render={({ field }) => (
-              <div>
-                <label className={FIELD_LABEL}>Notas / descripción del pedido</label>
-                <AppTextarea
-                  placeholder='Ej. "4 Formatos PDF"'
-                  value={field.value ?? ''}
-                  onChange={field.onChange}
-                />
+                {isOneTime ? (
+                  <Controller
+                    control={form.control}
+                    name={`items.${index}.custom_unit_price`}
+                    render={({ field: f }) => (
+                      <div className="min-w-0">
+                        <label className={FIELD_LABEL}>
+                          Precio unitario personalizado (opcional)
+                        </label>
+                        <AppInput
+                          mono
+                          placeholder={linePreview?.unitPrice || '0.00'}
+                          value={f.value ?? ''}
+                          onChange={f.onChange}
+                        />
+                      </div>
+                    )}
+                  />
+                ) : null}
+
+                {linePreview && !linePreview.error ? (
+                  <p className="font-mono text-xs tabular-nums text-slate-500">
+                    {formatCurrencyMx(linePreview.unitPrice, { fractionDigits: 2 })} ×{' '}
+                    {linePreview.quantity} ={' '}
+                    {formatCurrencyMx(linePreview.subtotal, { fractionDigits: 2 })}
+                  </p>
+                ) : null}
+                {linePreview?.error ? (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    {linePreview.error}
+                  </p>
+                ) : null}
               </div>
-            )}
-          />
+            )
+          })}
+        </div>
 
-          <RequestImpactPreview
-            requestTotal={preview.total}
-            mrrImpact={preview.mrr}
-            noMrrImpact={Number(preview.mrr) <= 0}
-            rf2Applied={preview.rf2}
-            rf2Savings={preview.rf2Savings}
-          />
+        <Controller
+          control={form.control}
+          name="notes"
+          render={({ field }) => (
+            <div className="min-w-0">
+              <label className={FIELD_LABEL}>Notas / descripción del pedido</label>
+              <AppTextarea
+                placeholder='Ej. "4 Formatos PDF"'
+                value={field.value ?? ''}
+                onChange={field.onChange}
+              />
+            </div>
+          )}
+        />
 
-          <AppModalFooter>
-            <AppButton type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </AppButton>
-            <AppButton
-              type="submit"
-              variant="primary"
-              disabled={
-                form.formState.isSubmitting ||
-                !selectedContract ||
-                hasPreviewError ||
-                preview.lines.length === 0
-              }
-              isLoading={form.formState.isSubmitting}
-            >
-              Crear solicitud
-            </AppButton>
-          </AppModalFooter>
-        </form>
-      </AppModalContent>
-    </AppModal>
+        <RequestImpactPreview
+          requestTotal={preview.total}
+          mrrImpact={preview.mrr}
+          noMrrImpact={Number(preview.mrr) <= 0}
+          rf2Applied={preview.rf2}
+          rf2Savings={preview.rf2Savings}
+        />
+      </form>
+    </AppDrawer>
   )
 }

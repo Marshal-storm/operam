@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 /**
  * Entrada API del framework operam/servicios.
- * Solo `login` y `POST portal/auth/{request-link|exchange}` son públicos; el resto exige JWT
- * (AppService::before_get). Un JWT `client_portal` queda confinado a `/api/portal/*` (403 fuera).
+ * Solo `login`, `GET portal/auth/config` y `POST portal/auth/{request-link|exchange}` son públicos;
+ * el resto exige JWT (AppService::before_get). Un JWT `client_portal` queda confinado a `/api/portal/*` (403 fuera).
  *
  * RNF-15: jamás devolver HTML de fatales PHP; excepciones → JSON 422/500.
  */
@@ -86,13 +86,15 @@ function operam_api_json_error(int $httpCode, array $payload): never
 
 try {
     /**
-     * URIs libres: `login` (acceso interno) y SOLO los dos POST de autenticación sin contraseña
-     * del Portal Cliente. Cualquier otra ruta `portal/*` exige JWT `client_portal` (RNF-7).
+     * URIs libres: `login` (acceso interno), `GET portal/auth/config` (TTL/inactividad sin datos
+     * sensibles) y los dos POST de autenticación sin contraseña del Portal Cliente. Cualquier otra
+     * ruta `portal/*` exige JWT `client_portal` (RNF-7).
      * El webhook `webhooks/integropay/{issuerId}` NO va aquí: se despacha antes de la guardia con
      * su propio token por emisor (agregar `webhooks` liberaría el listado de `incoming-events`).
      */
     $freeuris = [
         'login',
+        'GET portal/auth/config',
         'POST portal/auth/request-link',
         'POST portal/auth/exchange',
     ];

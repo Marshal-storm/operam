@@ -3,15 +3,8 @@ import { ShieldCheck } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
 import { Controller, useForm, type Resolver } from 'react-hook-form'
 import { AppButton } from '@/components/ui/AppButton'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppInput } from '@/components/ui/AppInput'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalFooter,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { AppSwitch } from '@/components/ui/AppSwitch'
 import { cn } from '@/lib/utils'
@@ -114,7 +107,7 @@ export function ExternalServiceConfigModal({
     const name = `config.${field.key}` as const
     const message = errors.config?.[field.key]?.message
     return (
-      <div key={field.key} className={cn(field.wide && 'sm:col-span-2')}>
+      <div key={field.key} className={cn('min-w-0', field.wide && 'sm:col-span-2')}>
         <span className={FIELD_LABEL}>{field.label}</span>
         {field.kind === 'select' ? (
           <Controller
@@ -147,108 +140,112 @@ export function ExternalServiceConfigModal({
   }
 
   return (
-    <AppModal open={open} onOpenChange={onOpenChange}>
-      <AppModalContent className="max-h-[90vh] overflow-y-auto">
-        <AppModalHeader>
-          <AppModalTitle>Configurar {meta.shortName}</AppModalTitle>
-          <AppModalDescription>{meta.description}</AppModalDescription>
-        </AppModalHeader>
-
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <span className={FIELD_LABEL}>Nombre visible</span>
-              <AppInput
-                withLabelSpacing
-                error={Boolean(errors.display_name)}
-                {...form.register('display_name')}
-              />
-              {errors.display_name ? (
-                <p className="mt-1 text-xs text-red-500">{errors.display_name.message}</p>
-              ) : null}
-            </div>
-
-            <div>
-              <span className={FIELD_LABEL}>Modo</span>
-              <Controller
-                control={form.control}
-                name="mode"
-                render={({ field }) => (
-                  <AppSelect
-                    value={field.value}
-                    onValueChange={field.onChange}
-                    options={MODE_OPTIONS}
-                    aria-label="Modo"
-                  />
-                )}
-              />
-            </div>
-
-            <div>
-              <span className={FIELD_LABEL}>Estado</span>
-              <Controller
-                control={form.control}
-                name="enabled"
-                render={({ field }) => (
-                  <div className="flex h-10 items-center">
-                    <AppSwitch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      caption={field.value ? 'Activo' : 'Inactivo'}
-                      label="Servicio activo"
-                    />
-                  </div>
-                )}
-              />
-            </div>
-
-            {meta.fields.map(renderField)}
+    <AppDrawer
+      open={open}
+      onClose={() => onOpenChange(false)}
+      size="lg"
+      title={`Configurar ${meta.shortName}`}
+      description={meta.description}
+      footer={
+        <>
+          <AppButton
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isSaving}
+          >
+            Cancelar
+          </AppButton>
+          <AppButton type="submit" form="external-service-config-form" isLoading={isSaving}>
+            Guardar cambios
+          </AppButton>
+        </>
+      }
+    >
+      <form
+        id="external-service-config-form"
+        className="min-w-0 space-y-4"
+        onSubmit={handleSubmit}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="min-w-0 sm:col-span-2">
+            <span className={FIELD_LABEL}>Nombre visible</span>
+            <AppInput
+              withLabelSpacing
+              error={Boolean(errors.display_name)}
+              {...form.register('display_name')}
+            />
+            {errors.display_name ? (
+              <p className="mt-1 text-xs text-red-500">{errors.display_name.message}</p>
+            ) : null}
           </div>
 
-          <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-white/[0.08] dark:bg-white/[0.03]">
-            <div className="flex items-start gap-2">
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#10B981]" />
-              <p className="text-xs text-slate-600 dark:text-zinc-300">
-                {meta.secrets.length > 0
-                  ? 'Por seguridad, aquí solo se guarda el nombre de la variable del cofre de secretos (Secret Manager / .env), nunca la contraseña o token en texto plano.'
-                  : 'Este servicio no tiene secretos globales: sus credenciales se configuran como referencias del cofre en cada Emisor.'}
-              </p>
-            </div>
-            {meta.secrets.map((secret) => {
-              const message = errors.secret_refs?.[secret.key]?.message
-              return (
-                <div key={secret.key}>
-                  <span className={FIELD_LABEL}>{secret.label}</span>
-                  <AppInput
-                    withLabelSpacing
-                    mono
-                    autoComplete="off"
-                    spellCheck={false}
-                    placeholder={secret.placeholder}
-                    error={Boolean(message)}
-                    {...form.register(`secret_refs.${secret.key}`)}
+          <div className="min-w-0">
+            <span className={FIELD_LABEL}>Modo</span>
+            <Controller
+              control={form.control}
+              name="mode"
+              render={({ field }) => (
+                <AppSelect
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  options={MODE_OPTIONS}
+                  aria-label="Modo"
+                />
+              )}
+            />
+          </div>
+
+          <div className="min-w-0">
+            <span className={FIELD_LABEL}>Estado</span>
+            <Controller
+              control={form.control}
+              name="enabled"
+              render={({ field }) => (
+                <div className="flex h-10 items-center">
+                  <AppSwitch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    caption={field.value ? 'Activo' : 'Inactivo'}
+                    label="Servicio activo"
                   />
-                  {message ? <p className="mt-1 text-xs text-red-500">{message}</p> : null}
                 </div>
-              )
-            })}
+              )}
+            />
           </div>
 
-          <AppModalFooter>
-            <AppButton
-              type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-              disabled={isSaving}
-            >
-              Cancelar
-            </AppButton>
-            <AppButton type="submit" isLoading={isSaving}>
-              Guardar cambios
-            </AppButton>
-          </AppModalFooter>
-        </form>
-      </AppModalContent>
-    </AppModal>
+          {meta.fields.map(renderField)}
+        </div>
+
+        <div className="min-w-0 space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-white/[0.08] dark:bg-white/[0.03]">
+          <div className="flex items-start gap-2">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#10B981]" />
+            <p className="text-xs text-slate-600 dark:text-zinc-300">
+              {meta.secrets.length > 0
+                ? 'Por seguridad, aquí solo se guarda el nombre de la variable del cofre de secretos (Secret Manager / .env), nunca la contraseña o token en texto plano.'
+                : 'Este servicio no tiene secretos globales: sus credenciales se configuran como referencias del cofre en cada Emisor.'}
+            </p>
+          </div>
+          {meta.secrets.map((secret) => {
+            const message = errors.secret_refs?.[secret.key]?.message
+            return (
+              <div key={secret.key} className="min-w-0">
+                <span className={FIELD_LABEL}>{secret.label}</span>
+                <AppInput
+                  withLabelSpacing
+                  mono
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={secret.placeholder}
+                  error={Boolean(message)}
+                  {...form.register(`secret_refs.${secret.key}`)}
+                />
+                {message ? <p className="mt-1 text-xs text-red-500">{message}</p> : null}
+              </div>
+            )
+          })}
+        </div>
+      </form>
+    </AppDrawer>
   )
 }

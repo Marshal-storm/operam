@@ -7,15 +7,9 @@ import { z } from 'zod'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppFilterBar } from '@/components/ui/AppFilterBar'
 import { AppCurrencyInput, AppInput } from '@/components/ui/AppInput'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { AppSwitch } from '@/components/ui/AppSwitch'
 import { PaginationBar } from '@/components/ui/PaginationBar'
@@ -650,381 +644,394 @@ export function PromotionsPage() {
         onPageSizeChange={setPageSize}
       />
 
-      <AppModal open={modalOpen} onOpenChange={setModalOpen}>
-        <AppModalContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-          <AppModalHeader>
-            <AppModalTitle>{editing ? 'Editar promoción' : 'Nueva promoción'}</AppModalTitle>
-            <AppModalDescription>
-              Modo de beneficio, alcance y vigencia en MySQL.
-            </AppModalDescription>
-          </AppModalHeader>
-          <form className="space-y-3.5" onSubmit={form.handleSubmit(onSubmit)}>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                Código
-                <AppInput
-                  withLabelSpacing
-                  mono
-                  className="uppercase"
-                  error={Boolean(form.formState.errors.code)}
-                  {...form.register('code')}
-                />
-                {form.formState.errors.code ? (
-                  <span className="mt-1 block text-xs text-red-500">
-                    {form.formState.errors.code.message}
-                  </span>
-                ) : null}
-              </label>
-              <label className="block text-sm">
-                Modo de promoción
-                <AppSelect
-                  withLabelSpacing
-                  value={watchedMode}
-                  onValueChange={(v) =>
-                    form.setValue('promo_mode', v as PromotionMode, {
-                      shouldValidate: true,
-                    })
-                  }
-                  options={[
-                    { value: 'price_discount', label: 'Descuento en precio' },
-                    { value: 'extra_units', label: 'Unidades extra (%)' },
-                  ]}
-                />
-              </label>
-            </div>
-
-            <label className="block text-sm">
-              Nombre
+      <AppDrawer
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        size="lg"
+        title={editing ? 'Editar promoción' : 'Nueva promoción'}
+        description="Modo de beneficio, alcance y vigencia en MySQL."
+        footer={
+          <>
+            <AppButton
+              type="button"
+              variant="outline"
+              onClick={() => setModalOpen(false)}
+            >
+              Cancelar
+            </AppButton>
+            <AppButton type="submit" form="promotion-form">
+              {editing ? 'Guardar cambios' : 'Crear promoción'}
+            </AppButton>
+          </>
+        }
+      >
+        <form
+          id="promotion-form"
+          className="min-w-0 space-y-4"
+          onSubmit={form.handleSubmit(onSubmit)}
+        >
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block min-w-0 text-sm">
+              Código
               <AppInput
                 withLabelSpacing
-                error={Boolean(form.formState.errors.name)}
-                {...form.register('name')}
+                mono
+                className="uppercase"
+                error={Boolean(form.formState.errors.code)}
+                {...form.register('code')}
               />
-              {form.formState.errors.name ? (
+              {form.formState.errors.code ? (
                 <span className="mt-1 block text-xs text-red-500">
-                  {form.formState.errors.name.message}
+                  {form.formState.errors.code.message}
                 </span>
               ) : null}
             </label>
+            <label className="block min-w-0 text-sm">
+              Modo de promoción
+              <AppSelect
+                withLabelSpacing
+                value={watchedMode}
+                onValueChange={(v) =>
+                  form.setValue('promo_mode', v as PromotionMode, {
+                    shouldValidate: true,
+                  })
+                }
+                options={[
+                  { value: 'price_discount', label: 'Descuento en precio' },
+                  { value: 'extra_units', label: 'Unidades extra (%)' },
+                ]}
+              />
+            </label>
+          </div>
 
-            {watchedMode === 'extra_units' ? (
-              <AppCard className="space-y-3.5 p-4">
-                <label className="block text-sm">
-                  Servicio consumible
-                  <AppSelect
+          <label className="block min-w-0 text-sm">
+            Nombre
+            <AppInput
+              withLabelSpacing
+              error={Boolean(form.formState.errors.name)}
+              {...form.register('name')}
+            />
+            {form.formState.errors.name ? (
+              <span className="mt-1 block text-xs text-red-500">
+                {form.formState.errors.name.message}
+              </span>
+            ) : null}
+          </label>
+
+          {watchedMode === 'extra_units' ? (
+            <AppCard className="min-w-0 space-y-3.5 p-4">
+              <label className="block min-w-0 text-sm">
+                Servicio consumible
+                <AppSelect
+                  withLabelSpacing
+                  placeholder="Selecciona consumible…"
+                  value={form.watch('service_id') || undefined}
+                  onValueChange={(v) =>
+                    form.setValue('service_id', v, { shouldValidate: true })
+                  }
+                  error={Boolean(form.formState.errors.service_id)}
+                  options={consumableServiceOptions}
+                />
+                {form.formState.errors.service_id ? (
+                  <span className="mt-1 block text-xs text-red-500">
+                    {form.formState.errors.service_id.message}
+                  </span>
+                ) : null}
+              </label>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="block min-w-0 text-sm">
+                  Cantidad mínima
+                  <AppInput
                     withLabelSpacing
-                    placeholder="Selecciona consumible…"
-                    value={form.watch('service_id') || undefined}
-                    onValueChange={(v) =>
-                      form.setValue('service_id', v, { shouldValidate: true })
-                    }
-                    error={Boolean(form.formState.errors.service_id)}
-                    options={consumableServiceOptions}
+                    mono
+                    numericMode="integer"
+                    error={Boolean(form.formState.errors.min_quantity)}
+                    {...form.register('min_quantity')}
                   />
-                  {form.formState.errors.service_id ? (
+                  {form.formState.errors.min_quantity ? (
                     <span className="mt-1 block text-xs text-red-500">
-                      {form.formState.errors.service_id.message}
+                      {form.formState.errors.min_quantity.message}
                     </span>
                   ) : null}
                 </label>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="block text-sm">
-                    Cantidad mínima
-                    <AppInput
-                      withLabelSpacing
-                      mono
-                      numericMode="integer"
-                      error={Boolean(form.formState.errors.min_quantity)}
-                      {...form.register('min_quantity')}
-                    />
-                    {form.formState.errors.min_quantity ? (
-                      <span className="mt-1 block text-xs text-red-500">
-                        {form.formState.errors.min_quantity.message}
-                      </span>
-                    ) : null}
-                  </label>
+                <label className="block min-w-0 text-sm">
+                  Unidades extra (%)
+                  <AppInput
+                    withLabelSpacing
+                    mono
+                    numericMode="decimal"
+                    error={Boolean(form.formState.errors.extra_units_pct)}
+                    {...form.register('extra_units_pct')}
+                  />
+                  {form.formState.errors.extra_units_pct ? (
+                    <span className="mt-1 block text-xs text-red-500">
+                      {form.formState.errors.extra_units_pct.message}
+                    </span>
+                  ) : null}
+                </label>
+              </div>
 
-                  <label className="block text-sm">
-                    Unidades extra (%)
+              <div className="flex items-start gap-2.5 rounded-2xl border border-[#0A84FF]/25 bg-[#0A84FF]/5 px-3.5 py-2.5 text-xs text-[#0066FF] dark:border-[#0A84FF]/30 dark:bg-[#0A84FF]/10 dark:text-[#60A5FA]">
+                <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
+                <p className="font-medium tabular-nums">{extraUnitsPreview}</p>
+              </div>
+
+              <label className="block min-w-0 text-sm">
+                Alcance de la promoción
+                <AppSelect
+                  withLabelSpacing
+                  value={scopeMode}
+                  onValueChange={(v) => {
+                    const next = v as ScopeMode
+                    setScopeMode(next)
+                    if (next === 'all') {
+                      setSelectedSegmentIds([])
+                      setSelectedClientIds([])
+                    }
+                  }}
+                  options={[
+                    { value: 'all', label: 'Todos los segmentos y clientes' },
+                    { value: 'segments', label: 'Por segmento(s)' },
+                    { value: 'clients', label: 'Clientes específicos' },
+                  ]}
+                />
+              </label>
+
+              {scopeMode === 'segments' ? (
+                <div className="min-w-0 space-y-2">
+                  <AppSelect
+                    placeholder="Agregar segmento…"
+                    value={undefined}
+                    onValueChange={(v) => {
+                      const id = Number(v)
+                      if (id > 0 && !selectedSegmentIds.includes(id)) {
+                        setSelectedSegmentIds((prev) => [...prev, id])
+                      }
+                    }}
+                    options={availableSegmentScopeOptions}
+                    disabled={availableSegmentScopeOptions.length === 0}
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedSegmentIds.length === 0 ? (
+                      <p className="text-xs text-slate-500">
+                        Selecciona uno o más segmentos.
+                      </p>
+                    ) : (
+                      selectedSegmentIds.map((segId) => {
+                        const seg = segments.find((s) => s.id === segId)
+                        return (
+                          <span
+                            key={segId}
+                            className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-0.5 pl-2.5 pr-1 text-xs dark:bg-white/[0.08]"
+                          >
+                            <span className="whitespace-nowrap font-medium">
+                              {seg?.name ?? `Segmento #${segId}`}
+                            </span>
+                            <AppButton
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 w-5 rounded-full p-0"
+                              aria-label="Quitar segmento"
+                              onClick={() =>
+                                setSelectedSegmentIds((prev) =>
+                                  prev.filter((id) => id !== segId),
+                                )
+                              }
+                            >
+                              <X className="h-3 w-3" />
+                            </AppButton>
+                          </span>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {scopeMode === 'clients' ? (
+                <div className="min-w-0 space-y-2">
+                  <AppSelect
+                    placeholder="Buscar y agregar cliente…"
+                    searchable
+                    value={undefined}
+                    onValueChange={(v) => {
+                      const id = Number(v)
+                      if (id > 0 && !selectedClientIds.includes(id)) {
+                        setSelectedClientIds((prev) => [...prev, id])
+                      }
+                    }}
+                    options={availableClientScopeOptions}
+                    disabled={availableClientScopeOptions.length === 0}
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedClientIds.length === 0 ? (
+                      <p className="text-xs text-slate-500">
+                        Selecciona uno o más clientes.
+                      </p>
+                    ) : (
+                      selectedClientIds.map((cid) => {
+                        const cli = allClients.find((c) => c.id === cid)
+                        const fallbackName = editing?.scopes?.find(
+                          (s) => s.client_id === cid,
+                        )?.client_name
+                        return (
+                          <span
+                            key={cid}
+                            className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-0.5 pl-2.5 pr-1 text-xs dark:bg-white/[0.08]"
+                          >
+                            <span className="whitespace-nowrap font-medium">
+                              {cli?.name ?? fallbackName ?? `Cliente #${cid}`}
+                            </span>
+                            <AppButton
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 w-5 rounded-full p-0"
+                              aria-label="Quitar cliente"
+                              onClick={() =>
+                                setSelectedClientIds((prev) =>
+                                  prev.filter((id) => id !== cid),
+                                )
+                              }
+                            >
+                              <X className="h-3 w-3" />
+                            </AppButton>
+                          </span>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              <label className="flex items-center gap-2.5 text-sm">
+                <AppSwitch
+                  checked={form.watch('visible_in_portal')}
+                  onCheckedChange={(next) =>
+                    form.setValue('visible_in_portal', next, {
+                      shouldValidate: true,
+                    })
+                  }
+                  label="Visible en Portal Cliente"
+                />
+                Visible en Portal Cliente
+              </label>
+            </AppCard>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="block min-w-0 text-sm">
+                  Tipo
+                  <AppSelect
+                    withLabelSpacing
+                    value={form.watch('discount_type')}
+                    onValueChange={(v) =>
+                      form.setValue('discount_type', v as FormValues['discount_type'], {
+                        shouldValidate: true,
+                      })
+                    }
+                    options={[
+                      { value: 'percentage', label: 'Porcentaje' },
+                      { value: 'fixed_amount', label: 'Monto fijo' },
+                      { value: 'free_months', label: 'Meses gratis' },
+                    ]}
+                  />
+                </label>
+                <label className="block min-w-0 text-sm">
+                  Valor
+                  {form.watch('discount_type') === 'fixed_amount' ? (
+                    <AppCurrencyInput
+                      withLabelSpacing
+                      error={Boolean(form.formState.errors.discount_value)}
+                      {...form.register('discount_value')}
+                    />
+                  ) : (
                     <AppInput
                       withLabelSpacing
                       mono
                       numericMode="decimal"
-                      error={Boolean(form.formState.errors.extra_units_pct)}
-                      {...form.register('extra_units_pct')}
+                      error={Boolean(form.formState.errors.discount_value)}
+                      {...form.register('discount_value')}
                     />
-                    {form.formState.errors.extra_units_pct ? (
-                      <span className="mt-1 block text-xs text-red-500">
-                        {form.formState.errors.extra_units_pct.message}
-                      </span>
-                    ) : null}
-                  </label>
-                </div>
-
-                <div className="flex items-start gap-2.5 rounded-2xl border border-[#0A84FF]/25 bg-[#0A84FF]/5 px-3.5 py-2.5 text-xs text-[#0066FF] dark:border-[#0A84FF]/30 dark:bg-[#0A84FF]/10 dark:text-[#60A5FA]">
-                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
-                  <p className="font-medium tabular-nums">{extraUnitsPreview}</p>
-                </div>
-
-                <label className="block text-sm">
-                  Alcance de la promoción
-                  <AppSelect
-                    withLabelSpacing
-                    value={scopeMode}
-                    onValueChange={(v) => {
-                      const next = v as ScopeMode
-                      setScopeMode(next)
-                      if (next === 'all') {
-                        setSelectedSegmentIds([])
-                        setSelectedClientIds([])
-                      }
-                    }}
-                    options={[
-                      { value: 'all', label: 'Todos los segmentos y clientes' },
-                      { value: 'segments', label: 'Por segmento(s)' },
-                      { value: 'clients', label: 'Clientes específicos' },
-                    ]}
-                  />
+                  )}
+                  {form.formState.errors.discount_value ? (
+                    <span className="mt-1 block text-xs text-red-500">
+                      {form.formState.errors.discount_value.message}
+                    </span>
+                  ) : null}
                 </label>
-
-                {scopeMode === 'segments' ? (
-                  <div className="space-y-2">
-                    <AppSelect
-                      placeholder="Agregar segmento…"
-                      value={undefined}
-                      onValueChange={(v) => {
-                        const id = Number(v)
-                        if (id > 0 && !selectedSegmentIds.includes(id)) {
-                          setSelectedSegmentIds((prev) => [...prev, id])
-                        }
-                      }}
-                      options={availableSegmentScopeOptions}
-                      disabled={availableSegmentScopeOptions.length === 0}
-                    />
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedSegmentIds.length === 0 ? (
-                        <p className="text-xs text-slate-500">
-                          Selecciona uno o más segmentos.
-                        </p>
-                      ) : (
-                        selectedSegmentIds.map((segId) => {
-                          const seg = segments.find((s) => s.id === segId)
-                          return (
-                            <span
-                              key={segId}
-                              className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-0.5 pl-2.5 pr-1 text-xs dark:bg-white/[0.08]"
-                            >
-                              <span className="whitespace-nowrap font-medium">
-                                {seg?.name ?? `Segmento #${segId}`}
-                              </span>
-                              <AppButton
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 rounded-full p-0"
-                                aria-label="Quitar segmento"
-                                onClick={() =>
-                                  setSelectedSegmentIds((prev) =>
-                                    prev.filter((id) => id !== segId),
-                                  )
-                                }
-                              >
-                                <X className="h-3 w-3" />
-                              </AppButton>
-                            </span>
-                          )
-                        })
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-
-                {scopeMode === 'clients' ? (
-                  <div className="space-y-2">
-                    <AppSelect
-                      placeholder="Buscar y agregar cliente…"
-                      searchable
-                      value={undefined}
-                      onValueChange={(v) => {
-                        const id = Number(v)
-                        if (id > 0 && !selectedClientIds.includes(id)) {
-                          setSelectedClientIds((prev) => [...prev, id])
-                        }
-                      }}
-                      options={availableClientScopeOptions}
-                      disabled={availableClientScopeOptions.length === 0}
-                    />
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedClientIds.length === 0 ? (
-                        <p className="text-xs text-slate-500">
-                          Selecciona uno o más clientes.
-                        </p>
-                      ) : (
-                        selectedClientIds.map((cid) => {
-                          const cli = allClients.find((c) => c.id === cid)
-                          const fallbackName = editing?.scopes?.find(
-                            (s) => s.client_id === cid,
-                          )?.client_name
-                          return (
-                            <span
-                              key={cid}
-                              className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-0.5 pl-2.5 pr-1 text-xs dark:bg-white/[0.08]"
-                            >
-                              <span className="whitespace-nowrap font-medium">
-                                {cli?.name ?? fallbackName ?? `Cliente #${cid}`}
-                              </span>
-                              <AppButton
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 rounded-full p-0"
-                                aria-label="Quitar cliente"
-                                onClick={() =>
-                                  setSelectedClientIds((prev) =>
-                                    prev.filter((id) => id !== cid),
-                                  )
-                                }
-                              >
-                                <X className="h-3 w-3" />
-                              </AppButton>
-                            </span>
-                          )
-                        })
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-
-                <label className="flex items-center gap-2.5 text-sm">
-                  <AppSwitch
-                    checked={form.watch('visible_in_portal')}
-                    onCheckedChange={(next) =>
-                      form.setValue('visible_in_portal', next, {
-                        shouldValidate: true,
-                      })
-                    }
-                    label="Visible en Portal Cliente"
-                  />
-                  Visible en Portal Cliente
-                </label>
-              </AppCard>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block text-sm">
-                    Tipo
-                    <AppSelect
-                      withLabelSpacing
-                      value={form.watch('discount_type')}
-                      onValueChange={(v) =>
-                        form.setValue('discount_type', v as FormValues['discount_type'], {
-                          shouldValidate: true,
-                        })
-                      }
-                      options={[
-                        { value: 'percentage', label: 'Porcentaje' },
-                        { value: 'fixed_amount', label: 'Monto fijo' },
-                        { value: 'free_months', label: 'Meses gratis' },
-                      ]}
-                    />
-                  </label>
-                  <label className="block text-sm">
-                    Valor
-                    {form.watch('discount_type') === 'fixed_amount' ? (
-                      <AppCurrencyInput
-                        withLabelSpacing
-                        error={Boolean(form.formState.errors.discount_value)}
-                        {...form.register('discount_value')}
-                      />
-                    ) : (
-                      <AppInput
-                        withLabelSpacing
-                        mono
-                        numericMode="decimal"
-                        error={Boolean(form.formState.errors.discount_value)}
-                        {...form.register('discount_value')}
-                      />
-                    )}
-                    {form.formState.errors.discount_value ? (
-                      <span className="mt-1 block text-xs text-red-500">
-                        {form.formState.errors.discount_value.message}
-                      </span>
-                    ) : null}
-                  </label>
-                </div>
-                <label className="block text-sm">
-                  Aplica a
-                  <AppSelect
-                    withLabelSpacing
-                    value={form.watch('applies_to')}
-                    onValueChange={(v) =>
-                      form.setValue('applies_to', v as FormValues['applies_to'], {
-                        shouldValidate: true,
-                      })
-                    }
-                    options={[
-                      { value: 'recurring', label: 'Suscripciones' },
-                      { value: 'single', label: 'Pagos únicos' },
-                      { value: 'both', label: 'Ambos' },
-                    ]}
-                  />
-                </label>
-                <label className="block text-sm">
-                  Segmento
-                  <AppSelect
-                    withLabelSpacing
-                    value={form.watch('segment_id') || 'all'}
-                    disabled={isSegmentLocked}
-                    onValueChange={(v) =>
-                      form.setValue('segment_id', v === 'all' ? '' : v, {
-                        shouldValidate: true,
-                      })
-                    }
-                    options={[
-                      { value: 'all', label: 'Todos' },
-                      ...segments.map((s) => ({ value: String(s.id), label: s.name })),
-                    ]}
-                  />
-                </label>
-              </>
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm">
-                Desde
-                <AppInput type="date" withLabelSpacing {...form.register('valid_from')} />
+              </div>
+              <label className="block min-w-0 text-sm">
+                Aplica a
+                <AppSelect
+                  withLabelSpacing
+                  value={form.watch('applies_to')}
+                  onValueChange={(v) =>
+                    form.setValue('applies_to', v as FormValues['applies_to'], {
+                      shouldValidate: true,
+                    })
+                  }
+                  options={[
+                    { value: 'recurring', label: 'Suscripciones' },
+                    { value: 'single', label: 'Pagos únicos' },
+                    { value: 'both', label: 'Ambos' },
+                  ]}
+                />
               </label>
-              <label className="block text-sm">
-                Hasta
-                <AppInput type="date" withLabelSpacing {...form.register('valid_until')} />
+              <label className="block min-w-0 text-sm">
+                Segmento
+                <AppSelect
+                  withLabelSpacing
+                  value={form.watch('segment_id') || 'all'}
+                  disabled={isSegmentLocked}
+                  onValueChange={(v) =>
+                    form.setValue('segment_id', v === 'all' ? '' : v, {
+                      shouldValidate: true,
+                    })
+                  }
+                  options={[
+                    { value: 'all', label: 'Todos' },
+                    ...segments.map((s) => ({ value: String(s.id), label: s.name })),
+                  ]}
+                />
               </label>
-            </div>
-            <label className="block text-sm">
-              Usos máximos
-              <AppInput
-                withLabelSpacing
-                mono
-                numericMode="integer"
-                {...form.register('max_uses')}
-              />
+            </>
+          )}
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block min-w-0 text-sm">
+              Desde
+              <AppInput type="date" withLabelSpacing {...form.register('valid_from')} />
             </label>
-            <label className="flex items-center gap-2 text-sm">
-              <AppSwitch
-                checked={form.watch('is_active')}
-                onCheckedChange={(next) =>
-                  form.setValue('is_active', next, { shouldValidate: true })
-                }
-                label="Activa"
-              />
-              Activa
+            <label className="block min-w-0 text-sm">
+              Hasta
+              <AppInput type="date" withLabelSpacing {...form.register('valid_until')} />
             </label>
-            <AppButton type="submit" className="w-full">
-              {editing ? 'Guardar' : 'Crear'}
-            </AppButton>
-          </form>
-        </AppModalContent>
-      </AppModal>
+          </div>
+          <label className="block min-w-0 text-sm">
+            Usos máximos
+            <AppInput
+              withLabelSpacing
+              mono
+              numericMode="integer"
+              {...form.register('max_uses')}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <AppSwitch
+              checked={form.watch('is_active')}
+              onCheckedChange={(next) =>
+                form.setValue('is_active', next, { shouldValidate: true })
+              }
+              label="Activa"
+            />
+            Activa
+          </label>
+        </form>
+      </AppDrawer>
     </div>
   )
 }

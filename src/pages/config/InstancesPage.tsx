@@ -13,6 +13,7 @@ import { z } from 'zod'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppFilterBar } from '@/components/ui/AppFilterBar'
 import { AppInput } from '@/components/ui/AppInput'
 import {
@@ -524,80 +525,95 @@ export function InstancesPage() {
         </AppCard>
       )}
 
-      <AppModal open={modalOpen} onOpenChange={setModalOpen}>
-        <AppModalContent>
-          <AppModalHeader>
-            <AppModalTitle>{editing ? 'Editar instancia' : 'Nueva instancia'}</AppModalTitle>
-            <AppModalDescription>Vincula el entorno al emisor correcto.</AppModalDescription>
-          </AppModalHeader>
-          <form className="space-y-3" onSubmit={form.handleSubmit(onSubmit)}>
-            <label className="block text-sm">
-              Código
-              <AppInput withLabelSpacing mono {...form.register('code')} />
-            </label>
-            <label className="block text-sm">
-              Nombre
-              <AppInput withLabelSpacing {...form.register('name')} />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm">
-                Emisor asignado
-                <AppSelect
-                  withLabelSpacing
-                  value={form.watch('issuer_id')}
-                  onValueChange={(v) =>
-                    form.setValue('issuer_id', v, { shouldValidate: true })
-                  }
-                  options={emitters.map((e) => ({
-                    value: String(e.id),
-                    label: e.name,
-                  }))}
-                />
-              </label>
-              <label className="block text-sm">
-                Segmento
-                <AppSelect
-                  withLabelSpacing
-                  value={form.watch('segment_id')}
-                  onValueChange={(v) =>
-                    form.setValue('segment_id', v, { shouldValidate: true })
-                  }
-                  options={segments.map((s) => ({
-                    value: String(s.id),
-                    label: s.name,
-                  }))}
-                />
-              </label>
-            </div>
-            <label className="block text-sm">
-              URL
-              <AppInput withLabelSpacing {...form.register('access_url')} />
-            </label>
-            <label className="block text-sm">
-              IP
-              <AppInput withLabelSpacing mono {...form.register('server_ip')} />
-            </label>
-            <div className="block text-sm">
-              <span className="mb-1 block">Estado</span>
+      <AppDrawer
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        size="lg"
+        title={editing ? 'Editar instancia' : 'Nueva instancia'}
+        description="Vincula el entorno al emisor correcto."
+        footer={
+          <>
+            <AppButton
+              type="button"
+              variant="outline"
+              onClick={() => setModalOpen(false)}
+            >
+              Cancelar
+            </AppButton>
+            <AppButton type="submit" form="instance-form">
+              {editing ? 'Guardar cambios' : 'Registrar instancia'}
+            </AppButton>
+          </>
+        }
+      >
+        <form
+          id="instance-form"
+          className="min-w-0 space-y-4"
+          onSubmit={form.handleSubmit(onSubmit)}
+        >
+          <label className="block min-w-0 text-sm">
+            Código
+            <AppInput withLabelSpacing mono {...form.register('code')} />
+          </label>
+          <label className="block min-w-0 text-sm">
+            Nombre
+            <AppInput withLabelSpacing {...form.register('name')} />
+          </label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block min-w-0 text-sm">
+              Emisor asignado
               <AppSelect
                 withLabelSpacing
-                value={form.watch('status')}
+                value={form.watch('issuer_id')}
                 onValueChange={(v) =>
-                  form.setValue('status', v as FormValues['status'], { shouldValidate: true })
+                  form.setValue('issuer_id', v, { shouldValidate: true })
                 }
-                options={STATUS_OPTIONS.map((s) => ({
-                  value: s.value,
-                  label: s.label,
-                  tone: STATUS_SELECT_TONE[s.value],
+                options={emitters.map((e) => ({
+                  value: String(e.id),
+                  label: e.name,
                 }))}
               />
-            </div>
-            <AppButton type="submit" className="w-full">
-              {editing ? 'Guardar' : 'Registrar'}
-            </AppButton>
-          </form>
-        </AppModalContent>
-      </AppModal>
+            </label>
+            <label className="block min-w-0 text-sm">
+              Segmento
+              <AppSelect
+                withLabelSpacing
+                value={form.watch('segment_id')}
+                onValueChange={(v) =>
+                  form.setValue('segment_id', v, { shouldValidate: true })
+                }
+                options={segments.map((s) => ({
+                  value: String(s.id),
+                  label: s.name,
+                }))}
+              />
+            </label>
+          </div>
+          <label className="block min-w-0 text-sm">
+            URL
+            <AppInput withLabelSpacing {...form.register('access_url')} />
+          </label>
+          <label className="block min-w-0 text-sm">
+            IP
+            <AppInput withLabelSpacing mono {...form.register('server_ip')} />
+          </label>
+          <div className="block min-w-0 text-sm">
+            <span className="mb-1 block">Estado</span>
+            <AppSelect
+              withLabelSpacing
+              value={form.watch('status')}
+              onValueChange={(v) =>
+                form.setValue('status', v as FormValues['status'], { shouldValidate: true })
+              }
+              options={STATUS_OPTIONS.map((s) => ({
+                value: s.value,
+                label: s.label,
+                tone: STATUS_SELECT_TONE[s.value],
+              }))}
+            />
+          </div>
+        </form>
+      </AppDrawer>
 
       <AppModal
         open={tokenModalOpen}

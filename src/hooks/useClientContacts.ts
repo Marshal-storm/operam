@@ -72,8 +72,14 @@ export function useClientContacts(clientId: number | null) {
 
   // No invalida la lista: generar una liga no modifica el contacto.
   const portalLink = useMutation({
-    mutationFn: (id: number) =>
-      withScreenLock(() => generateContactPortalLink(id), 'Generando liga mágica...'),
+    mutationFn: (input: number | { id: number; sendEmail?: boolean }) => {
+      const id = typeof input === 'number' ? input : input.id
+      const sendEmail = typeof input === 'number' ? true : (input.sendEmail ?? true)
+      return withScreenLock(
+        () => generateContactPortalLink(id, { sendEmail }),
+        sendEmail ? 'Generando y enviando liga mágica...' : 'Generando liga mágica...',
+      )
+    },
   })
 
   const remove = useMutation({

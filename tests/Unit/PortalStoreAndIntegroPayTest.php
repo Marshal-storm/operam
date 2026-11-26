@@ -263,7 +263,11 @@ final class PortalStoreAndIntegroPayTest extends TestCase
             Capsule::table('outbox')->where('idempotency_key', 'portal_request_received:' . (int) $data['id'])->count(),
             'Acuse de recibo por correo vía outbox.',
         );
-        self::assertSame(1, Capsule::table('audit_logs')->where('entity_type', 'service_requests')->where('entity_id', (string) $data['id'])->count());
+        // Optimización de alto tráfico: eventos del Portal del Cliente NO saturan `audit_logs`.
+        self::assertSame(
+            0,
+            Capsule::table('audit_logs')->where('entity_type', 'service_requests')->where('entity_id', (string) $data['id'])->count(),
+        );
     }
 
     // ── Utilidades de prueba ───────────────────────────────────────────────

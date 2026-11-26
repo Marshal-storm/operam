@@ -235,6 +235,7 @@ export type ServicesQueryParams = {
   segment?: string
   service_type?: string
   status?: string
+  is_public?: string
 }
 
 export async function fetchServices(
@@ -248,6 +249,7 @@ export async function fetchServices(
       segment: params.segment,
       service_type: params.service_type,
       status: params.status,
+      is_public: params.is_public,
     })}`,
   )
   const page = normalizePaginated<CatalogService>(raw)
@@ -527,6 +529,13 @@ export async function toggleServiceActive(
   isActive: boolean,
 ): Promise<void> {
   await updateService(id, { is_active: isActive })
+}
+
+export async function toggleServicePublic(
+  id: number,
+  isPublic: boolean,
+): Promise<void> {
+  await updateService(id, { is_public: isPublic })
 }
 
 /* ── Listas de precios ────────────────────────────────────── */

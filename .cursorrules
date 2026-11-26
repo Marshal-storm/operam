@@ -32,7 +32,8 @@ Actúa como Arquitecto de Software y Desarrollador Full Stack SENIOR. Aplica est
   - `AppSelect` (Radix Select + Liquid Glass; iconos/semáforo; buscador automático si hay >6 opciones)
   - `AppButton` (variantes `primary` | `secondary` | `outline` | `ghost` | `danger`; `disabled` / `isLoading`)
   - `AppBadge` (píldoras semáforo `success` | `warning` | `danger` | `info` | `neutral`; siempre `whitespace-nowrap`)
-  - `AppModal` (diálogos sobre `@radix-ui/react-dialog`)
+  - `AppModal` (diálogos de confirmación/alertas críticas sobre `@radix-ui/react-dialog`)
+  - `AppDrawer` (panel lateral derecho Liquid Glass sobre `@radix-ui/react-dialog` para formularios y vistas de detalle)
   - `AppSwitch` (interruptor iOS; en columna ESTADO con caption `Activo`/`Inactivo`)
   - `AppTableWrapper` (contenedor de tabla: cabecera de cristal, estados UI-7, pie paginación/acciones)
   - `AppFilterBar` (estándar homologado de búsqueda/filtros en listados y directorios)
@@ -40,6 +41,24 @@ Actúa como Arquitecto de Software y Desarrollador Full Stack SENIOR. Aplica est
   - `AppTabs` (barras de pestañas cápsula Liquid Glass — única forma de navegación por tabs)
 - **PROHIBIDO** inventar barras de pestañas manuales (`<div…><button>/<AppButton>…</div>`) o envolver pestañas con `<AppCard>` sueltos dentro de `src/pages/**` o `src/components/**` (excepto el primitivo interno de `AppTabs`). Toda navegación por pestañas **debe** importar exclusivamente `<AppTabs />` (`src/components/ui/AppTabs.tsx`).
 - **Objetivo de mantenibilidad:** un cambio global de borde/sombra/radio/focus se hace en **un solo archivo** del kit y se propaga a todos los módulos.
+
+#### Estándar Global: `AppDrawer` vs. `AppModal` (inquebrantable)
+
+- **Formularios y Vistas de Detalle → SIEMPRE `<AppDrawer />`:** Todo formulario de creación/edición, vista de detalle, ficha con pestañas o consulta de historial/cambios debe renderizarse dentro del componente atómico `<AppDrawer />` (`src/components/ui/AppDrawer.tsx`).
+- **Geometría oficial del Drawer:** Siempre anclado al **borde derecho (`right-0`)** para no interferir con el Sidebar izquierdo, e iniciando **justo debajo del Header (`top-14 h-[calc(100vh-3.5rem)]`)**. En móvil (`< md`) ocupa el ancho completo (`w-full`).
+- **Tamaños estándar (`size`):**
+  - `md` (`max-w-lg`): formularios simples.
+  - `lg` (`max-w-2xl`): formularios medianos o detalles estándar.
+  - `xl` (`max-w-4xl`): fichas densas con pestañas o tablas internas (ej. Detalle de Cliente y Contactos).
+  - `2xl` (`max-w-5xl`): vistas extensas de análisis o múltiples bloques.
+- **Confirmaciones y Alertas Críticas → SIEMPRE `<AppModal />`:** Queda **PROHIBIDO** convertir a Drawer los modales de confirmación destructiva, advertencias críticas, candados de seguridad (como escribir `SI ACEPTO` para rotar tokens API), o diálogos cortos de confirmación de una sola acción. Estos permanecen centrados con `<AppModal />`.
+- **Jerarquía estricta de `z-index`:**
+  - `AppRowActionsMenu`: `z-40`
+  - `AppDrawer` (velo y panel debajo del Header): `z-50`
+  - Header superior (`InternalLayout.tsx`): `z-[55]` (para que el Drawer nazca limpiamente por debajo del Header)
+  - `AppModal` (confirmaciones/alertas): `z-[70]` (para que pueda abrirse limpiamente encima de cualquier `AppDrawer` activo)
+  - `GlobalLoadingOverlay`: `z-[90]` / barra arcoíris `z-[100]`
+  - `Toast`: `z-[110]`
 
 ### 3.2 Estándar Homologado de Filtros — `AppFilterBar` (inquebrantable)
 
@@ -151,14 +170,16 @@ Blindaje obligatorio en **3 capas** (cliente → HTTP → backend) para montos, 
 Obligatorio para este y todos los módulos futuros:
 
 - Prohibido colores opacos, grises terrosos o fondos crema (`#F7F5F0`, `#181816`).
-- **True Dark OLED (neutro):** fondo principal y header `dark:bg-[#000000]`. Sidebar `dark:bg-[#070708]` con `dark:border-white/[0.07]`.
+- **True Dark OLED (neutro):** fondo principal y header `dark:bg-[#000000]`.
+- **Sidebar interno y Header/Dock del Portal (iOS Liquid Glass centralizado en `src/index.css`):** tanto el Sidebar del panel interno (`src/components/layout/InternalLayout.tsx` con `.ios-liquid-glass-sidebar`) como el Header de escritorio/móvil y el Dock inferior del Portal del Cliente (`src/components/portal/PortalLayout.tsx` / `PORTAL_GLASS_BAR_CLASS` con `.ios-liquid-glass`) deben usar las clases centralizadas en `src/index.css` (`backdrop-filter: blur(28px) saturate(190%)`, baja opacidad real con degradado translúcido, borde especular luminoso y sombra suave, sin fondos sólidos opacos).
 - **Prohibido en dark:** fondos azulados (`slate-900`, `#0B0D12`, `#0F1218`, `#12151E`, `#0D1017`, etc.).
 - **Liquid Glass neutro (dark):** tarjetas/tablas `dark:bg-white/[0.03]` o `dark:bg-[#111113]/75` + `backdrop-blur-2xl`; borde `dark:border-white/[0.09]`; reflejo `dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12),0_12px_32px_rgba(0,0,0,0.6)]`.
 - **Cabeceras/píldoras (dark):** `dark:bg-white/[0.05] dark:border-white/[0.08]`.
 - **Puente MRR (dark):** Inicio `#3F3F46`, Fin `#FAFAFA`; azul iOS `#0A84FF` solo en acentos/barras positivas.
 - **Crisp Light (intacta):** fondo `#F8FAFC`; tarjetas `#FFFFFF` + `border-slate-200/80`; texto `#090D16`.
 - **Acentos iOS:** azul `#0A84FF` (dark) / `#0066FF` (light); verde `#10B981`; ámbar `#F59E0B`; rojo `#EF4444`.
-- **Layout shell:** Sidebar a altura completa (`h-screen`); header solo en la columna derecha sobre el `<main>`.
+- **Layout shell:** Sidebar a altura completa (`h-screen`), al ras del borde izquierdo/superior/inferior con `.ios-liquid-glass-sidebar` y un único borde cristalino derecho (`border-r`); header solo en la columna derecha sobre el `<main>`.
+- **Scrollbars globales iOS Liquid Glass (`src/index.css`):** todos los contenedores con scroll (Sidebar, `<main>`, `AppDrawer`, `AppModal`, tablas y listados) deben mantener el estilo global fino (`8px`), sin flechas nativas (`::-webkit-scrollbar-button { display: none }`), pista transparente y pulgar tipo cápsula translúcida (`rounded-full`, `background-clip: padding-box`) adaptado a Tema Claro y Tema Oscuro OLED (con soporte Firefox en `@supports not selector(::-webkit-scrollbar)`). Prohibido sobreescribirlo con scrollbars nativos gruesos u opacos.
 - **Tema por defecto:** `prefers-color-scheme` del SO (`preference = 'system'`). El selector de tema (**Sistema / Claro / Oscuro OLED**) vive en **Configuración → Preferencias de pantalla** (`ScreenPreferencesPage` + `useTheme()`); el Login puede conservar un `ThemeToggleSwitch` compacto. **Prohibido** el selector de Apariencia en el pie del Sidebar.
 - **Tipografía Oficial Operam (obligatoria en todos los módulos):**
   - Encabezados / títulos / marca / KPI grandes (`h1`–`h3`, `.font-heading`): **Ubuntu** 500/700, `letter-spacing: -0.4px`.
@@ -218,7 +239,8 @@ Cada vez que se cree o modifique un **módulo, submódulo, ruta, endpoint o acci
 
 ## 12. Auditoría Global `audit_logs` (inquebrantable)
 
-- Toda operación de escritura (`create`, `update`, `patch`, `delete`, `status_change`, `login`, `logout`, `revoke_session`, `purge_logs`) en **cualquier módulo actual o futuro** DEBE invocarse mediante `System/Support/AuditLogger.php`.
+- **Alcance exclusivo del Panel Administrativo Interno:** `audit_logs` registra **únicamente acciones del Panel Administrativo Interno** y excluye de raíz todo tráfico del Portal del Cliente (`scope === 'client_portal'` o rutas `/api/portal*`) mediante guarda directa en `AuditLogger::log(...)` (`shouldSkipPortalContext()`), evitando saturar la bitácora con tráfico masivo de clientes finales. Las acciones de administradores internos hacia el portal (p. ej. generar una liga mágica desde `ClientsPage.tsx`) sí se auditan normalmente.
+- Toda operación de escritura (`create`, `update`, `patch`, `delete`, `status_change`, `login`, `logout`, `revoke_session`, `purge_logs`) en **cualquier módulo interno actual o futuro** DEBE invocarse mediante `System/Support/AuditLogger.php`.
 - `AuditLogger` lee la bandera `audit_logs_enabled` de `system_settings` (caché por petición): si está `true`, inserta en `audit_logs`; si está `false`, omite el registro **silenciosamente**.
 - **Excepción de seguridad:** los cambios del propio módulo `Sistema` (`config_system` / `system_settings`) y la acción `purge_logs` **siempre** se auditan, aunque la bandera esté apagada.
 - **PROHIBIDO** persistir secretos en `old_values` / `new_values`: `password`, `password_hash`, `secret_ref`, `token` (y claves que las contengan) se redactan automáticamente como `"[REDACTED]"`.

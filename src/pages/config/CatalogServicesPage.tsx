@@ -17,15 +17,9 @@ import { BenefitRulesTab } from '@/components/catalog/BenefitRulesTab'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppFilterBar } from '@/components/ui/AppFilterBar'
 import { AppInput, AppTextarea } from '@/components/ui/AppInput'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
 import { AppSelect } from '@/components/ui/AppSelect'
 import {
   AppActionsColumnHeader,
@@ -68,8 +62,14 @@ const TYPE_FILTERS: Array<{ value: string; label: string }> = [
 
 const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: 'all', label: 'Todos' },
-  { value: 'active', label: 'Disponibles' },
+  { value: 'active', label: 'Activos' },
   { value: 'inactive', label: 'Inactivos' },
+]
+
+const PORTAL_FILTERS: Array<{ value: string; label: string }> = [
+  { value: 'all', label: 'Todos' },
+  { value: '1', label: 'Visible en portal' },
+  { value: '0', label: 'Solo interno' },
 ]
 
 const formSchema = z.object({
@@ -113,7 +113,7 @@ type FormValues = z.infer<typeof formSchema>
 export function CatalogServicesPage() {
   const { pageSize: preferredSize, rowPaddingClass, setPageSize } = useScreenPreferences()
   const toast = useToast()
-  const { canCreate, canEdit, canDelete } = usePermissions()
+  const { canCreate, canEdit } = usePermissions()
   const {
     segment,
     setSegment,
@@ -130,6 +130,7 @@ export function CatalogServicesPage() {
   const [search, setSearch] = useState('')
   const [serviceType, setServiceType] = useState('all')
   const [status, setStatus] = useState('all')
+  const [portalFilter, setPortalFilter] = useState('all')
 
   const queryParams = useMemo(
     () => ({
@@ -139,8 +140,9 @@ export function CatalogServicesPage() {
       segment: segment === 'Todos' ? undefined : segment,
       service_type: serviceType === 'all' ? undefined : serviceType,
       status: status === 'all' ? undefined : status,
+      is_public: portalFilter === 'all' ? undefined : portalFilter,
     }),
-    [page, pageSize, search, segment, serviceType, status],
+    [page, pageSize, search, segment, serviceType, status, portalFilter],
   )
 
   const {
@@ -154,6 +156,7 @@ export function CatalogServicesPage() {
     createService,
     updateService,
     toggleService,
+    toggleServicePublic,
   } = useServicesConfig(queryParams)
 
   const [activeTab, setActiveTab] = useState<'services' | 'benefit_rules'>('services')
@@ -267,11 +270,11 @@ export function CatalogServicesPage() {
       },
       {
         accessorKey: 'is_active',
-        header: 'Estado',
+        header: 'CATÁLOGO',
         cell: ({ row }) => (
           <AppSwitch
             checked={row.original.is_active}
-            caption={row.original.is_active ? 'Disponible' : 'Inactivo'}
+            caption={row.original.is_active ? 'Activo' : 'Inactivo'}
             disabled={!canEdit('config_catalog')}
             onCheckedChange={(next) => {
               if (!canEdit('config_catalog')) return
@@ -289,6 +292,38 @@ export function CatalogServicesPage() {
             }}
           />
         ),
+      },
+      {
+        accessorKey: 'is_public',
+        header: 'PORTAL CLIENTE',
+        cell: ({ row }) => {
+          const canTogglePortal = canEdit('config_catalog') && row.original.is_active
+          return (
+            <AppSwitch
+              tone="portal"
+              checked={row.original.is_public}
+              caption={row.original.is_public ? 'En tienda' : 'Solo interno'}
+              captionClassName={
+                row.original.is_public
+                  ? 'font-medium text-emerald-700 dark:text-emerald-400'
+                  : 'text-slate-500 dark:text-zinc-400'
+              }
+              disabled={!canTogglePortal}
+              title={!row.original.is_active ? 'Activa primero el servicio en catálogo' : undefined}
+              onCheckedChange={(next) => {
+                if (!canTogglePortal) return
+                void (async () => {
+                  try {
+                    await toggleServicePublic({ id: row.original.id, is_public: next })
+                    toast.success('Visibilidad en portal actualizada', row.original.name)
+                  } catch (error) {
+                    toast.apiError(error)
+                  }
+                })()
+              }}
+            />
+          )
+        },
       },
       {
         id: 'actions',
@@ -309,7 +344,7 @@ export function CatalogServicesPage() {
         ),
       },
     ],
-    [toggleService, toast, canEdit],
+    [toggleService, toggleServicePublic, toast, canEdit],
   )
 
   const table = useTable({
@@ -399,13 +434,15 @@ export function CatalogServicesPage() {
     search.trim() !== '' ||
     (!isSegmentLocked && segment !== 'Todos') ||
     serviceType !== 'all' ||
-    status !== 'all'
+    status !== 'all' ||
+    portalFilter !== 'all'
 
   function clearFilters() {
     setSearch('')
     if (!isSegmentLocked) setSegment('Todos')
     setServiceType('all')
     setStatus('all')
+    setPortalFilter('all')
     setPage(1)
   }
 
@@ -513,6 +550,16 @@ export function CatalogServicesPage() {
             },
             options: STATUS_FILTERS,
           },
+          {
+            id: 'portal',
+            label: 'PORTAL',
+            value: portalFilter,
+            onValueChange: (value) => {
+              setPortalFilter(value)
+              setPage(1)
+            },
+            options: PORTAL_FILTERS,
+          },
         ]}
         hasActiveFilters={hasActiveFilters}
         onClearFilters={clearFilters}
@@ -595,26 +642,59 @@ export function CatalogServicesPage() {
                     ]}
                   />
                 </div>
-                <div className="mt-3">
-                  <AppSwitch
-                    checked={service.is_active}
-                    caption={service.is_active ? 'Disponible' : 'Inactivo'}
-                    disabled={!canEdit('config_catalog') && !canDelete('config_catalog')}
-                    onCheckedChange={(next) => {
-                      if (!canEdit('config_catalog') && !canDelete('config_catalog')) return
-                      void (async () => {
-                        try {
-                          await toggleService({ id: service.id, is_active: next })
-                          toast.success(
-                            next ? 'Producto activado' : 'Producto desactivado',
-                            service.name,
-                          )
-                        } catch (error) {
-                          toast.apiError(error)
-                        }
-                      })()
-                    }}
-                  />
+                <div className="mt-3 flex flex-wrap items-center gap-4 border-t border-slate-100 pt-3 dark:border-white/[0.06]">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
+                      Catálogo
+                    </p>
+                    <AppSwitch
+                      checked={service.is_active}
+                      caption={service.is_active ? 'Activo' : 'Inactivo'}
+                      disabled={!canEdit('config_catalog')}
+                      onCheckedChange={(next) => {
+                        if (!canEdit('config_catalog')) return
+                        void (async () => {
+                          try {
+                            await toggleService({ id: service.id, is_active: next })
+                            toast.success(
+                              next ? 'Producto activado' : 'Producto desactivado',
+                              service.name,
+                            )
+                          } catch (error) {
+                            toast.apiError(error)
+                          }
+                        })()
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500">
+                      Portal cliente
+                    </p>
+                    <AppSwitch
+                      tone="portal"
+                      checked={service.is_public}
+                      caption={service.is_public ? 'En tienda' : 'Solo interno'}
+                      captionClassName={
+                        service.is_public
+                          ? 'font-medium text-emerald-700 dark:text-emerald-400'
+                          : 'text-slate-500 dark:text-zinc-400'
+                      }
+                      disabled={!canEdit('config_catalog') || !service.is_active}
+                      title={!service.is_active ? 'Activa primero el servicio en catálogo' : undefined}
+                      onCheckedChange={(next) => {
+                        if (!canEdit('config_catalog') || !service.is_active) return
+                        void (async () => {
+                          try {
+                            await toggleServicePublic({ id: service.id, is_public: next })
+                            toast.success('Visibilidad en portal actualizada', service.name)
+                          } catch (error) {
+                            toast.apiError(error)
+                          }
+                        })()
+                      }}
+                    />
+                  </div>
                 </div>
               </AppCard>
             ))}
@@ -642,176 +722,191 @@ export function CatalogServicesPage() {
         </>
       )}
 
-      <AppModal open={modalOpen} onOpenChange={setModalOpen}>
-        <AppModalContent>
-          <AppModalHeader>
-            <AppModalTitle>{editing ? 'Editar producto' : 'Nuevo producto'}</AppModalTitle>
-            <AppModalDescription>Se guarda en MySQL vía API real.</AppModalDescription>
-          </AppModalHeader>
-          <form className="space-y-3" onSubmit={form.handleSubmit(onSubmit)}>
-            <label className="block text-sm">
-              Código
-              <AppInput withLabelSpacing mono {...form.register('code')} />
-            </label>
-            <label className="block text-sm">
-              Nombre
-              <AppInput withLabelSpacing {...form.register('name')} />
-            </label>
-            <label className="block text-sm">
-              Descripción
-              <AppTextarea withLabelSpacing rows={2} {...form.register('description')} />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block text-sm">
-                Segmento
-                <AppSelect
-                  withLabelSpacing
-                  value={form.watch('segment_id')}
-                  onValueChange={(v) =>
-                    form.setValue('segment_id', v, { shouldValidate: true })
-                  }
-                  options={segments.map((s) => ({
-                    value: String(s.id),
-                    label: s.name,
-                  }))}
-                />
-              </label>
-              <label className="block text-sm">
-                Tipo
-                <AppSelect
-                  withLabelSpacing
-                  value={form.watch('service_type')}
-                  onValueChange={(v) =>
-                    form.setValue('service_type', v as FormValues['service_type'], {
-                      shouldValidate: true,
-                    })
-                  }
-                  options={[
-                    { value: 'recurring', label: 'Recurrente' },
-                    { value: 'consumption', label: 'Consumo' },
-                    { value: 'single', label: 'Pago único' },
-                  ]}
-                />
-              </label>
-            </div>
-            <label className="block text-sm">
-              Unidad
+      <AppDrawer
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        size="lg"
+        title={editing ? 'Editar producto' : 'Nuevo producto'}
+        description="Se guarda en MySQL vía API real."
+        footer={
+          <>
+            <AppButton
+              type="button"
+              variant="outline"
+              onClick={() => setModalOpen(false)}
+            >
+              Cancelar
+            </AppButton>
+            <AppButton type="submit" form="catalog-service-form">
+              {editing ? 'Guardar cambios' : 'Crear producto'}
+            </AppButton>
+          </>
+        }
+      >
+        <form
+          id="catalog-service-form"
+          className="min-w-0 space-y-4"
+          onSubmit={form.handleSubmit(onSubmit)}
+        >
+          <label className="block min-w-0 text-sm">
+            Código
+            <AppInput withLabelSpacing mono {...form.register('code')} />
+          </label>
+          <label className="block min-w-0 text-sm">
+            Nombre
+            <AppInput withLabelSpacing {...form.register('name')} />
+          </label>
+          <label className="block min-w-0 text-sm">
+            Descripción
+            <AppTextarea withLabelSpacing rows={2} {...form.register('description')} />
+          </label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block min-w-0 text-sm">
+              Segmento
               <AppSelect
                 withLabelSpacing
-                value={form.watch('unit_of_measure')}
-                onValueChange={(v) => {
-                  const next = v as FormValues['unit_of_measure']
-                  form.setValue('unit_of_measure', next, { shouldValidate: true })
-                  // Paquete destino / otras unidades: limpia vínculo RF-2.
-                  if (next !== 'user') {
-                    form.setValue('allow_package_conversion', false, { shouldValidate: true })
-                    form.setValue('package_service_id', '', { shouldValidate: true })
-                  }
-                }}
-                options={(Object.keys(UNIT_LABELS) as ServiceUnit[]).map((u) => ({
-                  value: u,
-                  label: UNIT_LABELS[u],
+                value={form.watch('segment_id')}
+                onValueChange={(v) =>
+                  form.setValue('segment_id', v, { shouldValidate: true })
+                }
+                options={segments.map((s) => ({
+                  value: String(s.id),
+                  label: s.name,
                 }))}
               />
             </label>
-            {isPackUnit ? (
-              <p className="rounded-xl border border-[#0A84FF]/25 bg-[#0A84FF]/5 px-3 py-2 text-xs text-[#0066FF] dark:border-[#0A84FF]/30 dark:bg-[#0A84FF]/10 dark:text-[#0A84FF]">
-                Este producto funcionará como paquete destino para la conversión automática de
-                usuarios individuales (RF-2).
-              </p>
-            ) : null}
-            {isUserUnit ? (
-              <>
-                <label className="flex items-center gap-3 text-sm">
-                  <AppSwitch
-                    checked={form.watch('allow_package_conversion')}
-                    onCheckedChange={(next) =>
-                      form.setValue('allow_package_conversion', next, { shouldValidate: true })
-                    }
-                    label="Agrupar automáticamente en paquetes"
-                  />
-                  Agrupar automáticamente en paquetes
-                </label>
-                {allowsPackage && (
-                  <AppCard className="space-y-3 p-3">
-                    <label className="block text-sm">
-                      Producto paquete destino (RF-2)
-                      <AppSelect
-                        withLabelSpacing
-                        placeholder="Selecciona un paquete…"
-                        value={form.watch('package_service_id') || undefined}
-                        onValueChange={(v) =>
-                          form.setValue('package_service_id', v, { shouldValidate: true })
-                        }
-                        error={Boolean(form.formState.errors.package_service_id)}
-                        options={packageOptions.map((pkg) => ({
-                          value: String(pkg.id),
-                          label: `${pkg.code} — ${pkg.name}`,
-                        }))}
-                      />
-                      {form.formState.errors.package_service_id && (
-                        <span className="mt-1 block text-xs text-red-500">
-                          {form.formState.errors.package_service_id.message}
-                        </span>
-                      )}
-                    </label>
-                    <label className="block text-sm">
-                      Factor de paquete
-                      <AppInput
-                        withLabelSpacing
-                        mono
-                        numericMode="integer"
-                        {...form.register('package_factor')}
-                      />
-                      {form.formState.errors.package_factor && (
-                        <span className="mt-1 block text-xs text-red-500">
-                          {form.formState.errors.package_factor.message}
-                        </span>
-                      )}
-                    </label>
-                    <p className="rounded-xl border border-[#0A84FF]/25 bg-[#0A84FF]/5 px-3 py-2 text-xs text-[#0066FF] dark:border-[#0A84FF]/30 dark:bg-[#0A84FF]/10 dark:text-[#0A84FF]">
-                      {`Cada ${
-                        Number.isFinite(Number(watchedPackageFactor)) &&
-                        Number(watchedPackageFactor) >= 2
-                          ? Math.min(100, Math.trunc(Number(watchedPackageFactor)))
-                          : 5
-                      } usuarios individuales se convertirán automáticamente en 1 paquete destino.`}
-                    </p>
-                  </AppCard>
-                )}
-              </>
-            ) : null}
-            <label className="flex items-center gap-3 text-sm">
-              <AppSwitch
-                checked={form.watch('is_active')}
-                onCheckedChange={(next) =>
-                  form.setValue('is_active', next, { shouldValidate: true })
+            <label className="block min-w-0 text-sm">
+              Tipo
+              <AppSelect
+                withLabelSpacing
+                value={form.watch('service_type')}
+                onValueChange={(v) =>
+                  form.setValue('service_type', v as FormValues['service_type'], {
+                    shouldValidate: true,
+                  })
                 }
-                label="Disponible"
+                options={[
+                  { value: 'recurring', label: 'Recurrente' },
+                  { value: 'consumption', label: 'Consumo' },
+                  { value: 'single', label: 'Pago único' },
+                ]}
               />
-              Disponible
             </label>
-            <label className="flex items-start gap-3 text-sm">
-              <AppSwitch
-                checked={form.watch('is_public')}
-                onCheckedChange={(next) =>
-                  form.setValue('is_public', next, { shouldValidate: true })
+          </div>
+          <label className="block min-w-0 text-sm">
+            Unidad
+            <AppSelect
+              withLabelSpacing
+              value={form.watch('unit_of_measure')}
+              onValueChange={(v) => {
+                const next = v as FormValues['unit_of_measure']
+                form.setValue('unit_of_measure', next, { shouldValidate: true })
+                // Paquete destino / otras unidades: limpia vínculo RF-2.
+                if (next !== 'user') {
+                  form.setValue('allow_package_conversion', false, { shouldValidate: true })
+                  form.setValue('package_service_id', '', { shouldValidate: true })
                 }
-                label="Visible en Tienda del Portal Cliente"
-              />
-              <span>
-                Visible en Tienda del Portal Cliente
-                <span className="mt-0.5 block text-xs text-slate-500 dark:text-zinc-400">
-                  Los clientes del segmento podrán ver este producto en su portal.
-                </span>
+              }}
+              options={(Object.keys(UNIT_LABELS) as ServiceUnit[]).map((u) => ({
+                value: u,
+                label: UNIT_LABELS[u],
+              }))}
+            />
+          </label>
+          {isPackUnit ? (
+            <p className="rounded-xl border border-[#0A84FF]/25 bg-[#0A84FF]/5 px-3 py-2 text-xs text-[#0066FF] dark:border-[#0A84FF]/30 dark:bg-[#0A84FF]/10 dark:text-[#0A84FF]">
+              Este producto funcionará como paquete destino para la conversión automática de
+              usuarios individuales (RF-2).
+            </p>
+          ) : null}
+          {isUserUnit ? (
+            <>
+              <label className="flex items-center gap-3 text-sm">
+                <AppSwitch
+                  checked={form.watch('allow_package_conversion')}
+                  onCheckedChange={(next) =>
+                    form.setValue('allow_package_conversion', next, { shouldValidate: true })
+                  }
+                  label="Agrupar automáticamente en paquetes"
+                />
+                Agrupar automáticamente en paquetes
+              </label>
+              {allowsPackage && (
+                <AppCard className="min-w-0 space-y-3 p-3">
+                  <label className="block min-w-0 text-sm">
+                    Producto paquete destino (RF-2)
+                    <AppSelect
+                      withLabelSpacing
+                      placeholder="Selecciona un paquete…"
+                      value={form.watch('package_service_id') || undefined}
+                      onValueChange={(v) =>
+                        form.setValue('package_service_id', v, { shouldValidate: true })
+                      }
+                      error={Boolean(form.formState.errors.package_service_id)}
+                      options={packageOptions.map((pkg) => ({
+                        value: String(pkg.id),
+                        label: `${pkg.code} — ${pkg.name}`,
+                      }))}
+                    />
+                    {form.formState.errors.package_service_id && (
+                      <span className="mt-1 block text-xs text-red-500">
+                        {form.formState.errors.package_service_id.message}
+                      </span>
+                    )}
+                  </label>
+                  <label className="block min-w-0 text-sm">
+                    Factor de paquete
+                    <AppInput
+                      withLabelSpacing
+                      mono
+                      numericMode="integer"
+                      {...form.register('package_factor')}
+                    />
+                    {form.formState.errors.package_factor && (
+                      <span className="mt-1 block text-xs text-red-500">
+                        {form.formState.errors.package_factor.message}
+                      </span>
+                    )}
+                  </label>
+                  <p className="rounded-xl border border-[#0A84FF]/25 bg-[#0A84FF]/5 px-3 py-2 text-xs text-[#0066FF] dark:border-[#0A84FF]/30 dark:bg-[#0A84FF]/10 dark:text-[#0A84FF]">
+                    {`Cada ${
+                      Number.isFinite(Number(watchedPackageFactor)) &&
+                      Number(watchedPackageFactor) >= 2
+                        ? Math.min(100, Math.trunc(Number(watchedPackageFactor)))
+                        : 5
+                    } usuarios individuales se convertirán automáticamente en 1 paquete destino.`}
+                  </p>
+                </AppCard>
+              )}
+            </>
+          ) : null}
+          <label className="flex items-center gap-3 text-sm">
+            <AppSwitch
+              checked={form.watch('is_active')}
+              onCheckedChange={(next) =>
+                form.setValue('is_active', next, { shouldValidate: true })
+              }
+              label="Disponible"
+            />
+            Disponible
+          </label>
+          <label className="flex items-start gap-3 text-sm">
+            <AppSwitch
+              checked={form.watch('is_public')}
+              onCheckedChange={(next) =>
+                form.setValue('is_public', next, { shouldValidate: true })
+              }
+              label="Visible en Tienda del Portal Cliente"
+            />
+            <span>
+              Visible en Tienda del Portal Cliente
+              <span className="mt-0.5 block text-xs text-slate-500 dark:text-zinc-400">
+                Los clientes del segmento podrán ver este producto en su portal.
               </span>
-            </label>
-            <AppButton type="submit" className="w-full">
-              {editing ? 'Guardar' : 'Crear'}
-            </AppButton>
-          </form>
-        </AppModalContent>
-      </AppModal>
+            </span>
+          </label>
+        </form>
+      </AppDrawer>
     </div>
   )
 }

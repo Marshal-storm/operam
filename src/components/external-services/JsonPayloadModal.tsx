@@ -1,11 +1,6 @@
 import type { ReactNode } from 'react'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
+import { AppButton } from '@/components/ui/AppButton'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 
 export type JsonPayloadSection = {
   label: string
@@ -35,32 +30,38 @@ function stringify(value: unknown): string {
 }
 
 /**
- * Visor de solo lectura para payloads JSON (outbox / webhooks) en DM Mono.
+ * Visor de solo lectura en AppDrawer xl para payloads JSON (outbox / webhooks / jobs) en DM Mono.
  */
 export function JsonPayloadModal({ open, onOpenChange, title, description, sections }: Props) {
   return (
-    <AppModal open={open} onOpenChange={onOpenChange}>
-      <AppModalContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-        <AppModalHeader>
-          <AppModalTitle>{title}</AppModalTitle>
-          {description ? <AppModalDescription asChild><div>{description}</div></AppModalDescription> : null}
-        </AppModalHeader>
-        <div className="space-y-4">
-          {sections.map((section) => (
-            <div key={section.label}>
-              <span className={LABEL_CLASS}>{section.label}</span>
-              {section.errorText ? (
-                <p className="mb-2 rounded-xl border border-red-500/20 bg-red-500/[0.06] px-3 py-2 font-mono text-xs text-red-600 dark:text-red-400">
-                  {section.errorText}
-                </p>
-              ) : null}
-              <pre className="max-h-[40vh] overflow-auto rounded-xl border border-slate-200/80 bg-slate-50 p-3 font-mono text-xs leading-relaxed text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-zinc-200">
-                {stringify(section.value)}
-              </pre>
-            </div>
-          ))}
-        </div>
-      </AppModalContent>
-    </AppModal>
+    <AppDrawer
+      open={open}
+      onClose={() => onOpenChange(false)}
+      size="xl"
+      title={title}
+      description="Inspector de payload JSON de solo lectura."
+      footer={
+        <AppButton type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          Cerrar
+        </AppButton>
+      }
+    >
+      <div className="min-w-0 space-y-4">
+        {description ? <div className="min-w-0">{description}</div> : null}
+        {sections.map((section) => (
+          <div key={section.label} className="min-w-0">
+            <span className={LABEL_CLASS}>{section.label}</span>
+            {section.errorText ? (
+              <p className="mb-2 break-words rounded-xl border border-red-500/20 bg-red-500/[0.06] px-3 py-2 font-mono text-xs text-red-600 dark:text-red-400">
+                {section.errorText}
+              </p>
+            ) : null}
+            <pre className="overflow-x-auto rounded-xl border border-slate-200/80 bg-slate-50 p-3.5 font-mono text-xs leading-relaxed text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-zinc-200">
+              {stringify(section.value)}
+            </pre>
+          </div>
+        ))}
+      </div>
+    </AppDrawer>
   )
 }

@@ -13,7 +13,11 @@ import { usePortalAuth } from '@/context/PortalAuthContext'
 import { useToast } from '@/context/ToastContext'
 import { cn } from '@/lib/utils'
 import { portalAccessSchema, type PortalAccessValues } from '@/lib/validationSchemas'
-import { requestPortalLink } from '@/services/portalService'
+import {
+  fetchPortalPublicConfig,
+  formatPortalMinutes,
+  requestPortalLink,
+} from '@/services/portalService'
 import type { PortalRequestLinkResult } from '@/types/portal'
 
 /**
@@ -33,7 +37,25 @@ export function PortalAccessPage() {
   const [sent, setSent] = useState<PortalRequestLinkResult | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [isExchangingToken, setIsExchangingToken] = useState(false)
+  const [magicLinkTtlMinutes, setMagicLinkTtlMinutes] = useState<number | null>(null)
   const exchangedRef = useRef<string | null>(null)
+
+  // Consulta la configuración pública del portal para mostrar la vigencia real desde MySQL.
+  useEffect(() => {
+    let cancelled = false
+    fetchPortalPublicConfig()
+      .then((config) => {
+        if (!cancelled && Number.isFinite(config.magic_link_ttl_minutes) && config.magic_link_ttl_minutes >= 1) {
+          setMagicLinkTtlMinutes(Math.trunc(config.magic_link_ttl_minutes))
+        }
+      })
+      .catch(() => {
+        // Fallback discreto en UI si la API no responde al montar.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const form = useForm<PortalAccessValues>({
     resolver: zodResolver(portalAccessSchema),
@@ -184,7 +206,9 @@ export function PortalAccessPage() {
                 Recibir liga de acceso
               </AppButton>
               <p className="text-center text-xs text-slate-500 dark:text-zinc-500">
-                Te enviaremos una liga de un solo uso, válida por 15 minutos.
+                {magicLinkTtlMinutes !== null
+                  ? `Te enviaremos una liga de un solo uso, válida por ${formatPortalMinutes(magicLinkTtlMinutes)}.`
+                  : 'Te enviaremos una liga de un solo uso para entrar de forma segura.'}
               </p>
             </form>
           )}

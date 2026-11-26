@@ -147,24 +147,36 @@ export async function patchClientContact(
 export type PortalMagicLink = {
   url: string
   expires_at: string
+  ttl_minutes: number
   expires_in_seconds: number
+  email_queued: boolean
   contact: { id: number; name: string; email: string }
 }
 
 /**
- * Genera una liga mágica de 15 minutos de un solo uso (requiere `canEdit('clients')`).
- * El backend también encola el correo al contacto; la URL se devuelve al administrador.
+ * Genera una liga mágica de un solo uso (requiere `canEdit('clients')`).
+ * Con `sendEmail = true` (default) encola correo en `outbox`; con `false` solo devuelve la URL.
  */
-export async function generateContactPortalLink(id: number): Promise<PortalMagicLink> {
+export async function generateContactPortalLink(
+  id: number,
+  options?: { sendEmail?: boolean },
+): Promise<PortalMagicLink> {
+  const sendEmail = options?.sendEmail ?? true
   const raw = await apiRequest<Record<string, unknown>>(
     `client-contacts/${id}/generate-portal-link`,
-    { method: 'POST' },
+    {
+      method: 'POST',
+      body: JSON.stringify({ send_email: sendEmail }),
+    },
   )
   const contact = (raw.contact ?? {}) as Record<string, unknown>
+  const ttlMinutes = Number(raw.ttl_minutes ?? Math.round(Number(raw.expires_in_seconds ?? 900) / 60))
   return {
     url: String(raw.url ?? ''),
     expires_at: String(raw.expires_at ?? ''),
-    expires_in_seconds: Number(raw.expires_in_seconds ?? 900),
+    ttl_minutes: Number.isFinite(ttlMinutes) && ttlMinutes > 0 ? ttlMinutes : 15,
+    expires_in_seconds: Number(raw.expires_in_seconds ?? ttlMinutes * 60),
+    email_queued: raw.email_queued != null ? Boolean(raw.email_queued) : sendEmail,
     contact: {
       id: Number(contact.id ?? id),
       name: String(contact.name ?? ''),

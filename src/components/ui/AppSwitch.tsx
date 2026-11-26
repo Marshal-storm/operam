@@ -11,6 +11,10 @@ export type AppSwitchProps = {
    * Ej. `Activo` / `Inactivo` / `Disponible`.
    */
   caption?: string
+  /** Tono visual activo: `primary` (azul iOS) o `portal` (esmeralda para visibilidad en tienda). */
+  tone?: 'primary' | 'portal'
+  /** Tooltip nativo (útil cuando está deshabilitado por regla de negocio). */
+  title?: string
   id?: string
   className?: string
   captionClassName?: string
@@ -26,10 +30,17 @@ export function AppSwitch({
   disabled = false,
   label,
   caption,
+  tone = 'primary',
+  title,
   id,
   className,
   captionClassName,
 }: AppSwitchProps) {
+  const activeBgClass =
+    tone === 'portal'
+      ? 'bg-emerald-500 dark:bg-emerald-500'
+      : 'bg-[#0066FF] dark:bg-[#0A84FF]'
+
   const control = (
     <button
       id={id}
@@ -37,11 +48,12 @@ export function AppSwitch({
       role="switch"
       aria-checked={checked}
       aria-label={label ?? caption}
+      title={!caption ? title : undefined}
       disabled={disabled}
       onClick={() => onCheckedChange(!checked)}
       className={cn(
         'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
-        checked ? 'bg-[#0066FF] dark:bg-[#0A84FF]' : 'bg-slate-300 dark:bg-white/20',
+        checked ? activeBgClass : 'bg-slate-300 dark:bg-white/20',
         disabled && 'cursor-not-allowed opacity-50',
         !caption && className,
       )}
@@ -58,7 +70,7 @@ export function AppSwitch({
   if (!caption) return control
 
   return (
-    <div className={cn('inline-flex items-center gap-2', className)}>
+    <div className={cn('inline-flex items-center gap-2', className)} title={title}>
       {control}
       <span
         className={cn(

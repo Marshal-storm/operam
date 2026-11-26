@@ -28,6 +28,28 @@ final class AuditLogger
     private static ?bool $enabledCache = null;
 
     /**
+     * Determina si el evento proviene del Portal del Cliente (`client_portal` o `/api/portal*`).
+     * El tráfico de clientes finales (+1,000 usuarios/día) queda excluido de `audit_logs`.
+     *
+     * @param array<string, mixed> $auth
+     */
+    public static function shouldSkipPortalContext(array $auth, ?string $requestUri = null): bool
+    {
+        $scope = strtolower(trim((string) ($auth['scope'] ?? '')));
+        if ($scope === 'client_portal') {
+            return true;
+        }
+
+        $uri = $requestUri ?? (string) ($_SERVER['REQUEST_URI'] ?? '');
+        $path = trim((string) (parse_url($uri, PHP_URL_PATH) ?? $uri));
+        if ($path !== '' && preg_match('#^/?api/portal(?:/|$)#i', $path) === 1) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * @param array<string, mixed> $auth Contexto JWT / sesión
      * @param array<string, mixed>|null $oldValues
      * @param array<string, mixed>|null $newValues
@@ -43,6 +65,11 @@ final class AuditLogger
         ?array $newValues = null,
         bool $force = false,
     ): void {
+        // Optimización de alto tráfico: `audit_logs` registra únicamente acciones del Panel Interno.
+        if (self::shouldSkipPortalContext($auth)) {
+            return;
+        }
+
         $moduleKey = trim($moduleKey);
         $isSystemModule = $moduleKey === 'config_system' || $entityType === 'system_settings';
         $alwaysForce = $force || $isSystemModule || $action === 'purge_logs';

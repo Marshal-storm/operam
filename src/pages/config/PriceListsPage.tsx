@@ -12,13 +12,13 @@ import { moneySchema } from '@/lib/validationSchemas'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppFilterBar } from '@/components/ui/AppFilterBar'
 import { AppCurrencyInput, AppInput } from '@/components/ui/AppInput'
 import {
   AppModal,
   AppModalContent,
   AppModalDescription,
-  AppModalFooter,
   AppModalHeader,
   AppModalTitle,
 } from '@/components/ui/AppModal'
@@ -1292,93 +1292,102 @@ export function PriceListsPage() {
           </footer>
         </AppCard>
 
-        <AppModal open={addItemOpen} onOpenChange={setAddItemOpen}>
-          <AppModalContent>
-            <AppModalHeader>
-              <AppModalTitle>Agregar producto</AppModalTitle>
-              <AppModalDescription>
-                Nueva asignación con rango inicial 1+ (precio único). Puedes agregar escalones
-                después.
-              </AppModalDescription>
-            </AppModalHeader>
-            <form
-              className="space-y-3"
-              onSubmit={itemForm.handleSubmit(async (values) => {
-                const precio = normalizeMoneyInput(values.unit_price)
-                if (!precio) return
-                try {
-                  await createPriceListItem({
-                    price_list_id: selected.id,
-                    service_id: Number(values.service_id),
-                    frequency: values.frequency,
-                    min_quantity: 1,
-                    max_quantity: null,
-                    unit_price: precio,
-                  })
-                  toast.success('Producto agregado', 'Ya está disponible en esta lista.')
-                  setAddItemOpen(false)
-                } catch (error) {
-                  toast.apiError(error)
-                }
-              })}
-            >
-              <label className="block text-sm">
-                Producto
-                <AppSelect
-                  withLabelSpacing
-                  value={itemForm.watch('service_id')}
-                  onValueChange={(value) => {
-                    itemForm.setValue('service_id', value, { shouldValidate: true })
-                    const svc = services.find((s) => String(s.id) === value)
-                    // Pago único / consumo → frequency=single (sin exigir anual).
-                    if (
-                      svc &&
-                      (svc.service_type === 'single' || svc.service_type === 'consumption')
-                    ) {
-                      itemForm.setValue('frequency', 'single', { shouldValidate: true })
-                    }
-                  }}
-                  options={services.map((service) => ({
-                    value: String(service.id),
-                    label: service.name,
-                  }))}
-                />
-              </label>
-              <label className="block text-sm">
-                Frecuencia
-                <AppSelect
-                  withLabelSpacing
-                  value={itemForm.watch('frequency')}
-                  onValueChange={(value) =>
-                    itemForm.setValue('frequency', value as AddItemForm['frequency'], {
-                      shouldValidate: true,
-                    })
-                  }
-                  options={[
-                    { value: 'monthly', label: 'Mensual' },
-                    { value: 'annual', label: 'Anual' },
-                    { value: 'single', label: 'Único / consumo' },
-                  ]}
-                  disabled={(() => {
-                    const sid = itemForm.watch('service_id')
-                    const svc = services.find((s) => String(s.id) === sid)
-                    return Boolean(
-                      svc &&
-                        (svc.service_type === 'single' || svc.service_type === 'consumption'),
-                    )
-                  })()}
-                />
-              </label>
-              <label className="block text-sm">
-                Precio
-                <AppCurrencyInput withLabelSpacing {...itemForm.register('unit_price')} />
-              </label>
-              <AppButton type="submit" className="w-full rounded-xl">
-                Agregar
+        <AppDrawer
+          open={addItemOpen}
+          onClose={() => setAddItemOpen(false)}
+          size="lg"
+          title="Agregar producto"
+          description="Nueva asignación con rango inicial 1+ (precio único). Puedes agregar escalones después."
+          footer={
+            <>
+              <AppButton
+                type="button"
+                variant="outline"
+                onClick={() => setAddItemOpen(false)}
+              >
+                Cancelar
               </AppButton>
-            </form>
-          </AppModalContent>
-        </AppModal>
+              <AppButton type="submit" form="price-list-add-item-form">
+                Agregar producto
+              </AppButton>
+            </>
+          }
+        >
+          <form
+            id="price-list-add-item-form"
+            className="min-w-0 space-y-4"
+            onSubmit={itemForm.handleSubmit(async (values) => {
+              const precio = normalizeMoneyInput(values.unit_price)
+              if (!precio) return
+              try {
+                await createPriceListItem({
+                  price_list_id: selected.id,
+                  service_id: Number(values.service_id),
+                  frequency: values.frequency,
+                  min_quantity: 1,
+                  max_quantity: null,
+                  unit_price: precio,
+                })
+                toast.success('Producto agregado', 'Ya está disponible en esta lista.')
+                setAddItemOpen(false)
+              } catch (error) {
+                toast.apiError(error)
+              }
+            })}
+          >
+            <label className="block min-w-0 text-sm">
+              Producto
+              <AppSelect
+                withLabelSpacing
+                value={itemForm.watch('service_id')}
+                onValueChange={(value) => {
+                  itemForm.setValue('service_id', value, { shouldValidate: true })
+                  const svc = services.find((s) => String(s.id) === value)
+                  // Pago único / consumo → frequency=single (sin exigir anual).
+                  if (
+                    svc &&
+                    (svc.service_type === 'single' || svc.service_type === 'consumption')
+                  ) {
+                    itemForm.setValue('frequency', 'single', { shouldValidate: true })
+                  }
+                }}
+                options={services.map((service) => ({
+                  value: String(service.id),
+                  label: service.name,
+                }))}
+              />
+            </label>
+            <label className="block min-w-0 text-sm">
+              Frecuencia
+              <AppSelect
+                withLabelSpacing
+                value={itemForm.watch('frequency')}
+                onValueChange={(value) =>
+                  itemForm.setValue('frequency', value as AddItemForm['frequency'], {
+                    shouldValidate: true,
+                  })
+                }
+                options={[
+                  { value: 'monthly', label: 'Mensual' },
+                  { value: 'annual', label: 'Anual' },
+                  { value: 'single', label: 'Único / consumo' },
+                ]}
+                disabled={(() => {
+                  const sid = itemForm.watch('service_id')
+                  const svc = services.find((s) => String(s.id) === sid)
+                  return Boolean(
+                    svc &&
+                      (svc.service_type === 'single' || svc.service_type === 'consumption'),
+                  )
+                })()}
+              />
+            </label>
+            <label className="block min-w-0 text-sm">
+              Precio
+              <AppCurrencyInput withLabelSpacing {...itemForm.register('unit_price')} />
+            </label>
+          </form>
+        </AppDrawer>
 
         <AppModal
           open={removeTarget != null}
@@ -1631,122 +1640,122 @@ export function PriceListsPage() {
         </div>
       </AppTableWrapper>
 
-      <AppModal
+      <AppDrawer
         open={listSettingsOpen}
-        onOpenChange={(open) => {
-          setListSettingsOpen(open)
-          if (!open) setConfiguringListId(null)
+        onClose={() => {
+          setListSettingsOpen(false)
+          setConfiguringListId(null)
         }}
+        size="lg"
+        title={isEditingListSettings ? 'Configurar lista' : 'Nueva lista de precios'}
+        description={
+          isEditingListSettings
+            ? `Datos comerciales de ${configuringList?.name ?? 'la lista'}.`
+            : 'Se guarda en MySQL de inmediato.'
+        }
+        footer={
+          <>
+            <AppButton
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setListSettingsOpen(false)
+                setConfiguringListId(null)
+              }}
+            >
+              Cancelar
+            </AppButton>
+            <AppButton type="submit" form="price-list-settings-form">
+              {isEditingListSettings ? 'Guardar cambios' : 'Crear lista'}
+            </AppButton>
+          </>
+        }
       >
-        <AppModalContent className="sm:max-w-lg">
-          <AppModalHeader>
-            <AppModalTitle>
-              {isEditingListSettings ? 'Configurar lista' : 'Nueva lista de precios'}
-            </AppModalTitle>
-            <AppModalDescription>
-              {isEditingListSettings
-                ? `Datos comerciales de ${configuringList?.name ?? 'la lista'}.`
-                : 'Se guarda en MySQL de inmediato.'}
-            </AppModalDescription>
-          </AppModalHeader>
-          <form className="space-y-4" onSubmit={listForm.handleSubmit(onSubmitListSettings)}>
-            <label className="block text-sm">
-              Nombre
-              <AppInput withLabelSpacing {...listForm.register('name')} />
+        <form
+          id="price-list-settings-form"
+          className="min-w-0 space-y-4"
+          onSubmit={listForm.handleSubmit(onSubmitListSettings)}
+        >
+          <label className="block min-w-0 text-sm">
+            Nombre
+            <AppInput withLabelSpacing {...listForm.register('name')} />
+          </label>
+          <label className="block min-w-0 text-sm">
+            Segmento
+            <AppSelect
+              withLabelSpacing
+              value={listForm.watch('segment_id')}
+              onValueChange={(value) =>
+                listForm.setValue('segment_id', value, { shouldValidate: true })
+              }
+              options={segments.map((segmentOption) => ({
+                value: String(segmentOption.id),
+                label: segmentOption.name,
+              }))}
+              disabled={isSegmentLocked}
+            />
+          </label>
+          <label className="block min-w-0 text-sm">
+            Moneda
+            <AppSelect
+              withLabelSpacing
+              value={listForm.watch('currency')}
+              onValueChange={(value) =>
+                listForm.setValue('currency', value as ListSettingsForm['currency'], {
+                  shouldValidate: true,
+                })
+              }
+              options={[
+                { value: 'MXN', label: 'MXN' },
+                { value: 'USD', label: 'USD' },
+              ]}
+            />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block min-w-0 text-sm">
+              Vigencia desde
+              <AppInput type="date" withLabelSpacing {...listForm.register('valid_from')} />
             </label>
-            <label className="block text-sm">
-              Segmento
-              <AppSelect
+            <label className="block min-w-0 text-sm">
+              Vigencia hasta
+              <AppInput
+                type="date"
                 withLabelSpacing
-                value={listForm.watch('segment_id')}
-                onValueChange={(value) =>
-                  listForm.setValue('segment_id', value, { shouldValidate: true })
-                }
-                options={segments.map((segmentOption) => ({
-                  value: String(segmentOption.id),
-                  label: segmentOption.name,
-                }))}
-                disabled={isSegmentLocked}
+                {...listForm.register('valid_until')}
               />
             </label>
-            <label className="block text-sm">
-              Moneda
-              <AppSelect
-                withLabelSpacing
-                value={listForm.watch('currency')}
-                onValueChange={(value) =>
-                  listForm.setValue('currency', value as ListSettingsForm['currency'], {
-                    shouldValidate: true,
-                  })
+          </div>
+          <div className="space-y-3 rounded-2xl border border-slate-200/80 p-3 dark:border-white/[0.08]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Lista predeterminada (Default)</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-zinc-400">
+                  Si activas esta lista como predeterminada, reemplazará automáticamente a la
+                  predeterminada actual del mismo segmento y moneda.
+                </p>
+              </div>
+              <AppSwitch
+                checked={listForm.watch('is_default')}
+                onCheckedChange={(next) =>
+                  listForm.setValue('is_default', next, { shouldValidate: true })
                 }
-                options={[
-                  { value: 'MXN', label: 'MXN' },
-                  { value: 'USD', label: 'USD' },
-                ]}
+                label="Lista predeterminada (Default)"
               />
-            </label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                Vigencia desde
-                <AppInput type="date" withLabelSpacing {...listForm.register('valid_from')} />
-              </label>
-              <label className="block text-sm">
-                Vigencia hasta
-                <AppInput
-                  type="date"
-                  withLabelSpacing
-                  {...listForm.register('valid_until')}
-                />
-              </label>
             </div>
-            <div className="space-y-3 rounded-2xl border border-slate-200/80 p-3 dark:border-white/[0.08]">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">Lista predeterminada (Default)</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-zinc-400">
-                    Si activas esta lista como predeterminada, reemplazará automáticamente a la
-                    predeterminada actual del mismo segmento y moneda.
-                  </p>
-                </div>
-                <AppSwitch
-                  checked={listForm.watch('is_default')}
-                  onCheckedChange={(next) =>
-                    listForm.setValue('is_default', next, { shouldValidate: true })
-                  }
-                  label="Lista predeterminada (Default)"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-3 border-t border-slate-200/70 pt-3 dark:border-white/[0.06]">
-                <p className="text-sm font-medium">Lista activa</p>
-                <AppSwitch
-                  checked={listForm.watch('is_active')}
-                  onCheckedChange={(next) =>
-                    listForm.setValue('is_active', next, { shouldValidate: true })
-                  }
-                  caption={listForm.watch('is_active') ? 'Activa' : 'Inactiva'}
-                  label="Lista activa"
-                />
-              </div>
+            <div className="flex items-center justify-between gap-3 border-t border-slate-200/70 pt-3 dark:border-white/[0.06]">
+              <p className="text-sm font-medium">Lista activa</p>
+              <AppSwitch
+                checked={listForm.watch('is_active')}
+                onCheckedChange={(next) =>
+                  listForm.setValue('is_active', next, { shouldValidate: true })
+                }
+                caption={listForm.watch('is_active') ? 'Activa' : 'Inactiva'}
+                label="Lista activa"
+              />
             </div>
-            <AppModalFooter>
-              <AppButton
-                type="button"
-                variant="outline"
-                className="rounded-xl"
-                onClick={() => {
-                  setListSettingsOpen(false)
-                  setConfiguringListId(null)
-                }}
-              >
-                Cancelar
-              </AppButton>
-              <AppButton type="submit" className="rounded-xl">
-                {isEditingListSettings ? 'Guardar cambios' : 'Crear lista'}
-              </AppButton>
-            </AppModalFooter>
-          </form>
-        </AppModalContent>
-      </AppModal>
+          </div>
+        </form>
+      </AppDrawer>
     </div>
   )
 }

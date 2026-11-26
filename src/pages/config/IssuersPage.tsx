@@ -13,15 +13,9 @@ import { z } from 'zod'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppFilterBar } from '@/components/ui/AppFilterBar'
 import { AppInput } from '@/components/ui/AppInput'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
 import {
   AppActionsColumnHeader,
   AppRowActionsMenu,
@@ -497,191 +491,203 @@ export function IssuersPage() {
         </AppCard>
       )}
 
-      <AppModal open={modalOpen} onOpenChange={setModalOpen}>
-        <AppModalContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-          <AppModalHeader>
-            <AppModalTitle>{editing ? 'Editar emisor' : 'Nuevo emisor'}</AppModalTitle>
-            <AppModalDescription>
-              Datos fiscales y referencias de conexión al ERP / IntegroPAY.
-            </AppModalDescription>
-          </AppModalHeader>
-          <form className="space-y-5" onSubmit={form.handleSubmit(onSubmit)}>
-            <AppCard className="space-y-3 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Datos fiscales y estado
-              </p>
-              <label className="block text-sm">
-                Nombre comercial / Razón social
-                <AppInput withLabelSpacing {...form.register('name')} />
-              </label>
-              {form.formState.errors.name && (
-                <p className="text-xs text-red-500">{form.formState.errors.name.message}</p>
-              )}
-              <label className="block text-sm">
-                RFC
-                <AppInput
-                  withLabelSpacing
-                  mono
-                  className="uppercase tracking-wide"
-                  maxLength={13}
-                  autoCapitalize="characters"
-                  {...form.register('rfc', {
-                    onChange: (e) => {
-                      e.target.value = String(e.target.value ?? '').toUpperCase()
-                    },
-                  })}
-                />
-              </label>
-              {form.formState.errors.rfc && (
-                <p className="text-xs text-red-500">{form.formState.errors.rfc.message}</p>
-              )}
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-slate-50/80 px-3 py-2.5 dark:border-white/[0.08] dark:bg-white/[0.04]">
-                <div>
-                  <p className="text-sm font-medium">Emisor activo para facturar y operar</p>
-                  <p className="text-[11px] text-slate-500">
-                    Si está inactivo no se recomienda usarlo en nuevas instancias.
-                  </p>
-                </div>
-                <Controller
-                  control={form.control}
-                  name="is_active"
-                  render={({ field }) => (
-                    <AppSwitch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      label="Emisor activo"
-                    />
-                  )}
-                />
-              </div>
-            </AppCard>
-
-            <AppCard className="space-y-3 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Conexión ERP e IntegroPAY
-              </p>
-              <p className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
-                Por seguridad bancaria, aquí solo se guarda el nombre de la variable o referencia
-                del cofre de secretos, nunca la llave en texto plano.
-              </p>
-              <label className="block text-sm">
-                URL de API del ERP (api_url)
-                <AppInput
-                  withLabelSpacing
-                  mono
-                  className="text-xs"
-                  placeholder="https://erp.ejemplo.com/api"
-                  {...form.register('api_url')}
-                />
-              </label>
-              <label className="block text-sm">
-                Referencia Secret ERP (secret_ref)
-                <AppInput
-                  withLabelSpacing
-                  mono
-                  className="text-xs"
-                  placeholder="ERP_SECRET_ACME"
-                  {...form.register('secret_ref')}
-                />
-              </label>
-              <label className="block text-sm">
-                Referencia Merchant Token IntegroPAY
-                <AppInput
-                  withLabelSpacing
-                  mono
-                  className="text-xs"
-                  placeholder="INTEGROPAY_MERCHANT_ACME"
-                  {...form.register('integropay_merchant_token_ref')}
-                />
-              </label>
-              <label className="block text-sm">
-                Referencia Device Token IntegroPAY
-                <AppInput
-                  withLabelSpacing
-                  mono
-                  className="text-xs"
-                  placeholder="INTEGROPAY_DEVICE_ACME"
-                  {...form.register('integropay_device_token_ref')}
-                />
-              </label>
-            </AppCard>
-
-            <AppCard className="space-y-3 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Instrucciones SPEI y Webhook IntegroPAY
-              </p>
-              <p className="rounded-xl border border-blue-500/20 bg-blue-500/[0.07] px-3 py-2 text-[11px] leading-relaxed text-blue-800 dark:text-blue-300">
-                Estos datos los ve el cliente en su Portal al elegir pago por transferencia. El
-                webhook solo guarda el nombre de la variable del cofre.
-              </p>
-              <label className="block text-sm">
-                Banco
-                <AppInput
-                  withLabelSpacing
-                  placeholder="Nombre del banco receptor"
-                  {...form.register('spei_bank_name')}
-                />
-              </label>
-              <label className="block text-sm">
-                CLABE (18 dígitos)
-                <AppInput
-                  withLabelSpacing
-                  mono
-                  inputMode="numeric"
-                  maxLength={18}
-                  className="tracking-wider"
-                  placeholder="000000000000000000"
-                  error={Boolean(form.formState.errors.spei_clabe)}
-                  {...form.register('spei_clabe', {
-                    onChange: (e) => {
-                      e.target.value = String(e.target.value ?? '').replace(/\D/g, '')
-                    },
-                  })}
-                />
-              </label>
-              {form.formState.errors.spei_clabe && (
-                <p className="text-xs text-red-500">{form.formState.errors.spei_clabe.message}</p>
-              )}
-              <label className="block text-sm">
-                Beneficiario
-                <AppInput
-                  withLabelSpacing
-                  placeholder="Razón social del beneficiario"
-                  {...form.register('spei_account_holder')}
-                />
-              </label>
-              <label className="block text-sm">
-                Referencia sugerida
-                <AppInput
-                  withLabelSpacing
-                  placeholder="Ej. Folio del contrato o de la factura"
-                  {...form.register('spei_reference_hint')}
-                />
-              </label>
-              <label className="block text-sm">
-                Referencia Webhook Token IntegroPAY
-                <AppInput
-                  withLabelSpacing
-                  mono
-                  className="text-xs"
-                  placeholder="INTEGROPAY_WEBHOOK_ACME"
-                  error={Boolean(form.formState.errors.integropay_webhook_token_ref)}
-                  {...form.register('integropay_webhook_token_ref')}
-                />
-              </label>
-              {form.formState.errors.integropay_webhook_token_ref && (
-                <p className="text-xs text-red-500">
-                  {form.formState.errors.integropay_webhook_token_ref.message}
-                </p>
-              )}
-            </AppCard>
-
-            <AppButton type="submit" className="w-full rounded-xl">
+      <AppDrawer
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        size="lg"
+        title={editing ? 'Editar emisor' : 'Nuevo emisor'}
+        description="Datos fiscales y referencias de conexión al ERP / IntegroPAY."
+        footer={
+          <>
+            <AppButton
+              type="button"
+              variant="outline"
+              onClick={() => setModalOpen(false)}
+            >
+              Cancelar
+            </AppButton>
+            <AppButton type="submit" form="issuer-form">
               {editing ? 'Guardar emisor' : 'Registrar emisor'}
             </AppButton>
-          </form>
-        </AppModalContent>
-      </AppModal>
+          </>
+        }
+      >
+        <form
+          id="issuer-form"
+          className="min-w-0 space-y-5"
+          onSubmit={form.handleSubmit(onSubmit)}
+        >
+          <AppCard className="min-w-0 space-y-3 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Datos fiscales y estado
+            </p>
+            <label className="block min-w-0 text-sm">
+              Nombre comercial / Razón social
+              <AppInput withLabelSpacing {...form.register('name')} />
+            </label>
+            {form.formState.errors.name && (
+              <p className="text-xs text-red-500">{form.formState.errors.name.message}</p>
+            )}
+            <label className="block min-w-0 text-sm">
+              RFC
+              <AppInput
+                withLabelSpacing
+                mono
+                className="uppercase tracking-wide"
+                maxLength={13}
+                autoCapitalize="characters"
+                {...form.register('rfc', {
+                  onChange: (e) => {
+                    e.target.value = String(e.target.value ?? '').toUpperCase()
+                  },
+                })}
+              />
+            </label>
+            {form.formState.errors.rfc && (
+              <p className="text-xs text-red-500">{form.formState.errors.rfc.message}</p>
+            )}
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-slate-50/80 px-3 py-2.5 dark:border-white/[0.08] dark:bg-white/[0.04]">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Emisor activo para facturar y operar</p>
+                <p className="text-[11px] text-slate-500">
+                  Si está inactivo no se recomienda usarlo en nuevas instancias.
+                </p>
+              </div>
+              <Controller
+                control={form.control}
+                name="is_active"
+                render={({ field }) => (
+                  <AppSwitch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    label="Emisor activo"
+                  />
+                )}
+              />
+            </div>
+          </AppCard>
+
+          <AppCard className="min-w-0 space-y-3 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Conexión ERP e IntegroPAY
+            </p>
+            <p className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+              Por seguridad bancaria, aquí solo se guarda el nombre de la variable o referencia
+              del cofre de secretos, nunca la llave en texto plano.
+            </p>
+            <label className="block min-w-0 text-sm">
+              URL de API del ERP (api_url)
+              <AppInput
+                withLabelSpacing
+                mono
+                className="text-xs"
+                placeholder="https://erp.ejemplo.com/api"
+                {...form.register('api_url')}
+              />
+            </label>
+            <label className="block min-w-0 text-sm">
+              Referencia Secret ERP (secret_ref)
+              <AppInput
+                withLabelSpacing
+                mono
+                className="text-xs"
+                placeholder="ERP_SECRET_ACME"
+                {...form.register('secret_ref')}
+              />
+            </label>
+            <label className="block min-w-0 text-sm">
+              Referencia Merchant Token IntegroPAY
+              <AppInput
+                withLabelSpacing
+                mono
+                className="text-xs"
+                placeholder="INTEGROPAY_MERCHANT_ACME"
+                {...form.register('integropay_merchant_token_ref')}
+              />
+            </label>
+            <label className="block min-w-0 text-sm">
+              Referencia Device Token IntegroPAY
+              <AppInput
+                withLabelSpacing
+                mono
+                className="text-xs"
+                placeholder="INTEGROPAY_DEVICE_ACME"
+                {...form.register('integropay_device_token_ref')}
+              />
+            </label>
+          </AppCard>
+
+          <AppCard className="min-w-0 space-y-3 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Instrucciones SPEI y Webhook IntegroPAY
+            </p>
+            <p className="rounded-xl border border-blue-500/20 bg-blue-500/[0.07] px-3 py-2 text-[11px] leading-relaxed text-blue-800 dark:text-blue-300">
+              Estos datos los ve el cliente en su Portal al elegir pago por transferencia. El
+              webhook solo guarda el nombre de la variable del cofre.
+            </p>
+            <label className="block min-w-0 text-sm">
+              Banco
+              <AppInput
+                withLabelSpacing
+                placeholder="Nombre del banco receptor"
+                {...form.register('spei_bank_name')}
+              />
+            </label>
+            <label className="block min-w-0 text-sm">
+              CLABE (18 dígitos)
+              <AppInput
+                withLabelSpacing
+                mono
+                inputMode="numeric"
+                maxLength={18}
+                className="tracking-wider"
+                placeholder="000000000000000000"
+                error={Boolean(form.formState.errors.spei_clabe)}
+                {...form.register('spei_clabe', {
+                  onChange: (e) => {
+                    e.target.value = String(e.target.value ?? '').replace(/\D/g, '')
+                  },
+                })}
+              />
+            </label>
+            {form.formState.errors.spei_clabe && (
+              <p className="text-xs text-red-500">{form.formState.errors.spei_clabe.message}</p>
+            )}
+            <label className="block min-w-0 text-sm">
+              Beneficiario
+              <AppInput
+                withLabelSpacing
+                placeholder="Razón social del beneficiario"
+                {...form.register('spei_account_holder')}
+              />
+            </label>
+            <label className="block min-w-0 text-sm">
+              Referencia sugerida
+              <AppInput
+                withLabelSpacing
+                placeholder="Ej. Folio del contrato o de la factura"
+                {...form.register('spei_reference_hint')}
+              />
+            </label>
+            <label className="block min-w-0 text-sm">
+              Referencia Webhook Token IntegroPAY
+              <AppInput
+                withLabelSpacing
+                mono
+                className="text-xs"
+                placeholder="INTEGROPAY_WEBHOOK_ACME"
+                error={Boolean(form.formState.errors.integropay_webhook_token_ref)}
+                {...form.register('integropay_webhook_token_ref')}
+              />
+            </label>
+            {form.formState.errors.integropay_webhook_token_ref && (
+              <p className="text-xs text-red-500">
+                {form.formState.errors.integropay_webhook_token_ref.message}
+              </p>
+            )}
+          </AppCard>
+        </form>
+      </AppDrawer>
     </div>
   )
 }

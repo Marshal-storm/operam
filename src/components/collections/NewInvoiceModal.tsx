@@ -4,15 +4,8 @@ import { useEffect, useMemo } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 import { AppButton } from '@/components/ui/AppButton'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppCurrencyInput, AppInput, AppTextarea } from '@/components/ui/AppInput'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalFooter,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { formatCurrencyMx } from '@/lib/utils'
 import { moneySchema } from '@/lib/validationSchemas'
@@ -161,185 +154,188 @@ export function NewInvoiceModal({
   const previewTotal = ((previewSubCents + previewTaxCents) / 100).toFixed(2)
 
   return (
-    <AppModal open={open} onOpenChange={onOpenChange}>
-      <AppModalContent className="max-w-lg">
-        <AppModalHeader>
-          <AppModalTitle>Emitir documento</AppModalTitle>
-          <AppModalDescription>
-            Genera un FAC-XXXX para un contrato activo. La fecha de vencimiento usa los días de
-            crédito del contrato (editable para pruebas de morosidad).
-          </AppModalDescription>
-        </AppModalHeader>
-
-        <form
-          className="space-y-4"
-          onSubmit={handleSubmit(async (values) => {
-            await onSubmit({
-              contract_id: Number(values.contract_id),
-              mode: values.mode,
-              concept: values.concept?.trim() || undefined,
-              amount: values.mode === 'custom' ? Number(values.amount).toFixed(2) : undefined,
-              invoice_type: values.mode === 'custom' ? 'one_time' : 'recurring',
-              issue_date: values.issue_date,
-              due_date: values.due_date,
-              notes: values.notes?.trim() || undefined,
-            })
-          })}
-        >
-          <div>
-            <span className={FIELD_LABEL}>Contrato</span>
-            <Controller
-              control={control}
-              name="contract_id"
-              render={({ field }) => (
-                <AppSelect
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  options={contractOptions}
-                  placeholder="Selecciona contrato activo"
-                  aria-label="Contrato"
-                />
-              )}
-            />
-            {errors.contract_id ? (
-              <p className="mt-1 text-xs text-red-500">{errors.contract_id.message}</p>
-            ) : null}
-          </div>
-
-          <div>
-            <span className={FIELD_LABEL}>Tipo de cargo</span>
-            <Controller
-              control={control}
-              name="mode"
-              render={({ field }) => (
-                <AppSelect
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  options={[
-                    {
-                      value: 'recurring_cutoff',
-                      label: 'Corte del contrato (MRR actual)',
-                    },
-                    { value: 'custom', label: 'Cargo personalizado' },
-                  ]}
-                  aria-label="Tipo de cargo"
-                />
-              )}
-            />
-          </div>
-
-          {mode === 'custom' ? (
-            <>
-              <div>
-                <span className={FIELD_LABEL}>Concepto</span>
-                <Controller
-                  control={control}
-                  name="concept"
-                  render={({ field }) => (
-                    <AppInput {...field} placeholder="Ej. Cargo especial · capacitación" />
-                  )}
-                />
-                {errors.concept ? (
-                  <p className="mt-1 text-xs text-red-500">{errors.concept.message}</p>
-                ) : null}
-              </div>
-              <div>
-                <span className={FIELD_LABEL}>Monto</span>
-                <Controller
-                  control={control}
-                  name="amount"
-                  render={({ field }) => (
-                    <AppCurrencyInput {...field} placeholder="0.00" />
-                  )}
-                />
-                {errors.amount ? (
-                  <p className="mt-1 text-xs text-red-500">{errors.amount.message}</p>
-                ) : null}
-              </div>
-            </>
+    <AppDrawer
+      open={open}
+      onClose={() => onOpenChange(false)}
+      size="lg"
+      title="Emitir documento"
+      description="Genera un FAC-XXXX para un contrato activo. La fecha de vencimiento usa los días de crédito del contrato (editable para pruebas de morosidad)."
+      footer={
+        <>
+          <AppButton
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isSubmitting}
+          >
+            Cancelar
+          </AppButton>
+          <AppButton
+            type="submit"
+            form="new-invoice-form"
+            variant="primary"
+            isLoading={isSubmitting}
+          >
+            Emitir documento
+          </AppButton>
+        </>
+      }
+    >
+      <form
+        id="new-invoice-form"
+        className="min-w-0 space-y-4"
+        onSubmit={handleSubmit(async (values) => {
+          await onSubmit({
+            contract_id: Number(values.contract_id),
+            mode: values.mode,
+            concept: values.concept?.trim() || undefined,
+            amount: values.mode === 'custom' ? Number(values.amount).toFixed(2) : undefined,
+            invoice_type: values.mode === 'custom' ? 'one_time' : 'recurring',
+            issue_date: values.issue_date,
+            due_date: values.due_date,
+            notes: values.notes?.trim() || undefined,
+          })
+        })}
+      >
+        <div className="min-w-0">
+          <span className={FIELD_LABEL}>Contrato</span>
+          <Controller
+            control={control}
+            name="contract_id"
+            render={({ field }) => (
+              <AppSelect
+                value={field.value}
+                onValueChange={field.onChange}
+                options={contractOptions}
+                placeholder="Selecciona contrato activo"
+                aria-label="Contrato"
+              />
+            )}
+          />
+          {errors.contract_id ? (
+            <p className="mt-1 text-xs text-red-500">{errors.contract_id.message}</p>
           ) : null}
+        </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <span className={FIELD_LABEL}>Emisión</span>
+        <div className="min-w-0">
+          <span className={FIELD_LABEL}>Tipo de cargo</span>
+          <Controller
+            control={control}
+            name="mode"
+            render={({ field }) => (
+              <AppSelect
+                value={field.value}
+                onValueChange={field.onChange}
+                options={[
+                  {
+                    value: 'recurring_cutoff',
+                    label: 'Corte del contrato (MRR actual)',
+                  },
+                  { value: 'custom', label: 'Cargo personalizado' },
+                ]}
+                aria-label="Tipo de cargo"
+              />
+            )}
+          />
+        </div>
+
+        {mode === 'custom' ? (
+          <>
+            <div className="min-w-0">
+              <span className={FIELD_LABEL}>Concepto</span>
               <Controller
                 control={control}
-                name="issue_date"
-                render={({ field }) => <AppInput type="date" {...field} />}
+                name="concept"
+                render={({ field }) => (
+                  <AppInput {...field} placeholder="Ej. Cargo especial · capacitación" />
+                )}
               />
+              {errors.concept ? (
+                <p className="mt-1 text-xs text-red-500">{errors.concept.message}</p>
+              ) : null}
             </div>
-            <div>
-              <span className={FIELD_LABEL}>
-                Vencimiento
-                {selected ? ` (+${selected.credit_days}d crédito)` : ''}
-              </span>
+            <div className="min-w-0">
+              <span className={FIELD_LABEL}>Monto</span>
               <Controller
                 control={control}
-                name="due_date"
-                render={({ field }) => <AppInput type="date" {...field} />}
+                name="amount"
+                render={({ field }) => (
+                  <AppCurrencyInput {...field} placeholder="0.00" />
+                )}
               />
+              {errors.amount ? (
+                <p className="mt-1 text-xs text-red-500">{errors.amount.message}</p>
+              ) : null}
             </div>
-          </div>
+          </>
+        ) : null}
 
-          <div>
-            <span className={FIELD_LABEL}>Notas (opcional)</span>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="min-w-0">
+            <span className={FIELD_LABEL}>Emisión</span>
             <Controller
               control={control}
-              name="notes"
-              render={({ field }) => (
-                <AppTextarea {...field} rows={2} placeholder="Observaciones internas" />
-              )}
+              name="issue_date"
+              render={({ field }) => <AppInput type="date" {...field} />}
             />
           </div>
-
-          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-              Vista previa del cobro
-            </p>
-            <div className="mt-2 space-y-1 text-sm">
-              <div className="flex justify-between gap-3">
-                <span className="text-slate-500 dark:text-zinc-400">Subtotal</span>
-                <span className="font-mono tabular-nums">
-                  {formatCurrencyMx(previewSubtotal, { fractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-slate-500 dark:text-zinc-400">IVA (16%)</span>
-                <span className="font-mono tabular-nums">
-                  {formatCurrencyMx(previewTax, { fractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex justify-between gap-3 border-t border-slate-200/80 pt-1.5 dark:border-white/[0.08]">
-                <span className="font-semibold text-[#090D16] dark:text-white">
-                  Total a cobrar
-                </span>
-                <span className="font-mono text-lg font-semibold tabular-nums text-[#090D16] dark:text-white">
-                  {formatCurrencyMx(previewTotal, { fractionDigits: 2 })}
-                </span>
-              </div>
-            </div>
-            {selected ? (
-              <p className="mt-2 text-xs text-slate-500 dark:text-zinc-400">
-                {selected.folio} · {selected.client_name} · MRR sin IVA
-              </p>
-            ) : null}
+          <div className="min-w-0">
+            <span className={FIELD_LABEL}>
+              Vencimiento
+              {selected ? ` (+${selected.credit_days}d crédito)` : ''}
+            </span>
+            <Controller
+              control={control}
+              name="due_date"
+              render={({ field }) => <AppInput type="date" {...field} />}
+            />
           </div>
+        </div>
 
-          <AppModalFooter>
-            <AppButton
-              type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-              disabled={isSubmitting}
-            >
-              Cancelar
-            </AppButton>
-            <AppButton type="submit" variant="primary" isLoading={isSubmitting}>
-              Emitir documento
-            </AppButton>
-          </AppModalFooter>
-        </form>
-      </AppModalContent>
-    </AppModal>
+        <div className="min-w-0">
+          <span className={FIELD_LABEL}>Notas (opcional)</span>
+          <Controller
+            control={control}
+            name="notes"
+            render={({ field }) => (
+              <AppTextarea {...field} rows={2} placeholder="Observaciones internas" />
+            )}
+          />
+        </div>
+
+        <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+            Vista previa del cobro
+          </p>
+          <div className="mt-2 space-y-1 text-sm">
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-500 dark:text-zinc-400">Subtotal</span>
+              <span className="font-mono tabular-nums">
+                {formatCurrencyMx(previewSubtotal, { fractionDigits: 2 })}
+              </span>
+            </div>
+            <div className="flex justify-between gap-3">
+              <span className="text-slate-500 dark:text-zinc-400">IVA (16%)</span>
+              <span className="font-mono tabular-nums">
+                {formatCurrencyMx(previewTax, { fractionDigits: 2 })}
+              </span>
+            </div>
+            <div className="flex justify-between gap-3 border-t border-slate-200/80 pt-1.5 dark:border-white/[0.08]">
+              <span className="font-semibold text-[#090D16] dark:text-white">
+                Total a cobrar
+              </span>
+              <span className="font-mono text-lg font-semibold tabular-nums text-[#090D16] dark:text-white">
+                {formatCurrencyMx(previewTotal, { fractionDigits: 2 })}
+              </span>
+            </div>
+          </div>
+          {selected ? (
+            <p className="mt-2 text-xs text-slate-500 dark:text-zinc-400">
+              {selected.folio} · {selected.client_name} · MRR sin IVA
+            </p>
+          ) : null}
+        </div>
+      </form>
+    </AppDrawer>
   )
 }

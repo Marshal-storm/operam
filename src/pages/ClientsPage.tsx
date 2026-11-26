@@ -7,6 +7,7 @@ import {
 import {
   Eye,
   FilePlus2,
+  KeyRound,
   Pencil,
   Plus,
   Users,
@@ -15,6 +16,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
+import { ClientContactsTab } from '@/components/clients/ClientContactsTab'
+import { ClientMagicLinkModal } from '@/components/clients/ClientMagicLinkModal'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import {
@@ -23,25 +26,17 @@ import {
   AppCardHeader,
   AppCardTitle,
 } from '@/components/ui/AppCard'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppFilterBar } from '@/components/ui/AppFilterBar'
 import { AppInput } from '@/components/ui/AppInput'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalFooter,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
-import { AppSelect } from '@/components/ui/AppSelect'
 import {
   AppActionsColumnHeader,
   AppRowActionsMenu,
 } from '@/components/ui/AppRowActionsMenu'
+import { AppSelect } from '@/components/ui/AppSelect'
 import { AppSwitch } from '@/components/ui/AppSwitch'
-import { AppTabs } from '@/components/ui/AppTabs'
 import { AppTableHeadRow, AppTableWrapper } from '@/components/ui/AppTableWrapper'
-import { ClientContactsTab } from '@/components/clients/ClientContactsTab'
+import { AppTabs } from '@/components/ui/AppTabs'
 import { PaginationBar } from '@/components/ui/PaginationBar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useScreenPreferences } from '@/context/ScreenPreferencesContext'
@@ -109,6 +104,7 @@ const EMPTY_FORM: ClientFormValues = {
 
 /**
  * Directorio y CRUD de Clientes — Módulo 3 Paso 1 (`/clientes`).
+ * Formularios y vista de detalle en AppDrawer (§3.1) + modal rápido de Liga Mágica.
  */
 export function ClientsPage() {
   const navigate = useNavigate()
@@ -132,11 +128,12 @@ export function ClientsPage() {
   const [issuerFilter, setIssuerFilter] = useState('Todos')
   const [statusFilter, setStatusFilter] = useState('Todos')
 
-  const [modalOpen, setModalOpen] = useState(false)
+  const [formDrawerOpen, setFormDrawerOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailTab, setDetailTab] = useState<'general' | 'contacts'>('general')
   const [editing, setEditing] = useState<Client | null>(null)
   const [detailClient, setDetailClient] = useState<Client | null>(null)
+  const [magicLinkClient, setMagicLinkClient] = useState<Client | null>(null)
   const [creditInheritedNote, setCreditInheritedNote] = useState<string | null>(null)
 
   const { contacts: detailContacts } = useClientContacts(
@@ -199,7 +196,7 @@ export function ClientsPage() {
   const watchedSegmentId = useWatch({ control: form.control, name: 'segment_id' })
 
   useEffect(() => {
-    if (editing || !modalOpen) return
+    if (editing || !formDrawerOpen) return
     if (!watchedSegmentId) {
       setCreditInheritedNote(null)
       return
@@ -207,10 +204,8 @@ export function ClientsPage() {
     const segment = segments.find((s) => String(s.id) === watchedSegmentId)
     if (!segment) return
     form.setValue('credit_days', segment.default_credit_days, { shouldDirty: true })
-    setCreditInheritedNote(
-      `Heredado de ${segment.name}, editable`,
-    )
-  }, [watchedSegmentId, editing, modalOpen, segments, form])
+    setCreditInheritedNote(`Heredado de ${segment.name}, editable`)
+  }, [watchedSegmentId, editing, formDrawerOpen, segments, form])
 
   const hasActiveFilters =
     search.trim() !== '' ||
@@ -281,7 +276,7 @@ export function ClientsPage() {
       const seg = segments.find((s) => String(s.id) === defaultSegment)
       if (seg) setCreditInheritedNote(`Heredado de ${seg.name}, editable`)
     }
-    setModalOpen(true)
+    setFormDrawerOpen(true)
   }
 
   function openEdit(client: Client) {
@@ -303,12 +298,12 @@ export function ClientsPage() {
       exclude_suspension: client.exclude_suspension,
       active: client.active,
     })
-    setModalOpen(true)
+    setFormDrawerOpen(true)
   }
 
-  function openDetail(client: Client) {
+  function openDetail(client: Client, initialTab: 'general' | 'contacts' = 'general') {
     setDetailClient(client)
-    setDetailTab('general')
+    setDetailTab(initialTab)
     setDetailOpen(true)
   }
 
@@ -352,7 +347,7 @@ export function ClientsPage() {
       }
       // Create y edit: volver a página 1 para ver el cliente recién tocado arriba.
       setPage(1)
-      setModalOpen(false)
+      setFormDrawerOpen(false)
     } catch (error) {
       toast.apiError(error)
     }
@@ -450,6 +445,12 @@ export function ClientsPage() {
                   label: 'Ver detalle',
                   icon: <Eye className="h-4 w-4" />,
                   onClick: () => openDetail(row.original),
+                },
+                {
+                  label: 'Generar liga mágica',
+                  icon: <KeyRound className="h-4 w-4" />,
+                  onClick: () => setMagicLinkClient(row.original),
+                  hidden: !canEdit('clients'),
                 },
                 {
                   label: 'Editar',
@@ -676,6 +677,12 @@ export function ClientsPage() {
                       onClick: () => openDetail(client),
                     },
                     {
+                      label: 'Generar liga mágica',
+                      icon: <KeyRound className="h-4 w-4" />,
+                      onClick: () => setMagicLinkClient(client),
+                      hidden: !canEdit('clients'),
+                    },
+                    {
                       label: 'Editar',
                       icon: <Pencil className="h-4 w-4" />,
                       onClick: () => openEdit(client),
@@ -714,356 +721,464 @@ export function ClientsPage() {
         </div>
       </AppTableWrapper>
 
-      <AppModal open={modalOpen} onOpenChange={setModalOpen}>
-        <AppModalContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-          <AppModalHeader>
-            <AppModalTitle>
-              {editing ? 'Editar cliente' : 'Nuevo cliente'}
-            </AppModalTitle>
-            <AppModalDescription>
-              Identidad fiscal, contacto y reglas comerciales de cobranza
-            </AppModalDescription>
-          </AppModalHeader>
+      {/* Drawer lg: Crear / Editar cliente (§3.1) */}
+      <AppDrawer
+        open={formDrawerOpen}
+        onClose={() => setFormDrawerOpen(false)}
+        size="lg"
+        title={editing ? 'Editar cliente' : 'Nuevo cliente'}
+        description="Identidad fiscal, contacto y reglas comerciales de cobranza"
+        footer={
+          <>
+            <AppButton
+              type="button"
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => setFormDrawerOpen(false)}
+            >
+              Cancelar
+            </AppButton>
+            <AppButton type="submit" form="client-form" className="rounded-xl">
+              {editing ? 'Guardar cambios' : 'Crear cliente'}
+            </AppButton>
+          </>
+        }
+      >
+        <form
+          id="client-form"
+          className="space-y-5"
+          onSubmit={form.handleSubmit(onSubmit)}
+        >
+          <AppCard className="p-0">
+            <AppCardHeader>
+              <AppCardTitle>Identidad fiscal y contacto</AppCardTitle>
+            </AppCardHeader>
+            <AppCardContent className="grid gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-1">
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
+                  Nombre comercial
+                </label>
+                <AppInput {...form.register('name')} error={!!form.formState.errors.name} />
+                {form.formState.errors.name ? (
+                  <p className="mt-1 text-xs text-red-500">
+                    {form.formState.errors.name.message}
+                  </p>
+                ) : null}
+              </div>
+              <div className="sm:col-span-1">
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
+                  Razón social
+                </label>
+                <AppInput
+                  {...form.register('legal_name')}
+                  error={!!form.formState.errors.legal_name}
+                />
+                {form.formState.errors.legal_name ? (
+                  <p className="mt-1 text-xs text-red-500">
+                    {form.formState.errors.legal_name.message}
+                  </p>
+                ) : null}
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
+                  RFC
+                </label>
+                <AppInput
+                  className="font-mono uppercase"
+                  {...form.register('rfc')}
+                  onChange={(e) =>
+                    form.setValue('rfc', e.target.value.toUpperCase(), {
+                      shouldValidate: true,
+                    })
+                  }
+                  error={!!form.formState.errors.rfc}
+                />
+                {form.formState.errors.rfc ? (
+                  <p className="mt-1 text-xs text-red-500">
+                    {form.formState.errors.rfc.message}
+                  </p>
+                ) : null}
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
+                  ID Cliente en ERP
+                </label>
+                <AppInput
+                  className="font-mono"
+                  {...form.register('erp_client_id')}
+                  placeholder="Opcional"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
+                  Nombre de contacto
+                </label>
+                <AppInput {...form.register('contact_name')} />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
+                  Correo
+                </label>
+                <AppInput type="email" {...form.register('contact_email')} />
+                {form.formState.errors.contact_email ? (
+                  <p className="mt-1 text-xs text-red-500">
+                    {form.formState.errors.contact_email.message}
+                  </p>
+                ) : null}
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
+                  Teléfono
+                </label>
+                <AppInput {...form.register('contact_phone')} />
+              </div>
+            </AppCardContent>
+          </AppCard>
 
-          <form className="space-y-5" onSubmit={form.handleSubmit(onSubmit)}>
-            <AppCard className="p-0">
-              <AppCardHeader>
-                <AppCardTitle>Identidad fiscal y contacto</AppCardTitle>
-              </AppCardHeader>
-              <AppCardContent className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-1">
-                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
-                    Nombre comercial
-                  </label>
-                  <AppInput {...form.register('name')} error={!!form.formState.errors.name} />
-                  {form.formState.errors.name ? (
-                    <p className="mt-1 text-xs text-red-500">
-                      {form.formState.errors.name.message}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="sm:col-span-1">
-                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
-                    Razón social
-                  </label>
-                  <AppInput
-                    {...form.register('legal_name')}
-                    error={!!form.formState.errors.legal_name}
-                  />
-                  {form.formState.errors.legal_name ? (
-                    <p className="mt-1 text-xs text-red-500">
-                      {form.formState.errors.legal_name.message}
-                    </p>
-                  ) : null}
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
-                    RFC
-                  </label>
-                  <AppInput
-                    className="font-mono uppercase"
-                    {...form.register('rfc')}
-                    onChange={(e) =>
-                      form.setValue('rfc', e.target.value.toUpperCase(), {
-                        shouldValidate: true,
-                      })
-                    }
-                    error={!!form.formState.errors.rfc}
-                  />
-                  {form.formState.errors.rfc ? (
-                    <p className="mt-1 text-xs text-red-500">
-                      {form.formState.errors.rfc.message}
-                    </p>
-                  ) : null}
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
-                    ID Cliente en ERP
-                  </label>
-                  <AppInput
-                    className="font-mono"
-                    {...form.register('erp_client_id')}
-                    placeholder="Opcional"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
-                    Nombre de contacto
-                  </label>
-                  <AppInput {...form.register('contact_name')} />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
-                    Correo
-                  </label>
-                  <AppInput type="email" {...form.register('contact_email')} />
-                  {form.formState.errors.contact_email ? (
-                    <p className="mt-1 text-xs text-red-500">
-                      {form.formState.errors.contact_email.message}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
-                    Teléfono
-                  </label>
-                  <AppInput {...form.register('contact_phone')} />
-                </div>
-              </AppCardContent>
-            </AppCard>
-
-            <AppCard className="p-0">
-              <AppCardHeader>
-                <AppCardTitle>Configuración comercial y cobranza</AppCardTitle>
-              </AppCardHeader>
-              <AppCardContent className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
-                    Segmento
-                  </label>
+          <AppCard className="p-0">
+            <AppCardHeader>
+              <AppCardTitle>Configuración comercial y cobranza</AppCardTitle>
+            </AppCardHeader>
+            <AppCardContent className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
+                  Segmento
+                </label>
+                <Controller
+                  control={form.control}
+                  name="segment_id"
+                  render={({ field }) => (
+                    <AppSelect
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      options={segmentFormOptions}
+                      disabled={isSegmentLocked}
+                      error={!!form.formState.errors.segment_id}
+                      placeholder="Selecciona segmento"
+                    />
+                  )}
+                />
+                {form.formState.errors.segment_id ? (
+                  <p className="mt-1 text-xs text-red-500">
+                    {form.formState.errors.segment_id.message}
+                  </p>
+                ) : null}
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
+                  Emisor facturador
+                </label>
+                <Controller
+                  control={form.control}
+                  name="issuer_id"
+                  render={({ field }) => (
+                    <AppSelect
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      options={issuerFormOptions}
+                      error={!!form.formState.errors.issuer_id}
+                      placeholder="Selecciona emisor"
+                    />
+                  )}
+                />
+                {form.formState.errors.issuer_id ? (
+                  <p className="mt-1 text-xs text-red-500">
+                    {form.formState.errors.issuer_id.message}
+                  </p>
+                ) : null}
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
+                  Días de crédito
+                </label>
+                <AppInput
+                  numericMode="integer"
+                  mono
+                  className="tabular-nums"
+                  {...form.register('credit_days', { valueAsNumber: true })}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^\d]/g, '')
+                    const next = raw === '' ? 0 : Number(raw)
+                    form.setValue('credit_days', Number.isFinite(next) ? next : 0, {
+                      shouldValidate: true,
+                    })
+                    setCreditInheritedNote(null)
+                  }}
+                  error={!!form.formState.errors.credit_days}
+                />
+                {creditInheritedNote && !editing ? (
+                  <p className="mt-1 text-[11px] text-slate-500 dark:text-zinc-400">
+                    {creditInheritedNote}
+                  </p>
+                ) : null}
+                {form.formState.errors.credit_days ? (
+                  <p className="mt-1 text-xs text-red-500">
+                    {form.formState.errors.credit_days.message}
+                  </p>
+                ) : null}
+              </div>
+              <div className="space-y-3 sm:col-span-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium">
+                    Timbrar factura automáticamente al emitir
+                  </p>
                   <Controller
                     control={form.control}
-                    name="segment_id"
+                    name="stamp_on_issue"
                     render={({ field }) => (
-                      <AppSelect
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        options={segmentFormOptions}
-                        disabled={isSegmentLocked}
-                        error={!!form.formState.errors.segment_id}
-                        placeholder="Selecciona segmento"
+                      <AppSwitch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        label="Timbrar factura automáticamente al emitir"
                       />
                     )}
                   />
-                  {form.formState.errors.segment_id ? (
-                    <p className="mt-1 text-xs text-red-500">
-                      {form.formState.errors.segment_id.message}
-                    </p>
-                  ) : null}
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
-                    Emisor facturador
-                  </label>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium">
+                    Excluir de suspensión automática a 90 días
+                  </p>
                   <Controller
                     control={form.control}
-                    name="issuer_id"
+                    name="exclude_suspension"
                     render={({ field }) => (
-                      <AppSelect
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        options={issuerFormOptions}
-                        error={!!form.formState.errors.issuer_id}
-                        placeholder="Selecciona emisor"
+                      <AppSwitch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        label="Excluir de suspensión automática a 90 días"
                       />
                     )}
                   />
-                  {form.formState.errors.issuer_id ? (
-                    <p className="mt-1 text-xs text-red-500">
-                      {form.formState.errors.issuer_id.message}
-                    </p>
-                  ) : null}
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-zinc-300">
-                    Días de crédito
-                  </label>
-                  <AppInput
-                    numericMode="integer"
-                    mono
-                    className="tabular-nums"
-                    {...form.register('credit_days', { valueAsNumber: true })}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/[^\d]/g, '')
-                      const next = raw === '' ? 0 : Number(raw)
-                      form.setValue('credit_days', Number.isFinite(next) ? next : 0, {
-                        shouldValidate: true,
-                      })
-                      setCreditInheritedNote(null)
-                    }}
-                    error={!!form.formState.errors.credit_days}
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium">Cliente activo</p>
+                  <Controller
+                    control={form.control}
+                    name="active"
+                    render={({ field }) => (
+                      <AppSwitch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        label="Cliente activo"
+                      />
+                    )}
                   />
-                  {creditInheritedNote && !editing ? (
-                    <p className="mt-1 text-[11px] text-slate-500 dark:text-zinc-400">
-                      {creditInheritedNote}
-                    </p>
-                  ) : null}
-                  {form.formState.errors.credit_days ? (
-                    <p className="mt-1 text-xs text-red-500">
-                      {form.formState.errors.credit_days.message}
-                    </p>
-                  ) : null}
                 </div>
-                <div className="space-y-3 sm:col-span-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium">
-                      Timbrar factura automáticamente al emitir
-                    </p>
-                    <Controller
-                      control={form.control}
-                      name="stamp_on_issue"
-                      render={({ field }) => (
-                        <AppSwitch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          label="Timbrar factura automáticamente al emitir"
-                        />
-                      )}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium">
-                      Excluir de suspensión automática a 90 días
-                    </p>
-                    <Controller
-                      control={form.control}
-                      name="exclude_suspension"
-                      render={({ field }) => (
-                        <AppSwitch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          label="Excluir de suspensión automática a 90 días"
-                        />
-                      )}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium">Cliente activo</p>
-                    <Controller
-                      control={form.control}
-                      name="active"
-                      render={({ field }) => (
-                        <AppSwitch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          label="Cliente activo"
-                        />
-                      )}
-                    />
-                  </div>
-                </div>
-              </AppCardContent>
-            </AppCard>
+              </div>
+            </AppCardContent>
+          </AppCard>
+        </form>
+      </AppDrawer>
 
-            <AppModalFooter>
+      {/* Drawer xl: Detalle del cliente + Contactos amplios (§3.1) */}
+      <AppDrawer
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        size="xl"
+        title={detailClient?.name ?? 'Cliente'}
+        description={
+          detailClient
+            ? `${detailClient.legal_name} · RFC ${detailClient.rfc}`
+            : 'Vista de datos fiscales, contactos y reglas de cobranza'
+        }
+        headerExtra={
+          detailClient ? (
+            <>
+              <AppBadge
+                label={detailClient.active ? 'Activo' : 'Inactivo'}
+                tone={detailClient.active ? 'success' : 'danger'}
+              />
+              {detailClient.stamp_on_issue ? (
+                <AppBadge label="Timbrado auto" tone="info" />
+              ) : null}
+              {detailClient.exclude_suspension ? (
+                <AppBadge label="Sin suspensión" tone="warning" />
+              ) : null}
+            </>
+          ) : null
+        }
+        footer={
+          detailClient ? (
+            <>
               <AppButton
                 type="button"
                 variant="outline"
                 className="rounded-xl"
-                onClick={() => setModalOpen(false)}
+                onClick={() => setDetailOpen(false)}
               >
-                Cancelar
+                Cerrar
               </AppButton>
-              <AppButton type="submit" className="rounded-xl">
-                {editing ? 'Guardar cambios' : 'Crear cliente'}
-              </AppButton>
-            </AppModalFooter>
-          </form>
-        </AppModalContent>
-      </AppModal>
-
-      <AppModal open={detailOpen} onOpenChange={setDetailOpen}>
-        <AppModalContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-          <AppModalHeader>
-            <AppModalTitle>{detailClient?.name ?? 'Cliente'}</AppModalTitle>
-            <AppModalDescription>
-              Vista rápida de datos fiscales, contactos y reglas de cobranza
-            </AppModalDescription>
-          </AppModalHeader>
-          {detailClient ? (
-            <div className="space-y-4 text-sm">
-              <AppTabs
-                value={detailTab}
-                onChange={(id) => setDetailTab(id as 'general' | 'contacts')}
-                aria-label="Pestañas del detalle de cliente"
-                items={[
-                  { id: 'general', label: 'Información general' },
-                  {
-                    id: 'contacts',
-                    label: 'Contactos',
-                    badge: detailContacts.length,
-                  },
-                ]}
-              />
-
-              {detailTab === 'general' ? (
-                <div className="grid gap-2">
-                  <p>
-                    <span className="text-slate-500">Razón social:</span>{' '}
-                    {detailClient.legal_name}
-                  </p>
-                  <p>
-                    <span className="text-slate-500">RFC:</span>{' '}
-                    <span className="font-mono tabular-nums">{detailClient.rfc}</span>
-                  </p>
-                  <p>
-                    <span className="text-slate-500">ID ERP:</span>{' '}
-                    <span className="font-mono">{detailClient.erp_client_id || '—'}</span>
-                  </p>
-                  <p>
-                    <span className="text-slate-500">Contacto principal:</span>{' '}
-                    {detailClient.contact_name || '—'}
-                    {detailClient.contact_email ? ` · ${detailClient.contact_email}` : ''}
-                    {detailClient.contact_phone ? ` · ${detailClient.contact_phone}` : ''}
-                  </p>
-                  <p>
-                    <span className="text-slate-500">Segmento / Emisor:</span>{' '}
-                    {detailClient.segment_name ?? '—'} / {detailClient.issuer_name ?? '—'}
-                  </p>
-                  <p className="tabular-nums">
-                    <span className="text-slate-500">Crédito:</span>{' '}
-                    {detailClient.credit_days} días
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    <AppBadge
-                      label={detailClient.active ? 'Activo' : 'Inactivo'}
-                      tone={detailClient.active ? 'success' : 'danger'}
-                    />
-                    {detailClient.stamp_on_issue ? (
-                      <AppBadge label="Timbrado automático" tone="info" />
-                    ) : null}
-                    {detailClient.exclude_suspension ? (
-                      <AppBadge label="Excluido de suspensión" tone="warning" />
-                    ) : null}
-                    <AppBadge
-                      label={`${detailClient.active_contracts_count} contratos activos`}
-                      tone="neutral"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <ClientContactsTab
-                  clientId={detailClient.id}
-                  clientName={detailClient.name}
-                />
-              )}
-
-              <AppModalFooter>
+              {canEdit('clients') ? (
                 <AppButton
                   type="button"
-                  variant="outline"
+                  variant="secondary"
                   className="rounded-xl"
-                  onClick={() => setDetailOpen(false)}
+                  onClick={() => {
+                    setDetailOpen(false)
+                    openEdit(detailClient)
+                  }}
                 >
-                  Cerrar
+                  <Pencil className="mr-1 h-4 w-4" /> Editar cliente
                 </AppButton>
-                {canCreate('contracts') ? (
-                  <AppButton
-                    type="button"
-                    className="rounded-xl"
-                    onClick={() => {
-                      setDetailOpen(false)
-                      navigate(`/contratos/nuevo?client_id=${detailClient.id}`)
-                    }}
-                  >
-                    <FilePlus2 className="mr-1 h-4 w-4" /> Crear contrato para este cliente
-                  </AppButton>
-                ) : null}
-              </AppModalFooter>
-            </div>
-          ) : null}
-        </AppModalContent>
-      </AppModal>
+              ) : null}
+              {canCreate('contracts') ? (
+                <AppButton
+                  type="button"
+                  className="rounded-xl"
+                  onClick={() => {
+                    setDetailOpen(false)
+                    navigate(`/contratos/nuevo?client_id=${detailClient.id}`)
+                  }}
+                >
+                  <FilePlus2 className="mr-1 h-4 w-4" /> Crear contrato para este cliente
+                </AppButton>
+              ) : null}
+            </>
+          ) : null
+        }
+      >
+        {detailClient ? (
+          <div className="space-y-5 text-sm">
+            <AppTabs
+              value={detailTab}
+              onChange={(id) => setDetailTab(id as 'general' | 'contacts')}
+              aria-label="Pestañas del detalle de cliente"
+              items={[
+                { id: 'general', label: 'Información general' },
+                {
+                  id: 'contacts',
+                  label: 'Contactos',
+                  badge: detailContacts.length,
+                },
+              ]}
+            />
+
+            {detailTab === 'general' ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <AppCard className="p-0">
+                  <AppCardHeader>
+                    <AppCardTitle>Identidad fiscal</AppCardTitle>
+                  </AppCardHeader>
+                  <AppCardContent className="space-y-3 text-sm">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                        Razón social
+                      </p>
+                      <p className="mt-0.5 font-medium text-slate-900 dark:text-white">
+                        {detailClient.legal_name}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                          RFC
+                        </p>
+                        <p className="mt-0.5 font-mono tabular-nums text-slate-900 dark:text-white">
+                          {detailClient.rfc}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                          ID ERP
+                        </p>
+                        <p className="mt-0.5 font-mono text-slate-900 dark:text-white">
+                          {detailClient.erp_client_id || '—'}
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                        Contacto principal
+                      </p>
+                      <p className="mt-0.5 text-slate-800 dark:text-zinc-200">
+                        {detailClient.contact_name || '—'}
+                      </p>
+                      {detailClient.contact_email || detailClient.contact_phone ? (
+                        <p className="mt-0.5 text-xs text-slate-500 dark:text-zinc-400">
+                          {[detailClient.contact_email, detailClient.contact_phone]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </p>
+                      ) : null}
+                    </div>
+                  </AppCardContent>
+                </AppCard>
+
+                <AppCard className="p-0">
+                  <AppCardHeader>
+                    <AppCardTitle>Reglas comerciales y cobranza</AppCardTitle>
+                  </AppCardHeader>
+                  <AppCardContent className="space-y-3 text-sm">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                          Segmento
+                        </p>
+                        <p className="mt-0.5 font-medium text-slate-900 dark:text-white">
+                          {detailClient.segment_name ?? '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                          Emisor facturador
+                        </p>
+                        <p className="mt-0.5 font-medium text-slate-900 dark:text-white">
+                          {detailClient.issuer_name ?? '—'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                          Crédito autorizado
+                        </p>
+                        <p className="mt-0.5 font-mono tabular-nums text-slate-900 dark:text-white">
+                          {detailClient.credit_days} días
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                          Contratos activos
+                        </p>
+                        <p className="mt-0.5 font-mono tabular-nums text-slate-900 dark:text-white">
+                          {detailClient.active_contracts_count}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      <AppBadge
+                        label={detailClient.active ? 'Activo' : 'Inactivo'}
+                        tone={detailClient.active ? 'success' : 'danger'}
+                      />
+                      {detailClient.stamp_on_issue ? (
+                        <AppBadge label="Timbrado automático" tone="info" />
+                      ) : null}
+                      {detailClient.exclude_suspension ? (
+                        <AppBadge label="Excluido de suspensión" tone="warning" />
+                      ) : null}
+                    </div>
+                  </AppCardContent>
+                </AppCard>
+              </div>
+            ) : (
+              <ClientContactsTab
+                clientId={detailClient.id}
+                clientName={detailClient.name}
+              />
+            )}
+          </div>
+        ) : null}
+      </AppDrawer>
+
+      {/* Modal compacto de Liga Mágica desde tabla de Clientes (z-[70]) */}
+      <ClientMagicLinkModal
+        open={Boolean(magicLinkClient)}
+        onOpenChange={(open) => {
+          if (!open) setMagicLinkClient(null)
+        }}
+        client={magicLinkClient}
+        onManageContacts={(client) => openDetail(client, 'contacts')}
+      />
     </div>
   )
 }

@@ -16,6 +16,7 @@ final class Result
         private int $httpCode = 200,
         /** @var array<string, mixed> */
         private array $meta = [],
+        private ?string $code = null,
     ) {
     }
 
@@ -64,14 +65,32 @@ final class Result
         return $clone;
     }
 
+    public function getCode(): ?string
+    {
+        return $this->code;
+    }
+
+    public function withCode(?string $code): self
+    {
+        $clone = clone $this;
+        $clone->code = $code;
+
+        return $clone;
+    }
+
     /** @return array<string, mixed> */
     public function toArray(): array
     {
-        return [
+        $out = [
             'success' => $this->success,
             'message' => $this->message,
             'data' => $this->data,
             'meta' => $this->meta,
         ];
+        if ($this->code !== null && $this->code !== '') {
+            $out['code'] = $this->code;
+        }
+
+        return $out;
     }
 }

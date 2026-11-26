@@ -21,6 +21,7 @@ const DEFAULT_PORTAL_COMM_ERROR = 'Error de comunicación con el servidor'
 type PortalApiEnvelope<T = unknown> = {
   success?: boolean
   message?: string
+  code?: string
   data?: T
   error_id?: string
 }
@@ -28,17 +29,19 @@ type PortalApiEnvelope<T = unknown> = {
 export class PortalApiError extends Error {
   status?: number
   errorId?: string
+  code?: string
 
-  constructor(message: string, status?: number, errorId?: string) {
+  constructor(message: string, status?: number, errorId?: string, code?: string) {
     super(message)
     this.name = 'PortalApiError'
     this.status = status
     this.errorId = errorId
+    this.code = code
   }
 }
 
 type PortalTokenGetter = () => string | null
-type PortalUnauthorizedHandler = () => void
+type PortalUnauthorizedHandler = (code?: string) => void
 
 let getPortalTokenInMemory: PortalTokenGetter = () => null
 let onPortalUnauthorized: PortalUnauthorizedHandler = () => undefined
@@ -54,18 +57,19 @@ export function configurePortalApiClient(
   onPortalUnauthorized = unauthorizedHandler
 }
 
+type PortalParsedResult<T> = {
+  data: T
+  message: string | null
+}
+
 /**
  * Parsea la respuesta del portal exigiendo JSON válido + HTTP OK + `success === true`.
  */
 async function parsePortalApiResponse<T>(
   response: Response,
   hadPortalBearer: boolean,
-): Promise<T> {
+): Promise<PortalParsedResult<T>> {
   const rawText = await response.text()
-
-  if (response.status === 401 && hadPortalBearer) {
-    onPortalUnauthorized()
-  }
 
   let parsed: PortalApiEnvelope<T> | null = null
   try {
@@ -74,7 +78,14 @@ async function parsePortalApiResponse<T>(
       parsed = JSON.parse(trimmed) as PortalApiEnvelope<T>
     }
   } catch {
+    if (response.status === 401 && hadPortalBearer) {
+      onPortalUnauthorized()
+    }
     throw new PortalApiError(DEFAULT_PORTAL_COMM_ERROR, response.status)
+  }
+
+  if (response.status === 401 && hadPortalBearer) {
+    onPortalUnauthorized(typeof parsed?.code === 'string' ? parsed.code : undefined)
   }
 
   if (parsed === null || typeof parsed !== 'object') {
@@ -91,16 +102,26 @@ async function parsePortalApiResponse<T>(
       parsed.error_id ? `${message} (Ref: ${parsed.error_id})` : message,
       response.status,
       parsed.error_id,
+      typeof parsed.code === 'string' ? parsed.code : undefined,
     )
   }
 
-  return parsed.data as T
+  return {
+    data: parsed.data as T,
+    message:
+      typeof parsed.message === 'string' && parsed.message.trim() !== ''
+        ? parsed.message.trim()
+        : null,
+  }
 }
 
 /**
- * Ejecuta una petición HTTP estrictamente bajo `/api/portal/*` con aislamiento total de sesión.
+ * Ejecuta una petición HTTP estrictamente bajo `/api/portal/*` devolviendo `data` y `message`.
  */
-export async function portalApiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function portalApiFetchEnvelope<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<PortalParsedResult<T>> {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   if (normalizedPath !== '/portal' && !normalizedPath.startsWith('/portal/')) {
     throw new PortalApiError('El cliente del portal solo puede consultar rutas /api/portal/*.', 403)
@@ -132,4 +153,12 @@ export async function portalApiFetch<T>(path: string, init: RequestInit = {}): P
   }
 
   return parsePortalApiResponse<T>(response, hadPortalBearer)
+}
+
+/**
+ * Ejecuta una petición HTTP estrictamente bajo `/api/portal/*` con aislamiento total de sesión.
+ */
+export async function portalApiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const result = await portalApiFetchEnvelope<T>(path, init)
+  return result.data
 }

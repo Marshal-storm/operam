@@ -4,6 +4,7 @@ import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { MrrImpactPreview } from '@/components/contracts/MrrImpactPreview'
 import { AppButton } from '@/components/ui/AppButton'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppInput, AppTextarea } from '@/components/ui/AppInput'
 import {
   AppModal,
@@ -226,138 +227,58 @@ export function LifecycleOperationModal({
   }
 
   const isDanger = operation === 'churn'
+  const formId = 'lifecycle-operation-form'
 
-  return (
-    <AppModal open={open} onOpenChange={onOpenChange}>
-      <AppModalContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-        <AppModalHeader>
-          <AppModalTitle>{TITLES[operation]}</AppModalTitle>
-          <AppModalDescription>{DESCRIPTIONS[operation]}</AppModalDescription>
-        </AppModalHeader>
-
-        <form className="space-y-4 px-1" onSubmit={form.handleSubmit(handleSubmit)}>
-          {operation === 'expansion' ? (
-            <>
-              <Controller
-                control={form.control}
-                name="expansion_mode"
-                render={({ field }) => (
-                  <div>
-                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Modo
-                    </label>
-                    <AppSelect
-                      value={field.value ?? 'add_service'}
-                      onValueChange={field.onChange}
-                      options={[
-                        { value: 'add_service', label: 'Agregar servicio nuevo' },
-                        { value: 'increase_qty', label: 'Aumentar cantidad de línea' },
-                      ]}
-                    />
-                  </div>
-                )}
-              />
-              {watched.expansion_mode === 'add_service' ? (
-                <>
-                  <FieldSelect
-                    label="Servicio recurrente"
-                    name="service_id"
-                    control={form.control}
-                    options={recurringServiceOptions}
-                    placeholder="Selecciona un servicio recurrente"
-                  />
-                  {recurringServiceOptions.length === 0 ? (
-                    <p className="text-xs text-slate-500">
-                      No hay servicios recurrentes activos en la lista de precios del contrato.
-                    </p>
-                  ) : null}
-                  <p className="text-xs leading-relaxed text-slate-500 dark:text-zinc-400">
-                    Los cargos únicos o por consumo (como horas de desarrollo o timbres extra) se
-                    gestionan desde el módulo de Solicitudes.
-                  </p>
-                  <FieldInput
-                    label="Cantidad"
-                    name="quantity"
-                    control={form.control}
-                    numericMode="integer"
-                    mono
-                  />
-                </>
-              ) : (
-                <>
-                  <FieldSelect
-                    label="Línea"
-                    name="contract_line_id"
-                    control={form.control}
-                    options={lineOptions}
-                    placeholder="Selecciona una línea"
-                  />
-                  <FieldInput
-                    label="Nueva cantidad"
-                    name="quantity"
-                    control={form.control}
-                    numericMode="integer"
-                    mono
-                  />
-                </>
-              )}
-            </>
-          ) : null}
-
-          {operation === 'contraction' ? (
+  const formFields = (
+    <form id={formId} className="min-w-0 space-y-4" onSubmit={form.handleSubmit(handleSubmit)}>
+      {operation === 'expansion' ? (
+        <>
+          <Controller
+            control={form.control}
+            name="expansion_mode"
+            render={({ field }) => (
+              <div className="min-w-0">
+                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Modo
+                </label>
+                <AppSelect
+                  value={field.value ?? 'add_service'}
+                  onValueChange={field.onChange}
+                  options={[
+                    { value: 'add_service', label: 'Agregar servicio nuevo' },
+                    { value: 'increase_qty', label: 'Aumentar cantidad de línea' },
+                  ]}
+                />
+              </div>
+            )}
+          />
+          {watched.expansion_mode === 'add_service' ? (
             <>
               <FieldSelect
-                label="Línea"
-                name="contract_line_id"
+                label="Servicio recurrente"
+                name="service_id"
                 control={form.control}
-                options={lineOptions}
-                placeholder="Selecciona una línea"
+                options={recurringServiceOptions}
+                placeholder="Selecciona un servicio recurrente"
               />
-              {selectedLine ? (
-                <p className="text-sm font-medium text-slate-700 dark:text-zinc-200">
-                  Cantidad actual:{' '}
-                  <span className="font-mono tabular-nums">{selectedLine.quantity}</span>
+              {recurringServiceOptions.length === 0 ? (
+                <p className="text-xs text-slate-500">
+                  No hay servicios recurrentes activos en la lista de precios del contrato.
                 </p>
               ) : null}
-              <Controller
+              <p className="text-xs leading-relaxed text-slate-500 dark:text-zinc-400">
+                Los cargos únicos o por consumo (como horas de desarrollo o timbres extra) se
+                gestionan desde el módulo de Solicitudes.
+              </p>
+              <FieldInput
+                label="Cantidad"
+                name="quantity"
                 control={form.control}
-                name="deactivate"
-                render={({ field }) => (
-                  <div>
-                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Acción
-                    </label>
-                    <AppSelect
-                      value={field.value ?? 'false'}
-                      onValueChange={field.onChange}
-                      options={[
-                        { value: 'false', label: 'Reducir cantidad' },
-                        { value: 'true', label: 'Dar de baja la línea' },
-                      ]}
-                    />
-                  </div>
-                )}
+                numericMode="integer"
+                mono
               />
-              {watched.deactivate !== 'true' ? (
-                <div>
-                  <FieldInput
-                    label="Nueva cantidad (unidades que quedarán)"
-                    name="quantity"
-                    control={form.control}
-                    numericMode="integer"
-                    mono
-                  />
-                  {contractionHint ? (
-                    <p className="mt-1.5 text-xs text-slate-500 dark:text-zinc-400">
-                      {contractionHint}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
             </>
-          ) : null}
-
-          {operation === 'price_adjustment' ? (
+          ) : (
             <>
               <FieldSelect
                 label="Línea"
@@ -367,111 +288,199 @@ export function LifecycleOperationModal({
                 placeholder="Selecciona una línea"
               />
               <FieldInput
-                label="Nuevo precio unitario"
-                name="unit_price"
+                label="Nueva cantidad"
+                name="quantity"
                 control={form.control}
-                numericMode="decimal"
+                numericMode="integer"
                 mono
-                placeholder="0.00"
               />
             </>
-          ) : null}
+          )}
+        </>
+      ) : null}
 
-          {operation === 'frequency_change' ? (
-            <Controller
-              control={form.control}
-              name="billing_frequency"
-              render={({ field }) => (
-                <div>
-                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Nueva frecuencia
-                  </label>
-                  <AppSelect
-                    value={field.value ?? 'monthly'}
-                    onValueChange={field.onChange}
-                    options={[
-                      { value: 'monthly', label: 'Mensual' },
-                      { value: 'annual', label: 'Anual' },
-                    ]}
-                  />
-                </div>
-              )}
-            />
+      {operation === 'contraction' ? (
+        <>
+          <FieldSelect
+            label="Línea"
+            name="contract_line_id"
+            control={form.control}
+            options={lineOptions}
+            placeholder="Selecciona una línea"
+          />
+          {selectedLine ? (
+            <p className="text-sm font-medium text-slate-700 dark:text-zinc-200">
+              Cantidad actual:{' '}
+              <span className="font-mono tabular-nums">{selectedLine.quantity}</span>
+            </p>
           ) : null}
-
-          {operation === 'issuer_transfer' ? (
-            <FieldSelect
-              label="Emisor destino"
-              name="issuer_id"
-              control={form.control}
-              options={issuerOptions}
-              placeholder="Selecciona emisor"
-            />
-          ) : null}
-
-          <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Fecha efectiva
-            </label>
-            <Controller
-              control={form.control}
-              name="effective_date"
-              render={({ field, fieldState }) => (
-                <AppInput
-                  type="date"
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={Boolean(fieldState.error)}
+          <Controller
+            control={form.control}
+            name="deactivate"
+            render={({ field }) => (
+              <div className="min-w-0">
+                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Acción
+                </label>
+                <AppSelect
+                  value={field.value ?? 'false'}
+                  onValueChange={field.onChange}
+                  options={[
+                    { value: 'false', label: 'Reducir cantidad' },
+                    { value: 'true', label: 'Dar de baja la línea' },
+                  ]}
                 />
-              )}
-            />
-            {form.formState.errors.effective_date ? (
-              <p className="mt-1 text-xs text-red-500">
-                {form.formState.errors.effective_date.message}
-              </p>
-            ) : null}
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Motivo
-            </label>
-            <Controller
-              control={form.control}
-              name="reason"
-              render={({ field, fieldState }) => (
-                <AppTextarea
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={Boolean(fieldState.error)}
-                  placeholder="Describe el motivo de la operación…"
-                />
-              )}
-            />
-            {form.formState.errors.reason ? (
-              <p className="mt-1 text-xs text-red-500">{form.formState.errors.reason.message}</p>
-            ) : null}
-          </div>
-
-          {showCouponBurnNotice ? (
-            <div
-              className={
-                'rounded-xl border px-3 py-2.5 text-xs leading-relaxed ' +
-                'border-amber-400/40 bg-amber-50/80 text-amber-800 ' +
-                'dark:border-amber-400/25 dark:bg-amber-500/10 dark:text-amber-200'
-              }
-            >
-              El cupón promocional solo aplicó en el alta inicial. Al modificar esta línea se
-              recalculará a precio neto sin cupón.
+              </div>
+            )}
+          />
+          {watched.deactivate !== 'true' ? (
+            <div className="min-w-0">
+              <FieldInput
+                label="Nueva cantidad (unidades que quedarán)"
+                name="quantity"
+                control={form.control}
+                numericMode="integer"
+                mono
+              />
+              {contractionHint ? (
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-zinc-400">
+                  {contractionHint}
+                </p>
+              ) : null}
             </div>
           ) : null}
+        </>
+      ) : null}
 
-          <MrrImpactPreview
-            mrrBefore={preview.before}
-            mrrDelta={preview.delta}
-            mrrAfter={preview.after}
-            neutral={preview.neutral}
+      {operation === 'price_adjustment' ? (
+        <>
+          <FieldSelect
+            label="Línea"
+            name="contract_line_id"
+            control={form.control}
+            options={lineOptions}
+            placeholder="Selecciona una línea"
           />
+          <FieldInput
+            label="Nuevo precio unitario"
+            name="unit_price"
+            control={form.control}
+            numericMode="decimal"
+            mono
+            placeholder="0.00"
+          />
+        </>
+      ) : null}
+
+      {operation === 'frequency_change' ? (
+        <Controller
+          control={form.control}
+          name="billing_frequency"
+          render={({ field }) => (
+            <div className="min-w-0">
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Nueva frecuencia
+              </label>
+              <AppSelect
+                value={field.value ?? 'monthly'}
+                onValueChange={field.onChange}
+                options={[
+                  { value: 'monthly', label: 'Mensual' },
+                  { value: 'annual', label: 'Anual' },
+                ]}
+              />
+            </div>
+          )}
+        />
+      ) : null}
+
+      {operation === 'issuer_transfer' ? (
+        <FieldSelect
+          label="Emisor destino"
+          name="issuer_id"
+          control={form.control}
+          options={issuerOptions}
+          placeholder="Selecciona emisor"
+        />
+      ) : null}
+
+      <div className="min-w-0">
+        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          Fecha efectiva
+        </label>
+        <Controller
+          control={form.control}
+          name="effective_date"
+          render={({ field, fieldState }) => (
+            <AppInput
+              type="date"
+              value={field.value}
+              onChange={field.onChange}
+              error={Boolean(fieldState.error)}
+            />
+          )}
+        />
+        {form.formState.errors.effective_date ? (
+          <p className="mt-1 text-xs text-red-500">
+            {form.formState.errors.effective_date.message}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="min-w-0">
+        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          Motivo
+        </label>
+        <Controller
+          control={form.control}
+          name="reason"
+          render={({ field, fieldState }) => (
+            <AppTextarea
+              value={field.value}
+              onChange={field.onChange}
+              error={Boolean(fieldState.error)}
+              placeholder="Describe el motivo de la operación…"
+            />
+          )}
+        />
+        {form.formState.errors.reason ? (
+          <p className="mt-1 text-xs text-red-500">{form.formState.errors.reason.message}</p>
+        ) : null}
+      </div>
+
+      {showCouponBurnNotice ? (
+        <div
+          className={
+            'rounded-xl border px-3 py-2.5 text-xs leading-relaxed ' +
+            'border-amber-400/40 bg-amber-50/80 text-amber-800 ' +
+            'dark:border-amber-400/25 dark:bg-amber-500/10 dark:text-amber-200'
+          }
+        >
+          El cupón promocional solo aplicó en el alta inicial. Al modificar esta línea se
+          recalculará a precio neto sin cupón.
+        </div>
+      ) : null}
+
+      <MrrImpactPreview
+        mrrBefore={preview.before}
+        mrrDelta={preview.delta}
+        mrrAfter={preview.after}
+        neutral={preview.neutral}
+      />
+    </form>
+  )
+
+  // Confirmación crítica de cancelación (Churn) permanece en AppModal (z-[70])
+  if (isDanger) {
+    return (
+      <AppModal open={open} onOpenChange={onOpenChange}>
+        <AppModalContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <AppModalHeader>
+            <AppModalTitle>{TITLES[operation]}</AppModalTitle>
+            <AppModalDescription>{DESCRIPTIONS[operation]}</AppModalDescription>
+          </AppModalHeader>
+
+          {formFields}
 
           <AppModalFooter>
             <AppButton
@@ -482,17 +491,40 @@ export function LifecycleOperationModal({
             >
               Cancelar
             </AppButton>
-            <AppButton
-              type="submit"
-              variant={isDanger ? 'danger' : 'primary'}
-              isLoading={isSubmitting}
-            >
-              Confirmar
+            <AppButton type="submit" form={formId} variant="danger" isLoading={isSubmitting}>
+              Confirmar cancelación
             </AppButton>
           </AppModalFooter>
-        </form>
-      </AppModalContent>
-    </AppModal>
+        </AppModalContent>
+      </AppModal>
+    )
+  }
+
+  return (
+    <AppDrawer
+      open={open}
+      onClose={() => onOpenChange(false)}
+      size="lg"
+      title={TITLES[operation]}
+      description={DESCRIPTIONS[operation]}
+      footer={
+        <>
+          <AppButton
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isSubmitting}
+          >
+            Cancelar
+          </AppButton>
+          <AppButton type="submit" form={formId} variant="primary" isLoading={isSubmitting}>
+            Confirmar
+          </AppButton>
+        </>
+      }
+    >
+      {formFields}
+    </AppDrawer>
   )
 }
 
@@ -547,7 +579,7 @@ function FieldSelect({
   placeholder?: string
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
         {label}
       </label>

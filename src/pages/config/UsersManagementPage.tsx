@@ -5,15 +5,9 @@ import { useNavigate } from 'react-router-dom'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppFilterBar } from '@/components/ui/AppFilterBar'
 import { AppInput } from '@/components/ui/AppInput'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
 import { AppRowActionsMenu } from '@/components/ui/AppRowActionsMenu'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { AppSwitch } from '@/components/ui/AppSwitch'
@@ -457,106 +451,116 @@ export function UsersManagementPage() {
         )}
       </AppCard>
 
-      <AppModal open={modalOpen} onOpenChange={setModalOpen}>
-        <AppModalContent>
-          <AppModalHeader>
-            <AppModalTitle>{editing ? 'Editar usuario' : 'Nuevo usuario'}</AppModalTitle>
-            <AppModalDescription>
-              Asigna rol y el segmento que podrá ver en todo el ERP.
-            </AppModalDescription>
-          </AppModalHeader>
-          <div className="space-y-3">
-            <label className="block text-sm">
-              Nombre
-              <AppInput
-                withLabelSpacing
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              />
-            </label>
-            <label className="block text-sm">
-              Correo
-              <AppInput
-                type="email"
-                withLabelSpacing
-                value={form.email}
-                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-              />
-            </label>
-            <label className="block text-sm">
-              Contraseña{editing ? ' (opcional)' : ''}
-              <AppInput
-                type="password"
-                withLabelSpacing
-                value={form.password}
-                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-              />
-            </label>
-            <label className="block text-sm">
-              Rol
-              <AppSelect
-                withLabelSpacing
-                value={form.role_id || undefined}
-                onValueChange={(v) => setForm((f) => ({ ...f, role_id: v }))}
-                placeholder="Selecciona un rol…"
-                options={roles.map((role) => ({
-                  value: String(role.id),
-                  label: role.name,
-                }))}
-              />
-            </label>
-            <label className="block text-sm">
-              Segmento asignado
-              <AppSelect
-                withLabelSpacing
-                value={form.segment_choice}
-                onValueChange={(v) =>
-                  setForm((f) => ({
-                    ...f,
-                    segment_choice: v,
-                  }))
-                }
-                options={segmentFormOptions}
-              />
-            </label>
-            <label className="flex items-center gap-3 text-sm">
-              <AppSwitch
-                checked={form.is_active}
-                onCheckedChange={(next) => setForm((f) => ({ ...f, is_active: next }))}
-                label="Usuario activo"
-              />
-              Usuario activo
-            </label>
-            <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
-              <label className="flex items-start gap-3 text-sm">
-                <AppSwitch
-                  checked={form.can_authorize_exceptions}
-                  onCheckedChange={(next) =>
-                    setForm((f) => ({ ...f, can_authorize_exceptions: next }))
-                  }
-                  label="Puede autorizar excepciones"
-                />
-                <span>
-                  <span className="font-medium">
-                    Puede autorizar excepciones comerciales (RF-11.4)
-                  </span>
-                  <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-                    Permite brincarse políticas comerciales (saldo vencido, fechas de baja,
-                    suspensión) registrando motivo obligatorio en el reporte de Dirección
-                  </span>
-                </span>
-              </label>
-            </div>
+      <AppDrawer
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        size="lg"
+        title={editing ? 'Editar usuario' : 'Nuevo usuario'}
+        description="Asigna rol y el segmento que podrá ver en todo el ERP."
+        footer={
+          <>
             <AppButton
-              className="w-full"
+              type="button"
+              variant="outline"
+              disabled={saveMutation.isPending}
+              onClick={() => setModalOpen(false)}
+            >
+              Cancelar
+            </AppButton>
+            <AppButton
+              type="button"
               isLoading={saveMutation.isPending}
               onClick={() => saveMutation.mutate()}
             >
               {editing ? 'Guardar usuario' : 'Crear usuario'}
             </AppButton>
+          </>
+        }
+      >
+        <div className="min-w-0 space-y-4">
+          <label className="block min-w-0 text-sm">
+            Nombre
+            <AppInput
+              withLabelSpacing
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            />
+          </label>
+          <label className="block min-w-0 text-sm">
+            Correo
+            <AppInput
+              type="email"
+              withLabelSpacing
+              value={form.email}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            />
+          </label>
+          <label className="block min-w-0 text-sm">
+            Contraseña{editing ? ' (opcional)' : ''}
+            <AppInput
+              type="password"
+              withLabelSpacing
+              value={form.password}
+              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+            />
+          </label>
+          <label className="block min-w-0 text-sm">
+            Rol
+            <AppSelect
+              withLabelSpacing
+              value={form.role_id || undefined}
+              onValueChange={(v) => setForm((f) => ({ ...f, role_id: v }))}
+              placeholder="Selecciona un rol…"
+              options={roles.map((role) => ({
+                value: String(role.id),
+                label: role.name,
+              }))}
+            />
+          </label>
+          <label className="block min-w-0 text-sm">
+            Segmento asignado
+            <AppSelect
+              withLabelSpacing
+              value={form.segment_choice}
+              onValueChange={(v) =>
+                setForm((f) => ({
+                  ...f,
+                  segment_choice: v,
+                }))
+              }
+              options={segmentFormOptions}
+            />
+          </label>
+          <label className="flex items-center gap-3 text-sm">
+            <AppSwitch
+              checked={form.is_active}
+              onCheckedChange={(next) => setForm((f) => ({ ...f, is_active: next }))}
+              label="Usuario activo"
+            />
+            Usuario activo
+          </label>
+          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+            <label className="flex items-start gap-3 text-sm">
+              <AppSwitch
+                checked={form.can_authorize_exceptions}
+                onCheckedChange={(next) =>
+                  setForm((f) => ({ ...f, can_authorize_exceptions: next }))
+                }
+                label="Puede autorizar excepciones"
+              />
+              <span>
+                <span className="font-medium">
+                  Puede autorizar excepciones comerciales (RF-11.4)
+                </span>
+                <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                  Permite brincarse políticas comerciales (saldo vencido, fechas de baja,
+                  suspensión) registrando motivo obligatorio en el reporte de Dirección
+                </span>
+              </span>
+            </label>
           </div>
-        </AppModalContent>
-      </AppModal>
+        </div>
+      </AppDrawer>
     </div>
   )
 }

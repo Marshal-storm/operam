@@ -87,7 +87,7 @@ export function AppSelect({
   const selected = options.find((opt) => opt.value === value)
 
   return (
-    <div className={cn(className)}>
+    <div className={cn('min-w-0 w-full max-w-full', className)}>
       <SelectPrimitive.Root
         value={value === '' || value === undefined ? undefined : value}
         defaultValue={defaultValue}
@@ -105,17 +105,19 @@ export function AppSelect({
           aria-label={ariaLabel}
           className={cn(
             withLabelSpacing ? APP_FIELD_MT_CLASS : APP_FIELD_CLASS,
-            'flex items-center justify-between gap-2 text-left',
+            'flex w-full min-w-0 max-w-full items-center justify-between gap-2 overflow-hidden text-left',
             'data-[placeholder]:text-slate-400 dark:data-[placeholder]:text-zinc-500',
             error && APP_FIELD_ERROR_CLASS,
             triggerClassName,
           )}
         >
-          <span className="flex min-w-0 items-center gap-2 truncate">
+          <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
             {selected?.tone || selected?.color ? (
               <OptionDot tone={selected.tone} color={selected.color} />
             ) : null}
-            <SelectPrimitive.Value placeholder={placeholder} />
+            <span className="block min-w-0 flex-1 truncate text-left">
+              <SelectPrimitive.Value placeholder={placeholder} />
+            </span>
           </span>
           <SelectPrimitive.Icon asChild>
             <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
@@ -128,7 +130,7 @@ export function AppSelect({
             sideOffset={6}
             className={cn(
               APP_POPOVER_CLASS,
-              'max-h-[min(320px,var(--radix-select-content-available-height))] w-[var(--radix-select-trigger-width)] min-w-[12rem]',
+              'z-[80] max-h-[min(320px,var(--radix-select-content-available-height))] w-[var(--radix-select-trigger-width)] max-w-[min(var(--radix-select-trigger-width),calc(100vw-2rem))]',
               'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
             )}
           >
@@ -163,13 +165,15 @@ export function AppSelect({
                     value={opt.value}
                     disabled={opt.disabled}
                     className={cn(
-                      'relative flex cursor-pointer select-none items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-sm outline-none',
+                      'relative flex w-full min-w-0 cursor-pointer select-none items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-sm outline-none',
                       'data-[highlighted]:bg-slate-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-40',
                       'dark:data-[highlighted]:bg-white/[0.08]',
                     )}
                   >
                     <OptionDot tone={opt.tone} color={opt.color} />
-                    <SelectPrimitive.ItemText>{opt.label}</SelectPrimitive.ItemText>
+                    <span className="min-w-0 flex-1 break-words">
+                      <SelectPrimitive.ItemText>{opt.label}</SelectPrimitive.ItemText>
+                    </span>
                     <SelectPrimitive.ItemIndicator className="absolute right-2 inline-flex">
                       <Check className="h-4 w-4 text-[#0066FF] dark:text-[#0A84FF]" />
                     </SelectPrimitive.ItemIndicator>

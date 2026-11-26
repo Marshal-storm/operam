@@ -3,15 +3,8 @@ import { useEffect } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { AppButton } from '@/components/ui/AppButton'
+import { AppDrawer } from '@/components/ui/AppDrawer'
 import { AppCurrencyInput, AppInput, AppTextarea } from '@/components/ui/AppInput'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalFooter,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
 import { AppSelect } from '@/components/ui/AppSelect'
 import { useSegments } from '@/hooks/useSegments'
 import { moneySchema } from '@/lib/validationSchemas'
@@ -132,133 +125,129 @@ export function SegmentCostModal({
   })
 
   return (
-    <AppModal open={open} onOpenChange={onOpenChange}>
-      <AppModalContent>
-        <AppModalHeader>
-          <AppModalTitle>
-            {editing ? 'Editar costo mensual' : 'Registrar costo mensual'}
-          </AppModalTitle>
-          <AppModalDescription>
-            Captura costos operativos del segmento (servidores, nómina, PAC, otros).
-          </AppModalDescription>
-        </AppModalHeader>
-
-        <form className="space-y-3" onSubmit={handleSubmit}>
-          <div>
-            <span className={FIELD_LABEL}>Segmento</span>
-            <Controller
-              control={form.control}
-              name="segment_id"
-              render={({ field }) => (
-                <AppSelect
-                  value={field.value || undefined}
-                  onValueChange={field.onChange}
-                  disabled={isSegmentLocked}
-                  placeholder="Selecciona segmento…"
-                  options={segments.map((s) => ({
-                    value: String(s.id),
-                    label: s.name,
-                  }))}
-                  error={Boolean(form.formState.errors.segment_id)}
-                  aria-label="Segmento"
-                />
-              )}
-            />
-            {form.formState.errors.segment_id && (
-              <p className="mt-1 text-xs text-red-500">
-                {form.formState.errors.segment_id.message}
-              </p>
+    <AppDrawer
+      open={open}
+      onClose={() => onOpenChange(false)}
+      size="md"
+      title={editing ? 'Editar costo mensual' : 'Registrar costo mensual'}
+      description="Captura costos operativos del segmento (servidores, nómina, PAC, otros)."
+      footer={
+        <>
+          <AppButton
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isSaving}
+          >
+            Cancelar
+          </AppButton>
+          <AppButton type="submit" form="segment-cost-form" isLoading={isSaving}>
+            {editing ? 'Guardar cambios' : 'Registrar costo'}
+          </AppButton>
+        </>
+      }
+    >
+      <form id="segment-cost-form" className="min-w-0 space-y-4" onSubmit={handleSubmit}>
+        <div className="min-w-0">
+          <span className={FIELD_LABEL}>Segmento</span>
+          <Controller
+            control={form.control}
+            name="segment_id"
+            render={({ field }) => (
+              <AppSelect
+                value={field.value || undefined}
+                onValueChange={field.onChange}
+                disabled={isSegmentLocked}
+                placeholder="Selecciona segmento…"
+                options={segments.map((s) => ({
+                  value: String(s.id),
+                  label: s.name,
+                }))}
+                error={Boolean(form.formState.errors.segment_id)}
+                aria-label="Segmento"
+              />
             )}
-          </div>
+          />
+          {form.formState.errors.segment_id && (
+            <p className="mt-1 text-xs text-red-500">
+              {form.formState.errors.segment_id.message}
+            </p>
+          )}
+        </div>
 
-          <div>
-            <span className={FIELD_LABEL}>Mes</span>
-            <AppInput
-              type="month"
-              withLabelSpacing
-              error={Boolean(form.formState.errors.month)}
-              {...form.register('month')}
-            />
-            {form.formState.errors.month && (
-              <p className="mt-1 text-xs text-red-500">
-                {form.formState.errors.month.message}
-              </p>
+        <div className="min-w-0">
+          <span className={FIELD_LABEL}>Mes</span>
+          <AppInput
+            type="month"
+            withLabelSpacing
+            error={Boolean(form.formState.errors.month)}
+            {...form.register('month')}
+          />
+          {form.formState.errors.month && (
+            <p className="mt-1 text-xs text-red-500">
+              {form.formState.errors.month.message}
+            </p>
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <span className={FIELD_LABEL}>Categoría</span>
+          <Controller
+            control={form.control}
+            name="category"
+            render={({ field }) => (
+              <AppSelect
+                value={field.value}
+                onValueChange={field.onChange}
+                options={CATEGORY_OPTIONS}
+                aria-label="Categoría"
+              />
             )}
-          </div>
+          />
+        </div>
 
-          <div>
-            <span className={FIELD_LABEL}>Categoría</span>
-            <Controller
-              control={form.control}
-              name="category"
-              render={({ field }) => (
-                <AppSelect
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  options={CATEGORY_OPTIONS}
-                  aria-label="Categoría"
-                />
-              )}
-            />
-          </div>
+        <div className="min-w-0">
+          <span className={FIELD_LABEL}>Concepto</span>
+          <AppInput
+            withLabelSpacing
+            placeholder="Ej. Servidores GCP, Nómina soporte…"
+            error={Boolean(form.formState.errors.concept)}
+            {...form.register('concept')}
+          />
+          {form.formState.errors.concept && (
+            <p className="mt-1 text-xs text-red-500">
+              {form.formState.errors.concept.message}
+            </p>
+          )}
+        </div>
 
-          <div>
-            <span className={FIELD_LABEL}>Concepto</span>
-            <AppInput
-              withLabelSpacing
-              placeholder="Ej. Servidores GCP, Nómina soporte…"
-              error={Boolean(form.formState.errors.concept)}
-              {...form.register('concept')}
-            />
-            {form.formState.errors.concept && (
-              <p className="mt-1 text-xs text-red-500">
-                {form.formState.errors.concept.message}
-              </p>
+        <div className="min-w-0">
+          <span className={FIELD_LABEL}>Monto (MXN)</span>
+          <Controller
+            control={form.control}
+            name="amount"
+            render={({ field }) => (
+              <AppCurrencyInput
+                withLabelSpacing
+                placeholder="0.00"
+                value={field.value}
+                onChange={field.onChange}
+                error={Boolean(form.formState.errors.amount)}
+              />
             )}
-          </div>
+          />
+          {form.formState.errors.amount && (
+            <p className="mt-1 text-xs text-red-500">
+              {form.formState.errors.amount.message}
+            </p>
+          )}
+        </div>
 
-          <div>
-            <span className={FIELD_LABEL}>Monto (MXN)</span>
-            <Controller
-              control={form.control}
-              name="amount"
-              render={({ field }) => (
-                <AppCurrencyInput
-                  withLabelSpacing
-                  placeholder="0.00"
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={Boolean(form.formState.errors.amount)}
-                />
-              )}
-            />
-            {form.formState.errors.amount && (
-              <p className="mt-1 text-xs text-red-500">
-                {form.formState.errors.amount.message}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <span className={FIELD_LABEL}>Notas (opcional)</span>
-            <AppTextarea withLabelSpacing rows={3} {...form.register('notes')} />
-          </div>
-
-          <AppModalFooter>
-            <AppButton
-              type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-              disabled={isSaving}
-            >
-              Cancelar
-            </AppButton>
-            <AppButton type="submit" isLoading={isSaving}>
-              {editing ? 'Guardar cambios' : 'Registrar costo'}
-            </AppButton>
-          </AppModalFooter>
-        </form>
-      </AppModalContent>
-    </AppModal>
+        <div className="min-w-0">
+          <span className={FIELD_LABEL}>Notas (opcional)</span>
+          <AppTextarea withLabelSpacing rows={3} {...form.register('notes')} />
+        </div>
+      </form>
+    </AppDrawer>
   )
 }

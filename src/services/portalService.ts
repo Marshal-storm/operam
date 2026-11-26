@@ -1,4 +1,4 @@
-import { portalApiFetch } from '@/lib/portalApiClient'
+import { portalApiFetch, portalApiFetchEnvelope } from '@/lib/portalApiClient'
 import type {
   PortalCheckoutInput,
   PortalCheckoutResult,
@@ -7,8 +7,10 @@ import type {
   PortalCreateRequestInput,
   PortalInvoicesPage,
   PortalInvoicesQuery,
+  PortalKeepalivePayload,
   PortalOverview,
   PortalPaymentLinkResult,
+  PortalPublicConfig,
   PortalRequest,
   PortalRequestLinkResult,
   PortalSandboxConfirmResult,
@@ -26,9 +28,10 @@ import type {
  * aislado del Panel Interno (jamás toca `AuthContext` ni `localStorage`).
  */
 
-/** Mensaje genérico oficial (idéntico al del backend; evita enumerar correos). */
-export const PORTAL_REQUEST_LINK_MESSAGE =
-  'Si tu correo está registrado y autorizado, recibirás una liga de acceso válida por 15 minutos.'
+/** Formatea una vigencia en minutos respetando singular/plural en español. */
+export function formatPortalMinutes(minutes: number): string {
+  return minutes === 1 ? '1 minuto' : `${minutes} minutos`
+}
 
 function toQuery(params: Record<string, string | number | undefined>): string {
   const entries = Object.entries(params).filter(
@@ -40,13 +43,31 @@ function toQuery(params: Record<string, string | number | undefined>): string {
 
 /* ── Autenticación sin contraseña ─────────────────────────────────────────────────────── */
 
+/** Configuración pública de solo lectura (TTL de liga mágica e inactividad desde MySQL). */
+export async function fetchPortalPublicConfig(): Promise<PortalPublicConfig> {
+  return portalApiFetch<PortalPublicConfig>('/portal/auth/config')
+}
+
 export async function requestPortalLink(email: string): Promise<PortalRequestLinkResult> {
-  const data = await portalApiFetch<{ sandbox_preview_url?: string } | null>(
-    '/portal/auth/request-link',
-    { method: 'POST', body: JSON.stringify({ email }) },
-  )
+  const { data, message } = await portalApiFetchEnvelope<{
+    ttl_minutes?: number
+    sandbox_preview_url?: string
+  } | null>('/portal/auth/request-link', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+  const ttlMinutes =
+    typeof data?.ttl_minutes === 'number' && Number.isFinite(data.ttl_minutes)
+      ? Math.trunc(data.ttl_minutes)
+      : null
+  const fallbackMessage =
+    ttlMinutes !== null
+      ? `Si tu correo está registrado y autorizado, recibirás una liga de acceso válida por ${formatPortalMinutes(ttlMinutes)}.`
+      : 'Si tu correo está registrado y autorizado, recibirás una liga de acceso en tu correo.'
+
   return {
-    message: PORTAL_REQUEST_LINK_MESSAGE,
+    message: message ?? fallbackMessage,
+    ttl_minutes: ttlMinutes,
     sandbox_preview_url: data?.sandbox_preview_url ?? null,
   }
 }
@@ -61,6 +82,11 @@ export async function exchangePortalToken(token: string): Promise<PortalSessionP
 /** Restaura la sesión con la cookie HttpOnly enjaulada en `/api/portal` (sin Bearer tras F5). */
 export async function fetchPortalSession(): Promise<PortalSessionPayload> {
   return portalApiFetch<PortalSessionPayload>('/portal/auth/me')
+}
+
+/** Renueva la ventana deslizante de inactividad en el servidor sin saturar la API. */
+export async function keepalivePortalSession(): Promise<PortalKeepalivePayload> {
+  return portalApiFetch<PortalKeepalivePayload>('/portal/auth/keepalive', { method: 'POST' })
 }
 
 export async function logoutPortal(): Promise<void> {

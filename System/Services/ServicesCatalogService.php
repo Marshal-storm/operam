@@ -218,6 +218,13 @@ final class ServicesCatalogService extends ModelService
             $builder->where('s.is_active', false);
         }
 
+        $isPublic = strtolower(trim((string) ($query['is_public'] ?? '')));
+        if (in_array($isPublic, ['1', 'true', 'yes', 'public', 'visible'], true)) {
+            $builder->where('s.is_public', true);
+        } elseif (in_array($isPublic, ['0', 'false', 'no', 'private', 'internal'], true)) {
+            $builder->where('s.is_public', false);
+        }
+
         $total = (clone $builder)->count();
         $rows = $builder
             ->orderByRaw('COALESCE(s.updated_at, s.created_at) DESC')

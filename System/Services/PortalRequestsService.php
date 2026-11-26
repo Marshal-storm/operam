@@ -8,7 +8,6 @@ use Illuminate\Database\Capsule\Manager as Capsule;
 use InvalidArgumentException;
 use System\Core\Context;
 use System\Core\Result;
-use System\Support\AuditLogger;
 use System\Support\ContractExigibleResolver;
 use System\Support\FinancialCalculator;
 use System\Support\Integrations\OutboxDispatcher;
@@ -233,23 +232,6 @@ final class PortalRequestsService extends PortalScopedService
                 break;
             }
         }
-
-        AuditLogger::log(
-            $this->auditActor(),
-            self::AUDIT_MODULE,
-            'service_requests',
-            (string) $requestId,
-            'create',
-            sprintf('Solicitud %s desde el Portal: %s', (string) ($created['folio'] ?? '#' . $requestId), self::TYPE_LABELS[$portalType]),
-            null,
-            [
-                'origin' => 'portal',
-                'portal_request_type' => $portalType,
-                'request_type' => $prepared['request_type'],
-                'subtotal' => $prepared['subtotal'],
-                'contract_id' => (int) $contract->id,
-            ],
-        );
 
         return Result::ok($created ?? ['id' => $requestId], 'Solicitud enviada', 201);
     }

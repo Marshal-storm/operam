@@ -15,12 +15,26 @@ export type PortalSessionPayload = {
   token: string
   token_type: 'Bearer'
   expires_in: number
+  idle_timeout_minutes?: number
+  expires_at?: string
   profile: PortalProfile
+}
+
+export type PortalKeepalivePayload = {
+  expires_at: string
+  idle_timeout_minutes: number
+}
+
+/** Configuración pública del portal (`GET /api/portal/auth/config`). */
+export type PortalPublicConfig = {
+  magic_link_ttl_minutes: number
+  idle_timeout_minutes: number
 }
 
 /** Respuesta genérica de `request-link`; la URL de prueba solo llega en sandbox local. */
 export type PortalRequestLinkResult = {
   message: string
+  ttl_minutes: number | null
   sandbox_preview_url: string | null
 }
 

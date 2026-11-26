@@ -43,6 +43,8 @@ export type SystemSettingsSnapshot = {
   audit_logs_enabled: boolean
   audit_logs_total: number
   audit_logs_oldest_at: string | null
+  portal_idle_timeout_minutes: number
+  portal_magic_link_ttl_minutes: number
 }
 
 export type AuditPurgeResult = {
@@ -149,11 +151,15 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function normalizeSettings(raw: unknown): SystemSettingsSnapshot {
   const row = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const oldest = row.audit_logs_oldest_at
+  const idleRaw = Number(row.portal_idle_timeout_minutes ?? 5)
+  const ttlRaw = Number(row.portal_magic_link_ttl_minutes ?? 15)
   return {
     audit_logs_enabled: asBool(row.audit_logs_enabled),
     audit_logs_total: Number(row.audit_logs_total ?? 0),
     audit_logs_oldest_at:
       oldest == null || oldest === '' ? null : String(oldest),
+    portal_idle_timeout_minutes: Number.isFinite(idleRaw) && idleRaw >= 1 ? Math.trunc(idleRaw) : 5,
+    portal_magic_link_ttl_minutes: Number.isFinite(ttlRaw) && ttlRaw >= 1 ? Math.trunc(ttlRaw) : 15,
   }
 }
 
@@ -187,11 +193,13 @@ export async function fetchSystemSettings(): Promise<SystemSettingsSnapshot> {
 
 /** PUT /api/system-settings */
 export async function updateSystemSettings(input: {
-  audit_logs_enabled: boolean
+  audit_logs_enabled?: boolean
+  portal_idle_timeout_minutes?: number
+  portal_magic_link_ttl_minutes?: number
 }): Promise<SystemSettingsSnapshot> {
   const raw = await apiRequest<unknown>('system-settings', {
     method: 'PUT',
-    body: JSON.stringify({ audit_logs_enabled: input.audit_logs_enabled }),
+    body: JSON.stringify(input),
   })
   return normalizeSettings(raw)
 }

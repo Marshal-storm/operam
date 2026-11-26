@@ -21,7 +21,7 @@ type PortalLinkModalProps = {
 
 /**
  * Modal de la acción "Generar liga mágica de portal" (RF-7.1).
- * Muestra la URL de un solo uso (15 min) con copiar y abrir en pestaña nueva.
+ * Muestra la URL de un solo uso con vigencia dinámica, copiar y abrir en pestaña nueva.
  */
 export function PortalLinkModal({ open, onOpenChange, link }: PortalLinkModalProps) {
   const toast = useToast()
@@ -47,7 +47,9 @@ export function PortalLinkModal({ open, onOpenChange, link }: PortalLinkModalPro
     window.open(link.url, '_blank', 'noopener,noreferrer')
   }
 
-  const minutes = link ? Math.round(link.expires_in_seconds / 60) : 15
+  const minutes = link
+    ? (link.ttl_minutes ?? Math.max(1, Math.round(link.expires_in_seconds / 60)))
+    : null
 
   return (
     <AppModal open={open} onOpenChange={onOpenChange}>
@@ -65,8 +67,17 @@ export function PortalLinkModal({ open, onOpenChange, link }: PortalLinkModalPro
           <div className="flex items-start gap-2 rounded-2xl border border-amber-500/25 bg-amber-500/[0.08] p-3 text-xs text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/[0.08] dark:text-amber-200">
             <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
             <p>
-              Cada liga es de un solo uso ({minutes} min). Si la abres en otra pestaña para probar,
-              quedará consumida y deberás generar una nueva para enviársela al cliente.
+              {minutes !== null ? (
+                <>
+                  Cada liga es de un solo uso ({minutes} min). Si la abres en otra pestaña para probar,
+                  quedará consumida y deberás generar una nueva para enviársela al cliente.
+                </>
+              ) : (
+                <>
+                  Cada liga es de un solo uso. Si la abres en otra pestaña para probar,
+                  quedará consumida y deberás generar una nueva para enviársela al cliente.
+                </>
+              )}
             </p>
           </div>
 

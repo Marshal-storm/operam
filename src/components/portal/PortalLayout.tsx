@@ -1,4 +1,5 @@
 import {
+  Clock,
   ClipboardList,
   CreditCard,
   FileText,
@@ -11,12 +12,17 @@ import {
 } from 'lucide-react'
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { AppButton } from '@/components/ui/AppButton'
+import {
+  AppModal,
+  AppModalContent,
+  AppModalDescription,
+  AppModalFooter,
+  AppModalHeader,
+  AppModalTitle,
+} from '@/components/ui/AppModal'
 import { PortalAmbientBackground } from '@/components/portal/PortalAmbientBackground'
 import { PortalScreenSkeleton } from '@/components/portal/PortalStates'
-import {
-  PORTAL_GLASS_BAR_CLASS,
-  PORTAL_TOUCH_TARGET_CLASS,
-} from '@/components/portal/portalTokens'
+import { PORTAL_TOUCH_TARGET_CLASS } from '@/components/portal/portalTokens'
 import { useTheme } from '@/context/ThemeContext'
 import { usePortalAuth } from '@/context/PortalAuthContext'
 import { initialsOf } from '@/lib/portalLabels'
@@ -65,20 +71,15 @@ function Avatar({ name }: { name: string }) {
  * Layout del Portal del Cliente: píldora flotante en escritorio y dock estilo iOS en móvil.
  */
 export function PortalLayout() {
-  const { profile, logout } = usePortalAuth()
+  const { profile, logout, inactivityWarningSeconds, stayConnected } = usePortalAuth()
   const contactName = profile?.contact_name || profile?.client_name || 'Cliente'
 
   return (
     <div className="relative min-h-screen bg-[#F5F7FB] font-sans text-[#090D16] dark:bg-black dark:text-zinc-50">
       <PortalAmbientBackground />
 
-      {/* Escritorio: píldora flotante */}
-      <header
-        className={cn(
-          'sticky top-3 z-40 mx-auto mt-3 hidden max-w-5xl items-center justify-between gap-4 rounded-full px-3 py-2 md:flex',
-          PORTAL_GLASS_BAR_CLASS,
-        )}
-      >
+      {/* Escritorio: píldora flotante iOS Liquid Glass */}
+      <header className="sticky top-3 z-40 mx-auto mt-3 hidden max-w-5xl items-center justify-between gap-4 rounded-full px-3 py-2 ios-liquid-glass md:flex">
         <p className="pl-3 font-heading text-sm font-semibold tracking-[-0.4px]">
           Operam <span className="text-slate-400 dark:text-zinc-500">·</span>{' '}
           <span className="text-slate-500 dark:text-zinc-400">Mi suscripción</span>
@@ -119,13 +120,8 @@ export function PortalLayout() {
         </div>
       </header>
 
-      {/* Móvil: encabezado compacto */}
-      <header
-        className={cn(
-          PORTAL_GLASS_BAR_CLASS,
-          'sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-x-0 border-t-0 px-4 md:hidden',
-        )}
-      >
+      {/* Móvil: píldora flotante superior iOS Liquid Glass */}
+      <header className="sticky top-3 z-40 mx-3 mt-3 flex h-14 items-center justify-between gap-3 rounded-full px-4 ios-liquid-glass md:hidden">
         <p className="font-heading text-sm font-semibold tracking-[-0.4px]">Operam</p>
         <div className="flex items-center gap-1">
           <ThemeButton />
@@ -147,13 +143,10 @@ export function PortalLayout() {
         <Outlet />
       </main>
 
-      {/* Móvil: dock flotante iOS */}
+      {/* Móvil: dock flotante iOS Liquid Glass */}
       <nav
         aria-label="Navegación del portal"
-        className={cn(
-          'fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 gap-1 rounded-[26px] p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:hidden',
-          PORTAL_GLASS_BAR_CLASS,
-        )}
+        className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 gap-1 rounded-[28px] p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] ios-liquid-glass md:hidden"
       >
         {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
           <NavLink
@@ -174,6 +167,38 @@ export function PortalLayout() {
           </NavLink>
         ))}
       </nav>
+
+      {/* Aviso preventivo de inactividad (últimos 45s cuando timeout >= 2 min) */}
+      <AppModal
+        open={inactivityWarningSeconds !== null}
+        onOpenChange={(open) => {
+          if (!open) void stayConnected()
+        }}
+      >
+        <AppModalContent className="max-w-sm">
+          <AppModalHeader>
+            <AppModalTitle className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-amber-500" />
+              Sesión por expirar
+            </AppModalTitle>
+            <AppModalDescription>
+              Tu sesión se cerrará en{' '}
+              <strong className="font-mono tabular-nums">
+                {inactivityWarningSeconds ?? 0} s
+              </strong>{' '}
+              por inactividad.
+            </AppModalDescription>
+          </AppModalHeader>
+          <AppModalFooter className="flex-wrap justify-end gap-2">
+            <AppButton type="button" variant="outline" onClick={() => void logout()}>
+              Cerrar sesión
+            </AppButton>
+            <AppButton type="button" onClick={() => void stayConnected()}>
+              Seguir conectado
+            </AppButton>
+          </AppModalFooter>
+        </AppModalContent>
+      </AppModal>
     </div>
   )
 }

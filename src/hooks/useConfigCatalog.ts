@@ -22,6 +22,7 @@ import {
   toggleIssuerActive,
   togglePromotionActive,
   toggleServiceActive,
+  toggleServicePublic,
   updateInstance,
   updateIssuer,
   updatePriceList,
@@ -96,6 +97,12 @@ export function useServicesConfig(params: ServicesQueryParams) {
     [KEYS.services],
     'Actualizando disponibilidad...',
   )
+  const togglePublic = useLockedMutation(
+    ({ id, is_public }: { id: number; is_public: boolean }) =>
+      toggleServicePublic(id, is_public),
+    [KEYS.services],
+    'Actualizando visibilidad en portal...',
+  )
 
   return {
     items: query.data?.items ?? [],
@@ -111,6 +118,7 @@ export function useServicesConfig(params: ServicesQueryParams) {
     createService: create.mutateAsync,
     updateService: update.mutateAsync,
     toggleService: toggle.mutateAsync,
+    toggleServicePublic: togglePublic.mutateAsync,
   }
 }
 

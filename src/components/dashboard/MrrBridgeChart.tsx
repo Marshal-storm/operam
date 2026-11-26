@@ -10,14 +10,10 @@ import {
   YAxis,
 } from 'recharts'
 import { AppBadge } from '@/components/ui/AppBadge'
+import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
-import {
-  AppModal,
-  AppModalContent,
-  AppModalDescription,
-  AppModalHeader,
-  AppModalTitle,
-} from '@/components/ui/AppModal'
+import { AppDrawer } from '@/components/ui/AppDrawer'
+import { AppTableHeadRow } from '@/components/ui/AppTableWrapper'
 import { useTheme } from '@/context/ThemeContext'
 import { formatCurrencyMx, formatDateEsMx } from '@/lib/utils'
 import type { MrrBridgeStep, MrrCategory, MrrMovement } from '@/types/mrr'
@@ -92,38 +88,100 @@ function MovementList({ movements }: { movements: MrrMovement[] }) {
   }
 
   return (
-    <ul className="max-h-80 space-y-3 overflow-y-auto">
-      {movements.map((movement) => {
-        const negative = movement.mrr_delta_mxn.startsWith('-')
-        return (
-          <li
-            key={movement.id}
-            className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 text-sm dark:border-white/[0.09] dark:bg-white/[0.03]"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#0A84FF] to-[#6366F1] text-xs font-bold text-white">
-                  {movement.client_name.replace(/[\[\]]/g, '').slice(0, 1).toUpperCase()}
-                </span>
-                <span className="font-medium">
-                  {formatDateEsMx(movement.effective_date)} · {movement.contract_folio}
-                </span>
+    <div className="min-w-0 space-y-3">
+      {/* Tabla amplia en escritorio para el Drawer xl */}
+      <div className="hidden overflow-x-auto rounded-2xl border border-slate-200/80 md:block dark:border-white/[0.08]">
+        <table className="w-full text-sm">
+          <thead>
+            <AppTableHeadRow>
+              <th className="px-4 py-3 text-left font-medium">FECHA</th>
+              <th className="px-3 py-3 text-left font-medium">CONTRATO</th>
+              <th className="px-3 py-3 text-left font-medium">CLIENTE / SEGMENTO</th>
+              <th className="px-3 py-3 text-left font-medium">DETALLE</th>
+              <th className="px-4 py-3 text-right font-medium">Δ MRR</th>
+            </AppTableHeadRow>
+          </thead>
+          <tbody>
+            {movements.map((movement) => {
+              const negative = movement.mrr_delta_mxn.startsWith('-')
+              return (
+                <tr
+                  key={movement.id}
+                  className="border-b border-slate-100 align-middle dark:border-white/[0.04]"
+                >
+                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600 dark:text-zinc-300">
+                    {formatDateEsMx(movement.effective_date)}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold tabular-nums">
+                    {movement.contract_folio}
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#0A84FF] to-[#6366F1] text-xs font-bold text-white">
+                        {movement.client_name.replace(/[\[\]]/g, '').slice(0, 1).toUpperCase()}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-900 dark:text-white">
+                          {movement.client_name}
+                        </p>
+                        <p className="truncate text-xs text-slate-500 dark:text-zinc-400">
+                          {movement.segment}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-xs text-slate-600 dark:text-zinc-300">
+                    {movement.description}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <AppBadge
+                      label={`${negative ? '-' : '+'}${formatCurrencyMx(
+                        negative ? movement.mrr_delta_mxn.slice(1) : movement.mrr_delta_mxn,
+                      )}`}
+                      tone={negative ? 'danger' : 'success'}
+                    />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Tarjetas responsivas para móvil */}
+      <ul className="space-y-3 md:hidden">
+        {movements.map((movement) => {
+          const negative = movement.mrr_delta_mxn.startsWith('-')
+          return (
+            <li
+              key={movement.id}
+              className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 text-sm dark:border-white/[0.09] dark:bg-white/[0.03]"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#0A84FF] to-[#6366F1] text-xs font-bold text-white">
+                    {movement.client_name.replace(/[\[\]]/g, '').slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="font-medium">
+                    {formatDateEsMx(movement.effective_date)} · {movement.contract_folio}
+                  </span>
+                </div>
+                <AppBadge
+                  label={`${negative ? '-' : '+'}${formatCurrencyMx(
+                    negative ? movement.mrr_delta_mxn.slice(1) : movement.mrr_delta_mxn,
+                  )}`}
+                  tone={negative ? 'danger' : 'success'}
+                />
               </div>
-              <AppBadge
-                label={`${negative ? '-' : '+'}${formatCurrencyMx(
-                  negative ? movement.mrr_delta_mxn.slice(1) : movement.mrr_delta_mxn,
-                )}`}
-                tone={negative ? 'danger' : 'success'}
-              />
-            </div>
-            <p className="mt-2 text-slate-500 dark:text-slate-400">
-              {movement.client_name} · {movement.segment}
-            </p>
-            <p className="mt-0.5">{movement.description}</p>
-          </li>
-        )
-      })}
-    </ul>
+              <p className="mt-2 text-slate-500 dark:text-slate-400">
+                {movement.client_name} · {movement.segment}
+              </p>
+              <p className="mt-0.5">{movement.description}</p>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 
@@ -243,35 +301,38 @@ export function MrrBridgeChart({
         </ResponsiveContainer>
       </div>
 
-      <AppModal
+      <AppDrawer
         open={selectedCategory != null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedCategory(null)
-            onCategorySelect?.(null)
-          }
+        onClose={() => {
+          setSelectedCategory(null)
+          onCategorySelect?.(null)
         }}
+        size="xl"
+        title={`${selectedStep?.label ?? 'Categoría'} — movimientos`}
+        description="RF-3.7: detalle de la bitácora que compone esta cifra del puente."
+        footer={
+          <AppButton
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setSelectedCategory(null)
+              onCategorySelect?.(null)
+            }}
+          >
+            Cerrar
+          </AppButton>
+        }
       >
-        <AppModalContent>
-          <AppModalHeader>
-            <AppModalTitle>
-              {selectedStep?.label ?? 'Categoría'} — movimientos
-            </AppModalTitle>
-            <AppModalDescription>
-              RF-3.7: detalle de la bitácora que compone esta cifra del puente.
-            </AppModalDescription>
-          </AppModalHeader>
-          {selectedCategory === 'start' || selectedCategory === 'end' ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {selectedCategory === 'start'
-                ? `MRR de apertura del periodo: ${formatCurrencyMx(selectedStep?.size ?? 0)}.`
-                : `MRR de cierre del periodo: ${formatCurrencyMx(selectedStep?.size ?? 0)}.`}
-            </p>
-          ) : (
-            <MovementList movements={detailMovements} />
-          )}
-        </AppModalContent>
-      </AppModal>
+        {selectedCategory === 'start' || selectedCategory === 'end' ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {selectedCategory === 'start'
+              ? `MRR de apertura del periodo: ${formatCurrencyMx(selectedStep?.size ?? 0)}.`
+              : `MRR de cierre del periodo: ${formatCurrencyMx(selectedStep?.size ?? 0)}.`}
+          </p>
+        ) : (
+          <MovementList movements={detailMovements} />
+        )}
+      </AppDrawer>
     </AppCard>
   )
 }

@@ -128,9 +128,9 @@ export function ExternalServicesPage() {
       ) : null}
 
       {tab === 'services' ? (
-        <div className="space-y-4">
-          <AppCard className="flex items-start gap-2 p-4 text-sm text-slate-600 dark:text-zinc-300">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#0066FF] dark:text-[#0A84FF]" />
+        <div className="space-y-3">
+          <AppCard className="flex items-center gap-2 px-3.5 py-2.5 text-xs text-slate-600 dark:text-zinc-300">
+            <Info className="h-4 w-4 shrink-0 text-[#0066FF] dark:text-[#0A84FF]" />
             <span>
               El ERP de cada Emisor y la pasarela IntegroPAY se administran por emisor en{' '}
               <Link
@@ -144,11 +144,13 @@ export function ExternalServicesPage() {
           </AppCard>
 
           {servicesQuery.isLoading ? (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <Skeleton key={index} className="h-72 w-full rounded-2xl" />
+            <AppCard className="divide-y divide-slate-200/70 overflow-hidden p-0 dark:divide-white/[0.06]">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="px-4 py-3.5">
+                  <Skeleton className="h-10 w-full rounded-xl" />
+                </div>
               ))}
-            </div>
+            </AppCard>
           ) : servicesQuery.isError ? (
             <AppCard className="p-6 text-center text-sm text-slate-500">
               No se pudo cargar el catálogo de servicios externos.
@@ -158,7 +160,7 @@ export function ExternalServicesPage() {
               No hay servicios registrados. Ejecuta el seeder ExternalServicesSeeder.
             </AppCard>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <AppCard className="divide-y divide-slate-200/70 overflow-hidden p-0 dark:divide-white/[0.06]">
               {services.map((service) => (
                 <ExternalServiceCard
                   key={service.service_key}
@@ -169,7 +171,7 @@ export function ExternalServicesPage() {
                   onTest={(target) => void handleTest(target)}
                 />
               ))}
-            </div>
+            </AppCard>
           )}
         </div>
       ) : null}

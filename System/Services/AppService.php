@@ -173,7 +173,8 @@ final class AppService extends CustomService
 
     /**
      * Autoriza un JWT `client_portal`: bloquea cualquier ruta fuera de `/api/portal/*` con 403,
-     * revalida que el contacto/cliente sigan activos y expone `portal_auth` al servicio.
+     * valida la sesión deslizante en `portal_sessions`, revalida contacto/cliente y renueva
+     * `last_activity_at` + `expires_at` + cookie en cada petición autenticada.
      */
     private static function authorizePortalToken(
         Context $context,
@@ -197,6 +198,42 @@ final class AppService extends CustomService
             return;
         }
 
+        $uri = strtolower(trim($context->getUri(), '/'));
+        // El cierre de sesión siempre puede revocar su `sid` y limpiar la cookie.
+        if ($uri === 'portal/auth/logout' && $context->getMethod() === 'POST') {
+            $context->setData('portal_auth', $claims);
+            $context->setData('portal_token', $token);
+
+            return;
+        }
+
+        $sid = $claims['sid'];
+        $nowTs = time();
+        $nowUtc = gmdate('Y-m-d H:i:s', $nowTs);
+        $sessionHash = $sid !== '' ? PortalSession::hashSessionId($sid) : '';
+
+        $session = $sessionHash !== ''
+            ? Capsule::table('portal_sessions')
+                ->where('session_token_hash', $sessionHash)
+                ->first()
+            : null;
+
+        if (
+            $session === null
+            || $session->revoked_at !== null
+            || (string) $session->expires_at <= $nowUtc
+        ) {
+            PortalSession::clearCookie();
+            $context->setResult(
+                Result::fail(
+                    'Tu sesión expiró por inactividad. Solicita o abre una nueva liga de acceso.',
+                    401,
+                )->withCode('PORTAL_SESSION_EXPIRED'),
+            );
+
+            return;
+        }
+
         // Revocación inmediata: si el contacto se desactiva o pierde el permiso, cae la sesión.
         $clientActive = Capsule::table('clients')
             ->where('id', $claims['client_id'])
@@ -209,12 +246,35 @@ final class AppService extends CustomService
             ->where('receives_portal', 1)
             ->exists();
         if (!$clientActive || !$contactActive) {
+            PortalSession::clearCookie();
             $context->setResult(Result::fail('Tu acceso al portal ya no está autorizado.', 401));
 
             return;
         }
 
+        // Ventana deslizante por inactividad: extiende `last_activity_at` y `expires_at`.
+        $idleMinutes = SystemSettingsService::getPortalTimeouts()['portal_idle_timeout_minutes'];
+        $newExpiresTs = $nowTs + ($idleMinutes * 60);
+        $newExpiresUtc = gmdate('Y-m-d H:i:s', $newExpiresTs);
+        $newExpiresIso = gmdate('Y-m-d\TH:i:s\Z', $newExpiresTs);
+
+        Capsule::table('portal_sessions')
+            ->where('id', (int) $session->id)
+            ->update([
+                'last_activity_at' => $nowUtc,
+                'expires_at' => $newExpiresUtc,
+                'updated_at' => $nowUtc,
+            ]);
+
+        PortalSession::setCookie($token, $idleMinutes * 60);
+
         $context->setData('portal_auth', $claims);
         $context->setData('portal_token', $token);
+        $context->setData('portal_session', [
+            'id' => (int) $session->id,
+            'idle_timeout_minutes' => $idleMinutes,
+            'expires_at' => $newExpiresUtc,
+            'expires_at_iso' => $newExpiresIso,
+        ]);
     }
 }
