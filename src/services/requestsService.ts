@@ -130,6 +130,10 @@ function mapRequest(raw: Partial<ServiceRequestListItem> & Record<string, unknow
     issuer_name: String(raw.issuer_name ?? ''),
     origin: (raw.origin ?? 'internal') as ServiceRequestListItem['origin'],
     request_type: (raw.request_type ?? 'one_time') as ServiceRequestType,
+    portal_request_type:
+      raw.portal_request_type != null
+        ? (String(raw.portal_request_type) as ServiceRequestListItem['portal_request_type'])
+        : null,
     status: (raw.status ?? 'pending') as ServiceRequestStatus,
     currency: String(raw.currency ?? 'MXN'),
     subtotal: String(raw.subtotal ?? '0.00'),

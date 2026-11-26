@@ -17,7 +17,7 @@ use System\Support\Integrations\SecretResolver;
 /**
  * Configuración → Servicios externos (RNF-8).
  *
- * GET  /api/external-services                     — 5 servicios globales (can_view)
+ * GET  /api/external-services                     — 6 servicios globales (can_view)
  * GET  /api/external-services/{serviceKey}        — detalle (can_view)
  * PUT  /api/external-services/{serviceKey}        — guardar configuración (can_edit, alcance Todos)
  * POST /api/external-services/{serviceKey}/test   — probar conexión (can_edit, alcance Todos)

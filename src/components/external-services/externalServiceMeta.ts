@@ -1,4 +1,4 @@
-import { Clock, Landmark, Mail, MessageSquareWarning, Server, type LucideIcon } from 'lucide-react'
+import { Clock, CreditCard, Landmark, Mail, MessageSquareWarning, Server, type LucideIcon } from 'lucide-react'
 import { z } from 'zod'
 import type { AppSelectTone } from '@/components/ui/AppSelect'
 import {
@@ -124,6 +124,18 @@ export const EXTERNAL_SERVICE_META: Record<ExternalServiceKey, ExternalServiceMe
       { key: 'daily_collections_hour', label: 'Hora de cobranza diaria', kind: 'time', placeholder: '07:00' },
     ],
     secrets: [{ key: 'job_secret_ref', label: 'Referencia del secreto del job', placeholder: 'GCP_JOB_SECRET_REF' }],
+  },
+  integropay: {
+    shortName: 'IntegroPAY',
+    description:
+      'Ligas de pago con tarjeta del Portal Cliente. Las credenciales (merchant, device y webhook) se configuran por Emisor.',
+    icon: CreditCard,
+    fields: [
+      { key: 'api_url', label: 'URL base de la API', kind: 'url', placeholder: 'https://api.integropay.mx/v1', wide: true },
+      { key: 'timeout_seconds', label: 'Timeout HTTP (segundos)', kind: 'int', min: 1, max: 120, placeholder: '20' },
+      { key: 'link_ttl_hours', label: 'Vigencia de la liga (horas)', kind: 'int', min: 1, max: 168, placeholder: '24' },
+    ],
+    secrets: [],
   },
 }
 

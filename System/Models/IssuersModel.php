@@ -25,6 +25,12 @@ final class IssuersModel extends Model
         'secret_ref',
         'integropay_merchant_token_ref',
         'integropay_device_token_ref',
+        // Instrucciones SPEI visibles en el Portal Cliente (RF-7.6) y ref del webhook IntegroPAY.
+        'spei_bank_name',
+        'spei_clabe',
+        'spei_account_holder',
+        'spei_reference_hint',
+        'integropay_webhook_token_ref',
         'is_active',
     ];
 

@@ -39,6 +39,7 @@ final class ServicesCatalogService extends ModelService
             ->setField('allow_package_conversion', DataTypes::Boolean, false, false)
             ->setField('package_service_id', DataTypes::Integer, false)
             ->setField('package_factor', DataTypes::Integer, false, 5)
+            ->setField('is_public', DataTypes::Boolean, false, false)
             ->setField('is_active', DataTypes::Boolean, false, true);
     }
 
@@ -238,6 +239,7 @@ final class ServicesCatalogService extends ModelService
                 's.package_factor',
                 'pkg.code as package_service_code',
                 'pkg.name as package_service_name',
+                's.is_public',
                 's.is_active',
             ]);
 
@@ -268,6 +270,7 @@ final class ServicesCatalogService extends ModelService
                     ? (string) $row->package_service_name
                     : null,
                 'package_factor' => (int) ($row->package_factor ?? 5),
+                'is_public' => (bool) $row->is_public,
                 'is_active' => (bool) $row->is_active,
             ];
         })->all();
@@ -301,6 +304,12 @@ final class ServicesCatalogService extends ModelService
             $raw = $input['allow_package_conversion'];
             $parsed = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
             $input['allow_package_conversion'] = $parsed ?? (bool) (int) $raw;
+        }
+
+        if (array_key_exists('is_public', $input)) {
+            $rawPublic = $input['is_public'];
+            $parsedPublic = filter_var($rawPublic, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            $input['is_public'] = $parsedPublic ?? (bool) (int) $rawPublic;
         }
 
         if (array_key_exists('package_service_id', $input)) {
@@ -421,6 +430,7 @@ final class ServicesCatalogService extends ModelService
             'allow_package_conversion',
             'package_service_id',
             'package_factor',
+            'is_public',
             'is_active',
         ]);
         if ($row === null) {
@@ -439,6 +449,7 @@ final class ServicesCatalogService extends ModelService
             'allow_package_conversion' => (bool) (int) $row->allow_package_conversion,
             'package_service_id' => $row->package_service_id !== null ? (int) $row->package_service_id : null,
             'package_factor' => (int) ($row->package_factor ?? 5),
+            'is_public' => (bool) (int) $row->is_public,
             'is_active' => (bool) (int) $row->is_active,
         ];
     }

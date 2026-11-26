@@ -76,6 +76,32 @@
  *
  * Jobs: daily_billing · reset_included_balances · daily_collections · process_outbox
  * CLI (Cloud Run Jobs): php scripts/jobs/run_job.php <jobName|all>
+ *
+ * Bloque D Paso 1 — Portal del Cliente sin contraseña (RF-7 / RNF-7):
+ *   POST   /api/portal/auth/request-link         — LIBRE: correo → liga mágica 15 min (respuesta genérica)
+ *   POST   /api/portal/auth/exchange             — LIBRE: token de un solo uso → JWT `client_portal` 8 h + cookie HttpOnly
+ *   GET    /api/portal/auth/me                   — JWT portal (Bearer o cookie): restaura sesión tras F5
+ *   POST   /api/portal/auth/logout               — JWT portal (Bearer o cookie): expira cookie
+ *   GET    /api/portal/overview                  — tablero: contratos + exigible devengado + SPEI + facturas
+ *   GET    /api/portal/contracts/{id}            — detalle de contrato propio (403 si es de otro cliente)
+ *   GET    /api/portal/invoices                  — facturas paginadas + pagos (page, per_page, status, contract_id)
+ *   GET    /api/portal/requests                  — solicitudes del cliente (estado amigable received/approved/executed/rejected/cancelled)
+ *   POST   /api/portal/requests                  — alta `origin = portal` (add_users, remove_users, change_frequency,
+ *                                                  cancel_service → 422 si no está al corriente; extra_service siempre)
+ *   GET    /api/portal/store                     — servicios `is_public` del segmento + escalones + promos visibles (?contract_id)
+ *   GET    /api/portal/store/quote               — cotización autoritativa (?contract_id&service_id&quantity): IVA 16% + unidades de regalo
+ *   POST   /api/portal/store/checkout            — compra: `card_integropay` → liga de pago; `spei` → factura pendiente + datos SPEI
+ *   POST   /api/portal/payments/create-link      — liga IntegroPAY del saldo: mode exigible | total | custom (+amount), FIFO
+ *   GET    /api/portal/sandbox-pay/{linkId}      — SOLO sandbox: datos de la liga `SBX-…` propia
+ *   POST   /api/portal/sandbox-pay/{linkId}/confirm — SOLO sandbox: aprueba con el mismo flujo del webhook verificado
+ *
+ * Webhook IntegroPAY (antes de la guardia JWT, NO está en $freeuris):
+ *   POST   /api/webhooks/integropay/{issuerId}   — token `?token=` o `X-Webhook-Token` (hash_equals contra el cofre del
+ *                                                  emisor) → dedupe `incoming_events` → verifyTransactionById → aplicación
+ *                                                  atómica. Réplica: 200 `{idempotent_replay: true}`.
+ *   POST   /api/client-contacts/{id}/generate-portal-link — ERP: genera liga (clients.edit), devuelve URL
+ *
+ * Aislamiento: un JWT `client_portal` recibe 403 fuera de /api/portal/*; todo se filtra por `client_id` del JWT.
  */
 
 declare(strict_types=1);

@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Phinx\Seed\AbstractSeed;
 
 /**
- * Siembra los 5 servicios externos globales en modo sandbox (RNF-8).
+ * Siembra los 6 servicios externos globales en modo sandbox (RNF-8).
  * Idempotente: inserta solo los faltantes y refresca `display_name`; nunca pisa
  * la configuración que un administrador ya haya ajustado desde el panel.
  * Ningún valor aquí es un secreto: `secret_refs_json` solo nombra variables de entorno.
@@ -78,6 +78,17 @@ final class ExternalServicesSeeder extends AbstractSeed
                     'daily_collections_hour' => '07:00',
                 ],
                 'secret_refs' => ['job_secret_ref' => 'GCP_JOB_SECRET_REF'],
+            ],
+            [
+                // Las credenciales viven por emisor (`issuers.integropay_*_ref`); aquí solo la URL base.
+                'service_key' => 'integropay',
+                'display_name' => 'Pasarela de pagos (IntegroPAY)',
+                'config' => [
+                    'api_url' => '',
+                    'timeout_seconds' => 20,
+                    'link_ttl_hours' => 24,
+                ],
+                'secret_refs' => [],
             ],
         ];
 

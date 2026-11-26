@@ -95,7 +95,7 @@ final class PromotionCalculator
             'promotion_id' => (int) $best['id'],
             'promotion_code' => isset($best['code']) ? (string) $best['code'] : null,
             'promotion_name' => isset($best['name']) ? (string) $best['name'] : null,
-            'extra_units_pct' => number_format((float) $best['extra_units_pct'], 2, '.', ''),
+            'extra_units_pct' => bcadd(trim((string) $best['extra_units_pct']), '0', 2),
             'extra_units' => $bestExtra,
             'purchased_units' => $quantity,
             'total_units' => $quantity + $bestExtra,
@@ -123,28 +123,65 @@ final class PromotionCalculator
         int $serviceId,
         int $quantity,
         ?string $date = null,
+        bool $portalOnly = false,
+    ): array {
+        return self::pickBestExtraUnitsPromo(
+            $quantity,
+            self::activeExtraUnitsCandidates($clientId, $segmentId, $serviceId, $date, $portalOnly),
+        );
+    }
+
+    /**
+     * Promociones extra_units vigentes y en alcance del cliente/segmento.
+     * `$serviceId = null` → todas (banners de la Tienda); `$portalOnly` → solo `visible_in_portal = 1`.
+     *
+     * @return list<array{
+     *   id:int,
+     *   code:string,
+     *   name:string,
+     *   service_id:int|null,
+     *   extra_units_pct:string,
+     *   min_quantity:int|null
+     * }>
+     */
+    public static function activeExtraUnitsCandidates(
+        int $clientId,
+        int $segmentId,
+        ?int $serviceId,
+        ?string $date = null,
+        bool $portalOnly = false,
     ): array {
         $onDate = $date !== null && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)
             ? $date
             : (new \DateTimeImmutable('now', new \DateTimeZone('America/Mexico_City')))->format('Y-m-d');
 
-        $rows = Capsule::table('promotions as p')
+        $query = Capsule::table('promotions as p')
             ->where('p.is_active', 1)
             ->where('p.promo_mode', 'extra_units')
-            ->where('p.service_id', $serviceId)
             ->where('p.valid_from', '<=', $onDate)
             ->where(static function ($q) use ($onDate): void {
                 $q->whereNull('p.valid_until')->orWhere('p.valid_until', '>=', $onDate);
             })
-            ->orderByDesc('p.id')
-            ->get([
-                'p.id',
-                'p.code',
-                'p.name',
-                'p.segment_id',
-                'p.extra_units_pct',
-                'p.min_quantity',
-            ]);
+            ->orderByRaw('COALESCE(p.updated_at, p.created_at) DESC')
+            ->orderByDesc('p.id');
+        if ($serviceId !== null) {
+            $query->where('p.service_id', $serviceId);
+        } else {
+            $query->whereNotNull('p.service_id');
+        }
+        if ($portalOnly) {
+            $query->where('p.visible_in_portal', 1);
+        }
+
+        $rows = $query->get([
+            'p.id',
+            'p.code',
+            'p.name',
+            'p.service_id',
+            'p.segment_id',
+            'p.extra_units_pct',
+            'p.min_quantity',
+        ]);
 
         $candidates = [];
         foreach ($rows as $row) {
@@ -180,11 +217,12 @@ final class PromotionCalculator
                 'id' => $promoId,
                 'code' => (string) $row->code,
                 'name' => (string) $row->name,
+                'service_id' => $row->service_id !== null ? (int) $row->service_id : null,
                 'extra_units_pct' => (string) ($row->extra_units_pct ?? '0'),
                 'min_quantity' => $row->min_quantity !== null ? (int) $row->min_quantity : null,
             ];
         }
 
-        return self::pickBestExtraUnitsPromo($quantity, $candidates);
+        return $candidates;
     }
 }

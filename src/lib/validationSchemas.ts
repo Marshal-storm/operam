@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { compareMoney } from '@/lib/moneyCents'
 
 /**
  * Esquemas Zod reutilizables para montos, tipos de cambio y enteros (RNF-15).
@@ -150,6 +151,125 @@ export function secretRefNameSchema(options?: { optional?: boolean }) {
       }
       if (!/^[A-Z][A-Z0-9_]{2,99}$/.test(v)) {
         ctx.addIssue({ code: 'custom', message })
+      }
+    })
+}
+
+/** Formulario de acceso sin contraseña del Portal Cliente (RF-7.1). */
+export const portalAccessSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .min(1, 'Escribe tu correo electrónico')
+    .max(160, 'El correo es demasiado largo')
+    .email('Ingresa un correo electrónico válido'),
+})
+
+export type PortalAccessValues = z.infer<typeof portalAccessSchema>
+
+/**
+ * Pago de saldo con tarjeta desde el Portal: monto exigible, saldo total u otro monto.
+ * En "otro monto" exige DECIMAL(14,2) > 0 y ≤ saldo pendiente (comparación exacta en centavos).
+ */
+export function buildPortalPaymentSchema(maxAmount: string) {
+  return z
+    .object({
+      mode: z.enum(['exigible', 'total', 'custom']),
+      amount: z.string(),
+    })
+    .superRefine((values, ctx) => {
+      if (values.mode !== 'custom') return
+      const parsed = moneySchema().safeParse(values.amount)
+      if (!parsed.success) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['amount'],
+          message: parsed.error.issues[0]?.message ?? MONEY_MSG,
+        })
+        return
+      }
+      if (compareMoney(parsed.data, maxAmount) > 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['amount'],
+          message: 'El monto no puede exceder tu saldo pendiente',
+        })
+      }
+    })
+}
+
+export type PortalPaymentValues = z.infer<ReturnType<typeof buildPortalPaymentSchema>>
+
+/** Cantidad de la Tienda del Portal: entero de 1 a 1,000,000 (mismo tope que el backend). */
+export const PORTAL_STORE_MAX_QUANTITY = 1_000_000
+
+export const portalStoreQuantitySchema = positiveIntSchema({
+  message: 'Ingresa una cantidad entera mayor a 0',
+  max: PORTAL_STORE_MAX_QUANTITY,
+})
+
+export const PORTAL_PLAN_CHANGE_TYPES = [
+  'add_users',
+  'remove_users',
+  'change_frequency',
+  'cancel_service',
+] as const
+
+/** Solicitud desde el Portal (RF-8.1): servicio + cantidad o descripción según el tipo. */
+export const portalRequestSchema = z
+  .object({
+    contract_id: z.string().min(1, 'Selecciona un contrato'),
+    request_type: z.enum([...PORTAL_PLAN_CHANGE_TYPES, 'extra_service']),
+    service_id: z.string(),
+    quantity: z.string(),
+    notes: z.string().trim().max(2000, 'Máximo 2,000 caracteres'),
+  })
+  .superRefine((values, ctx) => {
+    const needsService = values.request_type === 'add_users' || values.request_type === 'extra_service'
+    if (needsService) {
+      if (values.service_id === '') {
+        ctx.addIssue({ code: 'custom', path: ['service_id'], message: 'Selecciona un servicio' })
+      }
+      const quantity = positiveIntSchema({ max: 10_000 }).safeParse(values.quantity)
+      if (!quantity.success) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['quantity'],
+          message: quantity.error.issues[0]?.message ?? POSITIVE_INT_MSG,
+        })
+      }
+      return
+    }
+    if (values.request_type === 'remove_users' && values.quantity !== '') {
+      const quantity = positiveIntSchema({ max: 10_000 }).safeParse(values.quantity)
+      if (!quantity.success) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['quantity'],
+          message: quantity.error.issues[0]?.message ?? POSITIVE_INT_MSG,
+        })
+      }
+    }
+    if (values.notes.length < 5) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['notes'],
+        message: 'Describe brevemente tu solicitud (mínimo 5 caracteres)',
+      })
+    }
+  })
+
+export type PortalRequestValues = z.infer<typeof portalRequestSchema>
+
+/** CLABE interbancaria SPEI: exactamente 18 dígitos (vacío = sin configurar). */
+export function speiClabeSchema() {
+  return z
+    .string()
+    .trim()
+    .superRefine((v, ctx) => {
+      if (v === '') return
+      if (!/^\d{18}$/.test(v)) {
+        ctx.addIssue({ code: 'custom', message: 'La CLABE debe tener exactamente 18 dígitos' })
       }
     })
 }

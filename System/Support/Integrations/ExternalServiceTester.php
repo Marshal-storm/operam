@@ -54,6 +54,7 @@ final class ExternalServiceTester
                 'slack' => $this->testSlack(),
                 'banxico' => $this->testBanxico(),
                 'jobs_outbox' => $this->testJobsOutbox($missingRefs),
+                'integropay' => $this->testIntegroPay(),
                 default => $this->result('error', 'Servicio sin probador.', false),
             };
         } catch (Throwable $e) {
@@ -169,6 +170,43 @@ final class ExternalServiceTester
             sprintf('Tipo de cambio FIX %s: %s MXN/USD (guardado en exchange_rates).', $parsed['rate_date'], $parsed['rate']),
             false,
             $parsed,
+        );
+    }
+
+    /**
+     * IntegroPAY: la URL base es global; las credenciales se validan por emisor al cobrar.
+     * Un 4xx distinto de 401/403 en la raíz confirma que la pasarela es alcanzable.
+     */
+    private function testIntegroPay(): array
+    {
+        $apiUrl = (string) ExternalServiceRegistry::configValue('integropay', 'api_url', '');
+        if ($apiUrl === '') {
+            throw new RuntimeException('Configura la URL base de la API de IntegroPAY antes de probar.');
+        }
+        $timeout = (int) ExternalServiceRegistry::configValue('integropay', 'timeout_seconds', self::DEFAULT_TIMEOUT);
+        $configured = Capsule::table('issuers')
+            ->where('is_active', 1)
+            ->whereNotNull('integropay_merchant_token_ref')
+            ->get(['integropay_merchant_token_ref', 'integropay_device_token_ref'])
+            ->filter(static fn (object $row): bool => SecretResolver::isConfigured((string) $row->integropay_merchant_token_ref)
+                && SecretResolver::isConfigured((string) ($row->integropay_device_token_ref ?? '')))
+            ->count();
+
+        try {
+            $response = $this->transport->getJson($apiUrl, [], $timeout);
+            $status = $response['status'];
+        } catch (RuntimeException $e) {
+            if (preg_match('/^HTTP (4\d\d)/', $e->getMessage(), $m) !== 1 || in_array($m[1], ['401', '403'], true)) {
+                throw $e;
+            }
+            $status = (int) $m[1];
+        }
+
+        return $this->result(
+            'ok',
+            sprintf('IntegroPAY alcanzable (HTTP %d). Emisores con credenciales productivas: %d.', $status, $configured),
+            false,
+            ['issuers_with_credentials' => $configured],
         );
     }
 

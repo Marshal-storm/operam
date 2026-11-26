@@ -238,6 +238,10 @@ final class OutboxDispatcher
                 'updated_at' => $nowUtc,
             ]);
             $status = 'sent';
+            // RNF-7: una vez entregado, el cuerpo con la liga mágica no debe quedar en claro.
+            if ((string) $row->operation === 'send_magic_link') {
+                $this->redactMagicLinkPayload($id, self::decodeJson($row->payload_json));
+            }
         } catch (Throwable $e) {
             $nowUtc = gmdate('Y-m-d H:i:s');
             $backoff = $this->intSetting('jobs_outbox', 'retry_backoff_minutes', self::DEFAULT_BACKOFF_MINUTES, 1, 1440);
@@ -347,7 +351,7 @@ final class OutboxDispatcher
             return $this->sandboxResponse($row, 'Worker de outbox en modo sandbox');
         }
 
-        throw new RuntimeException('El adaptador productivo de IntegroPAY se habilita con el Portal Cliente (RF-5).');
+        throw new RuntimeException('IntegroPAY opera en línea (ligas y webhook verificado); no admite operaciones encoladas.');
     }
 
     /** @param array<string, mixed> $payload */
@@ -433,6 +437,23 @@ final class OutboxDispatcher
 
             return false;
         }
+    }
+
+    /**
+     * Sustituye el cuerpo (que contiene el token de acceso) por una marca de redacción.
+     *
+     * @param array<string, mixed> $payload
+     */
+    private function redactMagicLinkPayload(int $id, array $payload): void
+    {
+        foreach (['text', 'html'] as $field) {
+            if (array_key_exists($field, $payload)) {
+                $payload[$field] = '[REDACTED]';
+            }
+        }
+        Capsule::table('outbox')->where('id', $id)->update([
+            'payload_json' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+        ]);
     }
 
     /** Devuelve a `pending` mensajes atascados en `processing` por un worker caído. */

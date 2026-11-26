@@ -10,6 +10,7 @@ use System\Core\DataTypes;
 use System\Core\Result;
 use System\Models\ClientContactsModel;
 use System\Support\AuditLogger;
+use System\Support\PortalMagicLinkIssuer;
 
 /**
  * CRUD de contactos del cliente — `/api/client-contacts` (RF-1.5).
@@ -106,6 +107,14 @@ final class ClientContactsService extends ModelService
             return $scopeErr;
         }
 
+        // POST /api/client-contacts/{id}/generate-portal-link (RF-7.1, acción interna del ERP).
+        $action = strtolower(explode('/', trim($context->getUri(), '/'))[2] ?? '');
+        if ($action === 'generate-portal-link') {
+            return $method === 'POST'
+                ? $this->generatePortalLink($existing)
+                : Result::fail('Método no soportado.', 405);
+        }
+
         if ($method === 'PUT' || $method === 'PATCH') {
             if (!RbacAuthHelper::can($this->authContext, self::MODULE_KEY, 'edit')) {
                 return Result::fail('Sin permiso para editar contactos.', 403);
@@ -149,6 +158,50 @@ final class ClientContactsService extends ModelService
         }
 
         return Result::fail('Método no soportado.', 405);
+    }
+
+    /**
+     * Genera una liga mágica de 15 minutos para un contacto autorizado, encola el correo en
+     * `outbox` y devuelve la URL al administrador (la liga no se guarda en claro: solo su hash).
+     * Requiere `canEdit('clients')`.
+     */
+    private function generatePortalLink(object $contact): Result
+    {
+        if (!RbacAuthHelper::can($this->authContext, self::MODULE_KEY, 'edit')) {
+            return Result::fail('Sin permiso para generar ligas del portal.', 403);
+        }
+        if (!(bool) $contact->active || !(bool) $contact->receives_portal) {
+            return Result::fail(
+                'El contacto debe estar activo y autorizado para el Portal Cliente.',
+                422,
+            );
+        }
+
+        $issued = PortalMagicLinkIssuer::issueForContact($contact);
+
+        $label = sprintf('%s <%s>', (string) $contact->name, (string) $contact->email);
+        AuditLogger::log(
+            $this->authContext,
+            self::MODULE_KEY,
+            'client_contact',
+            (string) $contact->id,
+            'create',
+            "Se generó una liga mágica de portal para {$label}",
+            null,
+            // Sin la liga ni claves con "token": la bitácora solo registra el hecho y la vigencia.
+            ['contact_id' => (int) $contact->id, 'link_expires_at' => $issued['expires_at']],
+        );
+
+        return Result::ok([
+            'url' => $issued['url'],
+            'expires_at' => $issued['expires_at'],
+            'expires_in_seconds' => PortalMagicLinkIssuer::TTL_MINUTES * 60,
+            'contact' => [
+                'id' => (int) $contact->id,
+                'name' => (string) $contact->name,
+                'email' => (string) $contact->email,
+            ],
+        ], 'Liga mágica generada');
     }
 
     /**

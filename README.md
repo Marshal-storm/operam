@@ -170,7 +170,7 @@ D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx migrate
 D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx seed:run
 # o solo el seeder RBAC:
 D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx seed:run -s RbacRolesAndPermissionsSeeder
-# Servicios externos (Bloque C, 5 servicios en sandbox) + worker del outbox:
+# Servicios externos (Bloques C/D, 6 servicios en sandbox, incluye IntegroPAY) + worker del outbox:
 D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx seed:run -s ExternalServicesSeeder
 D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe scripts/run_outbox_worker.php --drain
 ```
@@ -244,7 +244,8 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 - [x] **Bloque B — Motor de Saldos, Bolsas, Consumos, Reglas de Beneficio, Promociones RF-2.8, Contactos y API para Instancias:** checkpoint oficial cerrado — pulidos visuales de bolsas, `benefit_rules` (RF-2.6) con sync en alta/expansión/contracción, promociones `extra_units` + `promotion_scopes` (RF-2.8), `client_contacts` (RF-1.5), `gifted_units` en utilidad, Kit Atómico (`AppTabs`), PHPUnit + build en verde.
 - [x] **Bloque C Paso 1 — Servicios externos, Outbox, Webhooks y Tipo de cambio (RNF-2 / RNF-8 / RNF-12):** `external_service_configs` (5 servicios sandbox, secretos solo por referencia), `outbox` con backoff + alerta Slack única, `incoming_events` con dedupe, `exchange_rates` (Banxico FIX), enganches en Contratos/Solicitudes/Cobranza, worker CLI, `/configuracion/servicios` con `<AppTabs />` (Servicios / Monitor Outbox / Webhooks), RBAC 6 capas `config_external_services`, PHPUnit + build en verde.
 - [x] **Bloque C — Servicios Externos sin Hardcodeo, Outbox, Jobs de GCP, Reactivación Automática y Ajuste Masivo de Precios:** checkpoint oficial cerrado — 4 jobs (`daily_billing`, `reset_included_balances`, `daily_collections`, `process_outbox`) vía HTTP `X-Job-Secret` / CLI `scripts/jobs/run_job.php` / UI, bitácora `job_runs`, facturación por aniversario idempotente con fin de mes, reactivación automática RF-6.3 al liquidar licencias >90 días (`reactivation` + `reactivate_instance`), Ajuste Masivo RF-3.6 con vista previa UI-9 y lotes `AJ-YYYY-XXX` en `bulk_price_adjustments`, PHPUnit + build en verde.
-- [ ] **Módulo 4 (resto):** Portal Cliente con Magic Links e IntegroPAY (RF-5 a RF-8).
+- [x] **Bloque D Paso 1 — Portal Cliente (Magic Links), aislamiento por scope y motor de monto exigible:** auth sin contraseña (`POST /api/portal/auth/request-link|exchange`, JWT `client_portal` solo en memoria + cookie HttpOnly), liga generada desde ERP (`POST /api/client-contacts/{id}/generate-portal-link`), guardia dual de scope en `AppService` (403 cruzado portal↔ERP), `ExigibleCalculator` (BCMath, half-up), `/api/portal/*` de solo lectura, datos SPEI por emisor, `services.is_public`, tablas `purchases` / `payment_links` / `payment_link_documents` y UI `/portal/*` (iOS Liquid Glass, chunk lazy independiente), PHPUnit + build en verde.
+- [x] **Bloque D — Portal del Cliente iOS (Mobile-First + Escritorio), Magic Links sin Contraseña, Aislamiento Dual de Sesiones, IntegroPAY, Tienda con Promociones RF-2.8 y Solicitudes:** checkpoint oficial cerrado — cliente HTTP aislado `portalApiClient` (token solo en memoria, cookie `operam_portal_session` HttpOnly `Path=/api/portal`, muro 403 bidireccional, `no-store`), adaptador `IntegroPayGateway` (ligas sandbox `SBX-…` 24 h / producción con credenciales por emisor vía `SecretResolver`), webhook `POST /api/webhooks/integropay/{issuerId}` con token `hash_equals`, verificación `verifyTransactionById` (jamás confía en el payload), dedupe `incoming_events` y aplicación atómica (pagos FIFO, recálculo de cartera, reactivación RF-6.3), pago de saldo desde el portal (exigible / total / parcial), Tienda con escalones + IVA 16% + unidades de regalo en movimiento `promotion` separado (MRR intacto), checkout por tarjeta o SPEI, solicitudes del portal (`origin = portal`, candado de cartera RF-8.1 para cambios de plan, acuse por correo vía outbox), PHPUnit + build en verde.
 
 ---
 
@@ -371,7 +372,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `pages/config/CompanySettingsPage.tsx` | `/configuracion/empresa` — parámetros comerciales por segmento (`default_credit_days`, `usd_exchange_rate`) vía `config_company`. |
 | `pages/config/SystemSettingsPage.tsx` | `/configuracion/sistema` — bandera `audit_logs_enabled` y depuración irreversible de la bitácora (`config_system`). |
 | `pages/config/AuditLogsPage.tsx` | `/configuracion/auditoria` — bitácora paginada de solo lectura con diff antes/después (`config_audit_logs`). |
-| `pages/config/ExternalServicesPage.tsx` | `/configuracion/servicios` — `<AppTabs />` Servicios externos (5 tarjetas) / Jobs programados / Monitor Outbox (KPIs + reintentos) / Webhooks; escrituras solo con alcance Todos (`config_external_services`). |
+| `pages/config/ExternalServicesPage.tsx` | `/configuracion/servicios` — `<AppTabs />` Servicios externos (6 tarjetas, incluye IntegroPAY) / Jobs programados / Monitor Outbox (KPIs + reintentos) / Webhooks; escrituras solo con alcance Todos (`config_external_services`). |
 | `components/external-services/ScheduledJobsTab.tsx` / `jobMeta.ts` | Pestaña Jobs programados: 4 tarjetas (última corrida, estado, procesados, "Ejecutar ahora" con confirmación) + historial `job_runs` paginado con detalle JSON. |
 | `components/external-services/*` | `ExternalServiceCard`, `ExternalServiceConfigModal` (RHF+Zod, nota RNF-8), `OutboxMonitorTab`, `IncomingEventsTab`, `JsonPayloadModal`, `externalServiceMeta.ts` (campos/etiquetas por servicio). |
 | `services/externalServicesService.ts` / `hooks/useExternalServices.ts` / `types/externalServices.ts` | HTTP JWT contra `/api/external-services`, `/api/outbox`, `/api/incoming-events`, `/api/jobs` + TanStack Query con `withScreenLock`. |
@@ -392,17 +393,18 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `hooks/useClientTableState.ts` | page/pageSize anclado a Preferencias de pantalla. |
 | `lib/utils.ts` / `lib/mrrCalculator.ts` | Utilidades y motor MRR. |
 | `lib/pricingCalculator.ts` | RF-2 `optimizeUserPackages` (centavos). |
-| `lib/apiClient.ts` | Cliente HTTP RNF-15: `parseOperamApiResponse` (nunca éxito falso con HTML/`success≠true`). |
-| `lib/validationSchemas.ts` | Zod `moneySchema` / `exchangeRateSchema` / `positiveIntSchema` / `nonNegativeIntSchema` / `secretRefNameSchema` / `optionalHttpUrlSchema` / `timeOfDaySchema` / `adjustmentPercentageSchema` / `bulkPriceAdjustmentSchema`. |
+| `lib/apiClient.ts` | Cliente HTTP RNF-15 del Panel Interno: `parseOperamApiResponse` (nunca éxito falso con HTML/`success≠true`). |
+| `src/lib/portalApiClient.ts` | Cliente HTTP aislado exclusivo de `/api/portal/*`: JWT en memoria React + `credentials: 'include'`, jamás lee el token interno. |
+| `lib/validationSchemas.ts` | Zod `moneySchema` / `exchangeRateSchema` / `positiveIntSchema` / `nonNegativeIntSchema` / `secretRefNameSchema` / `optionalHttpUrlSchema` / `timeOfDaySchema` / `adjustmentPercentageSchema` / `bulkPriceAdjustmentSchema` / `portalAccessSchema` / `buildPortalPaymentSchema` / `portalStoreQuantitySchema` / `portalRequestSchema`. |
 
 ### `Api/` / `System/` / `database/` / `backend/`
 
 | Área | Descripción |
 |------|-------------|
-| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `clients` + `client-contacts` + `benefit-rules` + `contracts` + `requests` + `collections` + `movements` + `segment-profitability` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs` + `balances` + `external-services` + `outbox` + `incoming-events`. RNF-15: `display_errors=0` + `try/catch` global JSON (422/500 + `error_id`). |
+| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `clients` + `client-contacts` + `benefit-rules` + `contracts` + `requests` + `collections` + `movements` + `segment-profitability` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs` + `balances` + `external-services` + `outbox` + `incoming-events` + `portal/*` (JWT `client_portal`) + `webhooks/integropay/{issuerId}` (token por emisor, antes de la guardia JWT; nunca en `$freeuris`). RNF-15: `display_errors=0` + `try/catch` global JSON (422/500 + `error_id`). |
 | `Api/services.routes.inc` | Índice documentado de rutas (incl. `/api/requests`, `/api/collections`, `/api/segment-profitability`, `/api/external-services`, `/api/outbox` e `/api/incoming-events`). |
 | `System/Support/Integrations/SecretResolver.php` | RNF-8: resuelve nombres de referencia (`$_ENV` → `getenv` → `$_SERVER` → `<REF>_FILE`); la UI solo recibe `isConfigured()`. |
-| `System/Support/Integrations/ExternalServiceRegistry.php` | Esquema y validación por servicio (`smtp`, `erp_master`, `slack`, `banxico`, `jobs_outbox`); `isProduction`, `configValue`, `resolveSecret`. |
+| `System/Support/Integrations/ExternalServiceRegistry.php` | Esquema y validación por servicio (`smtp`, `erp_master`, `slack`, `banxico`, `jobs_outbox`, `integropay`); `isProduction`, `configValue`, `resolveSecret`. |
 | `System/Support/Integrations/OutboxDispatcher.php` | `enqueue` idempotente + worker `processPending` (SKIP LOCKED, sandbox/producción, backoff `retry_backoff_minutes × intentos`, alerta Slack única) + `retry`. |
 | `System/Support/Integrations/OutboxPublisher.php` | Arma payloads de negocio: ajuste de usuarios, suspensión/reactivación de instancia, prefactura al ERP Emisor. |
 | `System/Support/Integrations/IncomingEventRecorder.php` | Registro deduplicado de webhooks (`origin + external_id`) + `markProcessed`. |
@@ -416,7 +418,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `System/Support/Jobs/JobsRunner.php` | Motor de los 4 jobs + bitácora `job_runs` (bloqueo de corridas simultáneas, recuperación de corridas huérfanas, auditoría). |
 | `System/Support/Jobs/BillingCycleRules.php` | Reglas puras de ciclo de facturación: siguiente corte por aniversario con fin de mes, fin de periodo, subtotal del periodo BCMath. |
 | `System/Support/BulkPriceAdjustmentRules.php` / `BulkPriceAdjustmentProcessor.php` | Ajuste Masivo RF-3.6: reglas puras (porcentaje, precio half-up, cupón quemado, folio `AJ-YYYY-XXX`) + consulta/aplicación transaccional (`price_adjustment` por contrato). |
-| `database/seeds/ExternalServicesSeeder.php` | 5 servicios en sandbox (idempotente, sesión UTC, no pisa ajustes del admin). |
+| `database/seeds/ExternalServicesSeeder.php` | 6 servicios en sandbox, incluye `integropay` (idempotente, sesión UTC, no pisa ajustes del admin). |
 | `System/Services/SegmentProfitabilityService.php` | Summary + CRUD `segment_costs` + no recurrentes + excepciones; RBAC `segment_profitability` + alcance segmento. |
 | `System/Support/SegmentProfitabilityCalculator.php` | Motor puro BCMath: utilidad bruta, margen, unit economics, usuarios concurrentes. |
 | `System/Support/ExceptionAuthorization.php` | RF-11.4: gate `can_authorize_exceptions` + saldo vencido al momento. |
@@ -438,7 +440,30 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `database/migrations/20261125000003_create_benefits_promo_scopes_and_contacts.php` | `benefit_rules`, extensión `promotions` (extra_units), `promotion_scopes`, `client_contacts`. |
 | `components/contracts/RegisterConsumptionModal.tsx` / `GrantBalanceModal.tsx` / `ContractBalancesPanel.tsx` | UI de saldos/consumos; oculta Incluida 0/0; badges TIPO en español. |
 | `components/catalog/BenefitRulesTab.tsx` | Pestaña Reglas de beneficio en Catálogo (tabla + modal Kit Atómico). |
-| `components/clients/ClientContactsTab.tsx` | Pestaña Contactos en detalle de cliente (RF-1.5). |
+| `components/clients/ClientContactsTab.tsx` | Pestaña Contactos en detalle de cliente (RF-1.5); acción «Generar liga de portal». |
+| `components/clients/PortalLinkModal.tsx` | Modal con la liga mágica generada desde el ERP (un solo uso, 15 min). |
+| `database/migrations/20261125000006_create_portal_purchases_payment_links_and_spei_fields.php` | Campos `spei_*` y ref. de webhook en `issuers`, `services.is_public`, tablas `purchases`, `payment_links`, `payment_link_documents`. |
+| `System/Services/PortalAuthService.php` | `/api/portal/auth/*`: request-link (respuesta genérica + rate limit), exchange (liga de un solo uso → JWT), me, logout. |
+| `System/Services/PortalScopedService.php` | Base abstracta de `/api/portal/*`: `client_id` solo del JWT, contrato propio, actor de auditoría `portal`, estados de documento abiertos. |
+| `System/Services/PortalService.php` | `/api/portal/*` de lectura (overview con `open_balance_mxn` por contrato, contracts, invoices) + despacho a pagos, tienda y solicitudes. |
+| `System/Services/PortalPaymentsService.php` | `POST /api/portal/payments/create-link` (exigible / total / parcial, documentos FIFO) + simulador `GET|POST /api/portal/sandbox-pay/{id}[/confirm]` (mismo flujo del webhook; nunca con `APP_ENV=production`). |
+| `System/Services/PortalStoreService.php` | `/api/portal/store` (catálogo público + promos visibles), `store/quote` (escalón + IVA 16% + regalo RF-2.8) y `store/checkout` (tarjeta → liga; SPEI → factura pendiente). |
+| `System/Services/PortalRequestsService.php` | `GET|POST /api/portal/requests`: historial con estado amigable y alta `origin = portal` (candado de cartera RF-8.1 en cambios de plan, acuse SMTP vía outbox, auditoría). |
+| `System/Services/IntegroPayWebhookService.php` | `POST /api/webhooks/integropay/{issuerId}`: token `hash_equals`, dedupe `incoming_events`, verificación con la pasarela y aplicación atómica (compra o pago FIFO, cartera, reactivación RF-6.3). |
+| `System/Support/Integrations/PaymentGatewayInterface.php` / `IntegroPayGateway.php` | Puerto de pasarela + adaptador IntegroPAY (ligas sandbox `SBX-…` 24 h o productivas con credenciales por emisor vía `SecretResolver`; `verifyTransactionById`). |
+| `System/Support/PurchaseFulfillment.php` | Cumplimiento de compras de la Tienda: documento pagado + pago (tarjeta) o documento SPEI pendiente; acredita bolsa `prepaid` (`purchase`) y regalo (`promotion`) por separado, sin tocar MRR. |
+| `System/Support/PriceListResolver.php` / `ContractExigibleResolver.php` / `IssuerSpeiInstructions.php` | Escalones de precio por lista/frecuencia, exigible por contrato (compartido portal/solicitudes/pagos) e instrucciones SPEI del emisor. |
+| `database/migrations/20261125000007_extend_portal_requests_purchases_and_integropay.php` | `service_requests.origin = portal`, `plan_change`, `portal_request_type`; `invoices.purchase_id`; `purchases.payment_method`; `payment_links.transaction_id` / `paid_at`; servicio `integropay`. |
+| `tests/Unit/PortalStoreAndIntegroPayTest.php` | Bloque D Paso 2: compra 1,000 + 25% = 1,250 con movimientos separados y MRR intacto, webhook con token e idempotente, reactivación al pagar el exigible, `add_users` 422 con adeudo y `origin = portal` al corriente. |
+| `System/Support/ExigibleCalculator.php` | Motor BCMath del monto exigible devengado (adeudo previo + mensualidad × meses transcurridos − pagado). |
+| `System/Support/PortalSession.php` / `PortalMagicLinkIssuer.php` | Emisión/validación del JWT `client_portal` + cookie, y emisión de ligas mágicas (solo hash SHA-256 persistido). |
+| `tests/Unit/PortalAuthAndExigibleTest.php` | Exigible (ejemplo anual, half-up, sobrepago), ligas de un solo uso, scopes cruzados 403, aislamiento de contratos ajenos. |
+| `src/pages/portal/*` | `PortalApp` (lazy, `/portal/*`), acceso, inicio, contratos, pagos (botón "Pagar con tarjeta"), tienda Bento con cotización en vivo, solicitudes y simulador `PortalSandboxPayPage` (`/portal/sandbox-pay/:externalLinkId`). |
+| `src/components/portal/*` | `PortalLayout` (píldora flotante en escritorio / dock iOS en móvil), tarjeta héroe, hoja de pago `PortalPaymentModal`, `PortalRequestModal`, modal SPEI, saldos, plan, facturas y tokens de estilo (hoja inferior iOS). |
+| `src/context/PortalAuthContext.tsx` / `services/portalService.ts` / `hooks/usePortalData.ts` / `lib/portalLabels.ts` / `types/portal.ts` | Sesión del portal (JWT solo en memoria), HTTP (pagos, tienda, sandbox, solicitudes), TanStack Query + mutaciones con `withScreenLock`, etiquetas es-MX y tipos. |
+| `lib/moneyCents.ts` | Aritmética exacta de dinero en centavos `bigint` (suma, comparación, mínimo) para la UI — cero `float`. |
+| `hooks/useDebouncedValue.ts` | Valor con retardo (cotización en vivo de la Tienda mientras se teclea). |
+| `lib/requestLabels.ts` | Etiquetas compartidas de tipo de solicitud (incluye `plan_change`) e intención del portal para la Bandeja interna. |
 | `types/balance.ts` / `services/balancesService.ts` / `hooks/useBalances.ts` | Tipos + HTTP JWT + TanStack Query de bolsas. |
 | `services/benefitRulesService.ts` / `services/clientContactsService.ts` / `hooks/useClientContacts.ts` | HTTP + hooks de reglas de beneficio y contactos. |
 | `System/Services/ServiceRequestsService.php` | `/api/requests`: listado+KPIs, pending-count, create, quote, approve (one_time vs expansion + puente factura), reject/cancel; RBAC `requests` + segmento. |

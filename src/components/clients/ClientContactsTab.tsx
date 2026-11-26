@@ -1,8 +1,9 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Mail, Pencil, Phone, Plus, ShieldCheck, UserRound } from 'lucide-react'
+import { Link2, Mail, Pencil, Phone, Plus, ShieldCheck, UserRound } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { PortalLinkModal } from '@/components/clients/PortalLinkModal'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
@@ -27,7 +28,11 @@ import { useToast } from '@/context/ToastContext'
 import { useClientContacts } from '@/hooks/useClientContacts'
 import { usePermissions } from '@/hooks/usePermissions'
 import { cn } from '@/lib/utils'
-import type { ClientContact, ClientContactRole } from '@/services/clientContactsService'
+import type {
+  ClientContact,
+  ClientContactRole,
+  PortalMagicLink,
+} from '@/services/clientContactsService'
 
 const ROLE_LABELS: Record<ClientContactRole, string> = {
   billing: 'Facturación',
@@ -72,9 +77,12 @@ export function ClientContactsTab({ clientId, clientName }: ClientContactsTabPro
     createContact,
     updateContact,
     patchContact,
+    generatePortalLink,
   } = useClientContacts(clientId)
 
   const [formOpen, setFormOpen] = useState(false)
+  const [portalLink, setPortalLink] = useState<PortalMagicLink | null>(null)
+  const [portalLinkOpen, setPortalLinkOpen] = useState(false)
   const [editing, setEditing] = useState<ClientContact | null>(null)
 
   const form = useForm<ContactFormValues>({
@@ -115,6 +123,36 @@ export function ClientContactsTab({ clientId, clientName }: ClientContactsTabPro
       active: contact.active,
     })
     setFormOpen(true)
+  }
+
+  /** Acciones de fila: Editar + Generar liga mágica (solo contactos activos con portal). */
+  function rowActions(contact: ClientContact) {
+    return [
+      {
+        label: 'Editar',
+        icon: <Pencil className="h-4 w-4" />,
+        onClick: () => openEdit(contact),
+        hidden: !canEdit('clients'),
+      },
+      {
+        label: 'Generar liga mágica de portal',
+        icon: <Link2 className="h-4 w-4" />,
+        onClick: () => void onGeneratePortalLink(contact),
+        hidden: !canEdit('clients') || !contact.active || !contact.receives_portal,
+      },
+    ]
+  }
+
+  async function onGeneratePortalLink(contact: ClientContact) {
+    if (!canEdit('clients')) return
+    try {
+      const link = await generatePortalLink(contact.id)
+      setPortalLink(link)
+      setPortalLinkOpen(true)
+      toast.success('Liga mágica generada', `Vigente 15 minutos para ${contact.name}`)
+    } catch (error) {
+      toast.apiError(error)
+    }
   }
 
   async function onToggleActive(contact: ClientContact, next: boolean) {
@@ -251,16 +289,7 @@ export function ClientContactsTab({ clientId, clientName }: ClientContactsTabPro
                   </td>
                   <td className="px-3 py-2.5 text-right">
                     <div className="flex justify-end">
-                      <AppRowActionsMenu
-                        actions={[
-                          {
-                            label: 'Editar',
-                            icon: <Pencil className="h-4 w-4" />,
-                            onClick: () => openEdit(contact),
-                            hidden: !canEdit('clients'),
-                          },
-                        ]}
-                      />
+                      <AppRowActionsMenu actions={rowActions(contact)} />
                     </div>
                   </td>
                 </tr>
@@ -285,16 +314,7 @@ export function ClientContactsTab({ clientId, clientName }: ClientContactsTabPro
                     </p>
                   ) : null}
                 </div>
-                <AppRowActionsMenu
-                  actions={[
-                    {
-                      label: 'Editar',
-                      icon: <Pencil className="h-4 w-4" />,
-                      onClick: () => openEdit(contact),
-                      hidden: !canEdit('clients'),
-                    },
-                  ]}
-                />
+                <AppRowActionsMenu actions={rowActions(contact)} />
               </div>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 <AppBadge
@@ -434,6 +454,12 @@ export function ClientContactsTab({ clientId, clientName }: ClientContactsTabPro
           </form>
         </AppModalContent>
       </AppModal>
+
+      <PortalLinkModal
+        open={portalLinkOpen}
+        onOpenChange={setPortalLinkOpen}
+        link={portalLink}
+      />
     </div>
   )
 }

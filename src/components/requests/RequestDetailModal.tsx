@@ -17,6 +17,7 @@ import {
 import { AppSwitch } from '@/components/ui/AppSwitch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useRequestDetail } from '@/hooks/useRequests'
+import { PORTAL_REQUEST_INTENT_LABEL, SERVICE_REQUEST_TYPE_LABEL } from '@/lib/requestLabels'
 import { cn, formatCurrencyMx, formatDateEsMx } from '@/lib/utils'
 import type {
   ServiceRequestApproveInput,
@@ -29,11 +30,7 @@ import type {
 const FIELD_LABEL =
   'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-zinc-400'
 
-const TYPE_LABEL: Record<ServiceRequestType, string> = {
-  one_time: 'Pago único',
-  consumption: 'Consumo',
-  recurring_expansion: 'Expansión recurrente',
-}
+const TYPE_LABEL: Record<ServiceRequestType, string> = SERVICE_REQUEST_TYPE_LABEL
 
 const STATUS_TONE: Record<
   ServiceRequestStatus,
@@ -189,9 +186,15 @@ export function RequestDetailModal({
               <AppBadge label={STATUS_LABEL[request.status]} tone={STATUS_TONE[request.status]} />
               <AppBadge label={TYPE_LABEL[request.request_type]} tone="info" />
               <AppBadge
-                label={request.origin === 'client_portal' ? 'Portal Cliente' : 'Interna'}
+                label={request.origin === 'portal' ? 'Portal Cliente' : 'Interna'}
                 tone="neutral"
               />
+              {request.portal_request_type ? (
+                <AppBadge
+                  label={PORTAL_REQUEST_INTENT_LABEL[request.portal_request_type]}
+                  tone="neutral"
+                />
+              ) : null}
             </div>
 
             <div className="grid gap-3 rounded-2xl border border-slate-200/80 p-3 text-sm dark:border-white/[0.09] sm:grid-cols-2">

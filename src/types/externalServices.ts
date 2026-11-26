@@ -1,5 +1,11 @@
 /** Servicios globales administrados en Configuración → Servicios externos (RNF-8). */
-export type ExternalServiceKey = 'smtp' | 'erp_master' | 'slack' | 'banxico' | 'jobs_outbox'
+export type ExternalServiceKey =
+  | 'smtp'
+  | 'erp_master'
+  | 'slack'
+  | 'banxico'
+  | 'jobs_outbox'
+  | 'integropay'
 
 export type ExternalServiceMode = 'sandbox' | 'production'
 

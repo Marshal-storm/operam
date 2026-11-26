@@ -5,6 +5,7 @@ import {
   createClientContact,
   deleteClientContact,
   fetchClientContacts,
+  generateContactPortalLink,
   patchClientContact,
   updateClientContact,
   type ClientContactWriteInput,
@@ -69,6 +70,12 @@ export function useClientContacts(clientId: number | null) {
     },
   })
 
+  // No invalida la lista: generar una liga no modifica el contacto.
+  const portalLink = useMutation({
+    mutationFn: (id: number) =>
+      withScreenLock(() => generateContactPortalLink(id), 'Generando liga mágica...'),
+  })
+
   const remove = useMutation({
     mutationFn: (id: number) =>
       withScreenLock(() => deleteClientContact(id), 'Desactivando contacto...'),
@@ -88,6 +95,7 @@ export function useClientContacts(clientId: number | null) {
     createContact: create.mutateAsync,
     updateContact: update.mutateAsync,
     patchContact: patch.mutateAsync,
+    generatePortalLink: portalLink.mutateAsync,
     deleteContact: remove.mutateAsync,
   }
 }

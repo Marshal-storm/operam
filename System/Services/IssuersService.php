@@ -37,6 +37,32 @@ final class IssuersService extends ModelService
         'secret_ref',
         'integropay_merchant_token_ref',
         'integropay_device_token_ref',
+        'integropay_webhook_token_ref',
+    ];
+
+    /** Datos SPEI públicos para el cliente (texto libre, no son secretos). */
+    private const SPEI_FIELDS = [
+        'spei_bank_name',
+        'spei_clabe',
+        'spei_account_holder',
+        'spei_reference_hint',
+    ];
+
+    /** Columnas leídas por listados y detalle (sin alias de tabla). */
+    private const COLUMNS = [
+        'id',
+        'name',
+        'rfc',
+        'api_url',
+        'secret_ref',
+        'integropay_merchant_token_ref',
+        'integropay_device_token_ref',
+        'integropay_webhook_token_ref',
+        'spei_bank_name',
+        'spei_clabe',
+        'spei_account_holder',
+        'spei_reference_hint',
+        'is_active',
     ];
 
     /** @var array<string, mixed> */
@@ -57,6 +83,11 @@ final class IssuersService extends ModelService
             ->setField('secret_ref', DataTypes::String, false, null, null, true)
             ->setField('integropay_merchant_token_ref', DataTypes::String, false, null, null, true)
             ->setField('integropay_device_token_ref', DataTypes::String, false, null, null, true)
+            ->setField('integropay_webhook_token_ref', DataTypes::String, false, null, null, true)
+            ->setField('spei_bank_name', DataTypes::String, false)
+            ->setField('spei_clabe', DataTypes::String, false)
+            ->setField('spei_account_holder', DataTypes::String, false)
+            ->setField('spei_reference_hint', DataTypes::String, false)
             ->setField('is_active', DataTypes::Boolean, false, true);
     }
 
@@ -100,7 +131,7 @@ final class IssuersService extends ModelService
                 return Result::fail('Sin permiso para crear emisores.', 403);
             }
             $normalized = $this->normalizeInput($request);
-            $rfcError = $this->validateRfc($normalized['rfc'] ?? null);
+            $rfcError = $this->validateRfc($normalized['rfc'] ?? null) ?? $this->validateSpei($normalized);
             if ($rfcError !== null) {
                 return Result::fail($rfcError, 422);
             }
@@ -136,7 +167,7 @@ final class IssuersService extends ModelService
                 return Result::fail('Sin permiso para editar emisores.', 403);
             }
             $normalized = $this->normalizeInput($request);
-            $rfcError = $this->validateRfc($normalized['rfc'] ?? null);
+            $rfcError = $this->validateRfc($normalized['rfc'] ?? null) ?? $this->validateSpei($normalized);
             if ($rfcError !== null) {
                 return Result::fail($rfcError, 422);
             }
@@ -160,6 +191,10 @@ final class IssuersService extends ModelService
                 return Result::fail('Sin permiso para editar emisores.', 403);
             }
             $normalized = $this->normalizeInput($request, true);
+            $speiError = $this->validateSpei($normalized);
+            if ($speiError !== null) {
+                return Result::fail($speiError, 422);
+            }
             if (array_key_exists('rfc', $normalized)) {
                 $rfcError = $this->validateRfc($normalized['rfc']);
                 if ($rfcError !== null) {
@@ -209,16 +244,7 @@ final class IssuersService extends ModelService
         $rows = Capsule::table('issuers')
             ->orderByRaw('COALESCE(updated_at, created_at) DESC')
             ->orderByDesc('id')
-            ->get([
-                'id',
-                'name',
-                'rfc',
-                'api_url',
-                'secret_ref',
-                'integropay_merchant_token_ref',
-                'integropay_device_token_ref',
-                'is_active',
-            ]);
+            ->get(self::COLUMNS);
 
         return $rows->map(fn (object $row): array => $this->mapRow($row))->all();
     }
@@ -283,14 +309,7 @@ final class IssuersService extends ModelService
             ->orderByDesc('e.id')
             ->forPage($page, $perPage)
             ->get([
-                'e.id',
-                'e.name',
-                'e.rfc',
-                'e.api_url',
-                'e.secret_ref',
-                'e.integropay_merchant_token_ref',
-                'e.integropay_device_token_ref',
-                'e.is_active',
+                ...array_map(static fn (string $column): string => 'e.' . $column, self::COLUMNS),
                 'ic.linked_instances_count',
             ]);
 
@@ -315,16 +334,9 @@ final class IssuersService extends ModelService
      */
     private function findEnriched(int $id): ?array
     {
-        $row = Capsule::table('issuers as e')->where('e.id', $id)->first([
-            'e.id',
-            'e.name',
-            'e.rfc',
-            'e.api_url',
-            'e.secret_ref',
-            'e.integropay_merchant_token_ref',
-            'e.integropay_device_token_ref',
-            'e.is_active',
-        ]);
+        $row = Capsule::table('issuers as e')->where('e.id', $id)->first(
+            array_map(static fn (string $column): string => 'e.' . $column, self::COLUMNS),
+        );
 
         if ($row === null) {
             return null;
@@ -354,7 +366,7 @@ final class IssuersService extends ModelService
             $out['name'] = trim((string) $out['name']);
         }
 
-        foreach (['api_url', ...self::SENSITIVE_FIELDS] as $field) {
+        foreach (['api_url', ...self::SPEI_FIELDS, ...self::SENSITIVE_FIELDS] as $field) {
             if (!array_key_exists($field, $out)) {
                 continue;
             }
@@ -376,6 +388,24 @@ final class IssuersService extends ModelService
         }
 
         return $out;
+    }
+
+    /**
+     * La CLABE interbancaria (SPEI) son exactamente 18 dígitos; vacía = sin configurar.
+     *
+     * @param array<string, mixed> $normalized
+     */
+    private function validateSpei(array $normalized): ?string
+    {
+        $clabe = $normalized['spei_clabe'] ?? null;
+        if ($clabe === null || $clabe === '') {
+            return null;
+        }
+        if (!preg_match('/^\d{18}$/', (string) $clabe)) {
+            return 'La CLABE debe tener exactamente 18 dígitos numéricos.';
+        }
+
+        return null;
     }
 
     private function validateRfc(mixed $rfc): ?string
@@ -424,6 +454,9 @@ final class IssuersService extends ModelService
             && (string) $row->integropay_device_token_ref !== ''
             ? (string) $row->integropay_device_token_ref
             : null;
+        $webhook = $this->hasReference($row->integropay_webhook_token_ref ?? null)
+            ? (string) $row->integropay_webhook_token_ref
+            : null;
 
         $canEdit = RbacAuthHelper::can($this->authContext, 'config_issuers', 'edit');
 
@@ -442,6 +475,14 @@ final class IssuersService extends ModelService
             'integropay_device_token_ref' => $canEdit
                 ? $device
                 : ($device !== null ? self::MASK : null),
+            'has_webhook_token' => $webhook !== null,
+            'integropay_webhook_token_ref' => $canEdit
+                ? $webhook
+                : ($webhook !== null ? self::MASK : null),
+            'spei_bank_name' => $this->nullableText($row, 'spei_bank_name'),
+            'spei_clabe' => $this->nullableText($row, 'spei_clabe'),
+            'spei_account_holder' => $this->nullableText($row, 'spei_account_holder'),
+            'spei_reference_hint' => $this->nullableText($row, 'spei_reference_hint'),
             'is_active' => (bool) (int) $row->is_active,
         ];
     }
@@ -483,16 +524,7 @@ final class IssuersService extends ModelService
 
     private function issuerRaw(int $id): ?object
     {
-        return Capsule::table('issuers')->where('id', $id)->first([
-            'id',
-            'name',
-            'rfc',
-            'api_url',
-            'secret_ref',
-            'integropay_merchant_token_ref',
-            'integropay_device_token_ref',
-            'is_active',
-        ]);
+        return Capsule::table('issuers')->where('id', $id)->first(self::COLUMNS);
     }
 
     /**
@@ -510,6 +542,8 @@ final class IssuersService extends ModelService
             'has_erp_reference' => $this->hasReference($row->secret_ref ?? null),
             'has_merchant_reference' => $this->hasReference($row->integropay_merchant_token_ref ?? null),
             'has_device_reference' => $this->hasReference($row->integropay_device_token_ref ?? null),
+            'has_webhook_reference' => $this->hasReference($row->integropay_webhook_token_ref ?? null),
+            'spei_configured' => $this->nullableText($row, 'spei_clabe') !== null,
             'is_active' => (bool) (int) $row->is_active,
         ];
     }
@@ -525,6 +559,7 @@ final class IssuersService extends ModelService
             'secret_ref' => 'erp_reference_rotated',
             'integropay_merchant_token_ref' => 'merchant_reference_rotated',
             'integropay_device_token_ref' => 'device_reference_rotated',
+            'integropay_webhook_token_ref' => 'webhook_reference_rotated',
         ];
         foreach ($pairs as $column => $flag) {
             $previous = trim((string) ($beforeRow->{$column} ?? ''));
@@ -533,6 +568,13 @@ final class IssuersService extends ModelService
                 $after[$flag] = true;
             }
         }
+    }
+
+    private function nullableText(object $row, string $field): ?string
+    {
+        $value = trim((string) ($row->{$field} ?? ''));
+
+        return $value !== '' ? $value : null;
     }
 
     private function hasReference(mixed $value): bool

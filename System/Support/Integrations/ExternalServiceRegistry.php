@@ -16,7 +16,7 @@ use InvalidArgumentException;
  */
 final class ExternalServiceRegistry
 {
-    public const SERVICE_KEYS = ['smtp', 'erp_master', 'slack', 'banxico', 'jobs_outbox'];
+    public const SERVICE_KEYS = ['smtp', 'erp_master', 'slack', 'banxico', 'jobs_outbox', 'integropay'];
 
     public const MODES = ['sandbox', 'production'];
 
@@ -69,6 +69,15 @@ final class ExternalServiceRegistry
                 'daily_collections_hour' => 'time',
             ],
             'secrets' => ['job_secret_ref'],
+        ],
+        // Credenciales por emisor (`issuers.integropay_*_ref`); aquí solo parámetros globales.
+        'integropay' => [
+            'config' => [
+                'api_url' => 'url',
+                'timeout_seconds' => 'int:1:120',
+                'link_ttl_hours' => 'int:1:168',
+            ],
+            'secrets' => [],
         ],
     ];
 

@@ -128,6 +128,9 @@ final class OutboxPublisher
                     'period_start' => isset($invoice->period_start) && $invoice->period_start !== null ? (string) $invoice->period_start : null,
                     'period_end' => isset($invoice->period_end) && $invoice->period_end !== null ? (string) $invoice->period_end : null,
                     'request_id' => $invoice->request_id !== null ? (int) $invoice->request_id : null,
+                    'purchase_id' => isset($invoice->purchase_id) && $invoice->purchase_id !== null
+                        ? (int) $invoice->purchase_id
+                        : null,
                 ],
                 'stamp_on_issue' => $contract !== null && (bool) $contract->stamp_on_issue,
                 'contract' => $contract !== null ? self::contractSnapshot($contract) : null,

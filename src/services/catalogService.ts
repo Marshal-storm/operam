@@ -339,6 +339,11 @@ export async function updateSegmentCreditDays(
   })
 }
 
+/** Texto opcional: vacío o nulo → null. */
+function optionalText(value: unknown): string | null {
+  return value != null && value !== '' ? String(value) : null
+}
+
 /** Lista plana para selects (Instancias, Catálogo). */
 function coerceIssuer(raw: unknown): Issuer | null {
   if (!raw || typeof raw !== 'object') return null
@@ -355,6 +360,8 @@ function coerceIssuer(raw: unknown): Issuer | null {
     row.integropay_device_token_ref != null && row.integropay_device_token_ref !== ''
       ? String(row.integropay_device_token_ref)
       : null
+
+  const webhookRef = optionalText(row.integropay_webhook_token_ref)
 
   return {
     id,
@@ -376,6 +383,15 @@ function coerceIssuer(raw: unknown): Issuer | null {
     secret_ref: secretRef,
     integropay_merchant_token_ref: merchantRef,
     integropay_device_token_ref: deviceRef,
+    has_webhook_token:
+      row.has_webhook_token != null
+        ? Boolean(row.has_webhook_token)
+        : Boolean(webhookRef && webhookRef !== '••••••••'),
+    integropay_webhook_token_ref: webhookRef,
+    spei_bank_name: optionalText(row.spei_bank_name),
+    spei_clabe: optionalText(row.spei_clabe),
+    spei_account_holder: optionalText(row.spei_account_holder),
+    spei_reference_hint: optionalText(row.spei_reference_hint),
     // MySQL tinyint 0/1 — nunca comparar === true estricto sin coerción.
     is_active: Boolean(Number(row.is_active)),
     linked_instances_count:
@@ -443,6 +459,11 @@ export type IssuerWriteInput = {
   secret_ref?: string | null
   integropay_merchant_token_ref?: string | null
   integropay_device_token_ref?: string | null
+  integropay_webhook_token_ref?: string | null
+  spei_bank_name?: string | null
+  spei_clabe?: string | null
+  spei_account_holder?: string | null
+  spei_reference_hint?: string | null
   is_active?: boolean
 }
 
@@ -482,6 +503,7 @@ export type ServiceWriteInput = {
   allow_package_conversion?: boolean
   package_service_id?: number | null
   package_factor?: number
+  is_public?: boolean
   is_active?: boolean
   default_issuer_id?: number | null
 }

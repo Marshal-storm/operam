@@ -7,9 +7,17 @@ export type ServiceRequestStatus =
   | 'rejected'
   | 'cancelled'
 
-export type ServiceRequestType = 'one_time' | 'consumption' | 'recurring_expansion'
+export type ServiceRequestType = 'one_time' | 'consumption' | 'recurring_expansion' | 'plan_change'
 
-export type ServiceRequestOrigin = 'internal' | 'client_portal'
+export type ServiceRequestOrigin = 'internal' | 'portal'
+
+/** Intención del cliente capturada en el Portal (`service_requests.portal_request_type`). */
+export type PortalRequestIntent =
+  | 'add_users'
+  | 'remove_users'
+  | 'change_frequency'
+  | 'cancel_service'
+  | 'extra_service'
 
 export type ServiceRequestItemType = 'recurring' | 'consumption' | 'one_time'
 
@@ -51,6 +59,7 @@ export type ServiceRequestListItem = {
   issuer_name: string
   origin: ServiceRequestOrigin
   request_type: ServiceRequestType
+  portal_request_type: PortalRequestIntent | null
   status: ServiceRequestStatus
   currency: 'MXN' | 'USD' | string
   subtotal: string

@@ -44,6 +44,7 @@ import { useToast } from '@/context/ToastContext'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useRequests } from '@/hooks/useRequests'
 import { useSegments } from '@/hooks/useSegments'
+import { PORTAL_REQUEST_INTENT_LABEL, SERVICE_REQUEST_TYPE_LABEL } from '@/lib/requestLabels'
 import { cn, formatCurrencyMx, formatDateEsMx } from '@/lib/utils'
 import type {
   ServiceRequestListItem,
@@ -72,11 +73,7 @@ const STATUS_LABEL: Record<ServiceRequestStatus, string> = {
   cancelled: 'Cancelada',
 }
 
-const TYPE_LABEL: Record<ServiceRequestType, string> = {
-  one_time: 'Pago único',
-  consumption: 'Consumo',
-  recurring_expansion: 'Expansión recurrente',
-}
+const TYPE_LABEL: Record<ServiceRequestType, string> = SERVICE_REQUEST_TYPE_LABEL
 
 /**
  * Bandeja de Solicitudes — Módulo 4 Paso 1 (`/solicitudes`).
@@ -131,7 +128,9 @@ export function RequestsPage() {
         ? 'consumption'
         : typeFilter === 'Expansión recurrente'
           ? 'recurring_expansion'
-          : undefined
+          : typeFilter === 'Cambio de plan'
+            ? 'plan_change'
+            : undefined
 
   const {
     items,
@@ -246,7 +245,19 @@ export function RequestsPage() {
         accessorKey: 'request_type',
         header: 'TIPO',
         cell: ({ row }) => (
-          <AppBadge label={TYPE_LABEL[row.original.request_type]} tone="info" />
+          <div className="flex flex-wrap gap-1.5">
+            <AppBadge label={TYPE_LABEL[row.original.request_type]} tone="info" />
+            {row.original.origin === 'portal' ? (
+              <AppBadge
+                label={
+                  row.original.portal_request_type
+                    ? `Portal · ${PORTAL_REQUEST_INTENT_LABEL[row.original.portal_request_type]}`
+                    : 'Portal'
+                }
+                tone="neutral"
+              />
+            ) : null}
+          </div>
         ),
       },
       {
@@ -481,6 +492,7 @@ export function RequestsPage() {
               { value: 'Pago único', label: 'Pago único' },
               { value: 'Consumo', label: 'Consumo' },
               { value: 'Expansión recurrente', label: 'Expansión recurrente' },
+              { value: 'Cambio de plan', label: 'Cambio de plan' },
             ],
           },
           {
@@ -654,6 +666,7 @@ export function RequestsPage() {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   <AppBadge label={TYPE_LABEL[r.request_type]} tone="info" />
+                  {r.origin === 'portal' ? <AppBadge label="Portal" tone="neutral" /> : null}
                   <AppBadge label={STATUS_LABEL[r.status]} tone={STATUS_TONE[r.status]} />
                   {!r.contract_is_current ? (
                     <AppBadge label="Adeudo" tone="warning" />

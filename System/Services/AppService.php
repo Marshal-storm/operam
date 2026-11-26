@@ -6,9 +6,11 @@ namespace System\Services;
 
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
+use Illuminate\Database\Capsule\Manager as Capsule;
 use System\Core\Context;
 use System\Core\Result;
 use System\Models\ActiveSessionsModel;
+use System\Support\PortalSession;
 use Throwable;
 
 /**
@@ -42,14 +44,27 @@ final class AppService extends CustomService
     public static function beforeGetHook(Context $context, array $freeUris): void
     {
         $uri = strtolower(trim($context->getUri(), '/'));
+        $method = $context->getMethod();
         $base = explode('/', $uri)[0] ?? '';
 
-        if (in_array($base, $freeUris, true) || in_array($uri, $freeUris, true)) {
+        // Rutas libres: por base (`login`), por URI exacta o por `MÉTODO uri` (portal/auth/*).
+        if (
+            in_array($base, $freeUris, true)
+            || in_array($uri, $freeUris, true)
+            || in_array($method . ' ' . $uri, $freeUris, true)
+        ) {
             return;
         }
 
-        $auth = $context->getHeader('Authorization') ?? '';
-        if (!preg_match('/^Bearer\s+(\S+)$/i', $auth, $matches)) {
+        $isPortalRoute = $uri === 'portal' || str_starts_with($uri, 'portal/');
+
+        // Muro de transporte: `/api/portal/*` acepta Bearer del portal o cookie `operam_portal_session`;
+        // las rutas internas `/api/*` ignoran por completo `operam_portal_session`.
+        $token = PortalSession::bearerToken($context);
+        if ($token === null && $isPortalRoute) {
+            $token = PortalSession::cookieToken($context);
+        }
+        if ($token === null) {
             $context->setResult(Result::fail('Token Bearer requerido.', 401));
 
             return;
@@ -63,15 +78,39 @@ final class AppService extends CustomService
         }
 
         try {
-            $decoded = JWT::decode($matches[1], new Key($key, 'HS256'));
+            $decoded = JWT::decode($token, new Key($key, 'HS256'));
         } catch (Throwable $exception) {
             $context->setResult(Result::fail('Token inválido o expirado.', 401));
 
             return;
         }
 
+        $scope = PortalSession::scopeOf($decoded);
+
+        // ── Muro bidireccional de `scope` (RNF-7): aislamiento total Portal ↔ Panel Interno ───
+        if ($isPortalRoute) {
+            if ($scope !== PortalSession::SCOPE) {
+                $context->setResult(Result::fail(
+                    'Las rutas del portal requieren una sesión de cliente.',
+                    403,
+                ));
+
+                return;
+            }
+
+            self::authorizePortalToken($context, $decoded, $token, true);
+
+            return;
+        }
+
+        if ($scope === PortalSession::SCOPE) {
+            self::authorizePortalToken($context, $decoded, $token, false);
+
+            return;
+        }
+
         $jti = $decoded->jti ?? null;
-        if (!is_object($jti) || ($jti->scope ?? null) !== 'enterprise') {
+        if (!is_object($jti) || $scope !== 'enterprise') {
             $context->setResult(Result::fail('Alcance de token no autorizado.', 401));
 
             return;
@@ -130,5 +169,52 @@ final class AppService extends CustomService
             'can_authorize_exceptions' => (bool) ($jti->can_authorize_exceptions ?? false),
             'scope' => 'enterprise',
         ]);
+    }
+
+    /**
+     * Autoriza un JWT `client_portal`: bloquea cualquier ruta fuera de `/api/portal/*` con 403,
+     * revalida que el contacto/cliente sigan activos y expone `portal_auth` al servicio.
+     */
+    private static function authorizePortalToken(
+        Context $context,
+        object $decoded,
+        string $token,
+        bool $isPortalRoute,
+    ): void {
+        if (!$isPortalRoute) {
+            $context->setResult(Result::fail(
+                'Tu sesión del portal no tiene acceso a este recurso.',
+                403,
+            ));
+
+            return;
+        }
+
+        $claims = PortalSession::claimsFrom($decoded);
+        if ($claims['client_id'] < 1) {
+            $context->setResult(Result::fail('Sesión del portal incompleta.', 401));
+
+            return;
+        }
+
+        // Revocación inmediata: si el contacto se desactiva o pierde el permiso, cae la sesión.
+        $clientActive = Capsule::table('clients')
+            ->where('id', $claims['client_id'])
+            ->where('active', 1)
+            ->exists();
+        $contactActive = $claims['contact_id'] === null || Capsule::table('client_contacts')
+            ->where('id', $claims['contact_id'])
+            ->where('client_id', $claims['client_id'])
+            ->where('active', 1)
+            ->where('receives_portal', 1)
+            ->exists();
+        if (!$clientActive || !$contactActive) {
+            $context->setResult(Result::fail('Tu acceso al portal ya no está autorizado.', 401));
+
+            return;
+        }
+
+        $context->setData('portal_auth', $claims);
+        $context->setData('portal_token', $token);
     }
 }

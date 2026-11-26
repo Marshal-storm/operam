@@ -93,6 +93,7 @@ const formSchema = z.object({
     min: 2,
     max: 100,
   }),
+  is_public: z.boolean(),
   is_active: z.boolean(),
 }).superRefine((values, ctx) => {
   if (values.allow_package_conversion && !values.package_service_id) {
@@ -172,6 +173,7 @@ export function CatalogServicesPage() {
       allow_package_conversion: false,
       package_service_id: '',
       package_factor: '5',
+      is_public: false,
       is_active: true,
     },
   })
@@ -329,6 +331,7 @@ export function CatalogServicesPage() {
       allow_package_conversion: false,
       package_service_id: '',
       package_factor: '5',
+      is_public: false,
       is_active: true,
     })
     setModalOpen(true)
@@ -349,6 +352,7 @@ export function CatalogServicesPage() {
         ? String(service.package_service_id)
         : '',
       package_factor: String(service.package_factor ?? 5),
+      is_public: service.is_public,
       is_active: service.is_active,
     })
     setModalOpen(true)
@@ -373,6 +377,7 @@ export function CatalogServicesPage() {
         values.unit_of_measure === 'user' && values.allow_package_conversion
           ? Math.min(100, Math.max(2, Number(values.package_factor) || 5))
           : 5,
+      is_public: values.is_public,
       is_active: values.is_active,
     }
     try {
@@ -785,6 +790,21 @@ export function CatalogServicesPage() {
                 label="Disponible"
               />
               Disponible
+            </label>
+            <label className="flex items-start gap-3 text-sm">
+              <AppSwitch
+                checked={form.watch('is_public')}
+                onCheckedChange={(next) =>
+                  form.setValue('is_public', next, { shouldValidate: true })
+                }
+                label="Visible en Tienda del Portal Cliente"
+              />
+              <span>
+                Visible en Tienda del Portal Cliente
+                <span className="mt-0.5 block text-xs text-slate-500 dark:text-zinc-400">
+                  Los clientes del segmento podrán ver este producto en su portal.
+                </span>
+              </span>
             </label>
             <AppButton type="submit" className="w-full">
               {editing ? 'Guardar' : 'Crear'}

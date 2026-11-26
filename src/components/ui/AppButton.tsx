@@ -72,8 +72,15 @@ export const AppButton = React.forwardRef<HTMLButtonElement, AppButtonProps>(
         aria-busy={isLoading || undefined}
         {...props}
       >
-        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-        {children}
+        {/* Con `asChild` Radix Slot exige UN solo hijo: el spinner solo aplica al <button> real. */}
+        {asChild ? (
+          children
+        ) : (
+          <>
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+            {children}
+          </>
+        )}
       </Comp>
     )
   },

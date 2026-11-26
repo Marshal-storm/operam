@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { SessionSecurityBridge } from '@/components/auth/SessionSecurityBridge'
@@ -32,7 +33,14 @@ import { NewContractPage } from '@/pages/NewContractPage'
 import { RequestsPage } from '@/pages/RequestsPage'
 import { SalesPromotionsPage } from '@/pages/SalesPromotionsPage'
 import { SegmentProfitabilityPage } from '@/pages/SegmentProfitabilityPage'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { ModuleKey } from '@/types/auth'
+
+/**
+ * Portal del Cliente (RF-7): `React.lazy` → chunk de Vite independiente del panel interno
+ * (UI-10). El cliente final jamás descarga el código de administración.
+ */
+const PortalApp = lazy(() => import('@/pages/portal/PortalApp'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -99,6 +107,25 @@ function App() {
                   <SessionSecurityBridge />
                   <Routes>
                     <Route path="/login" element={<LoginPage />} />
+
+                    {/* Portal Cliente: sesión propia (sin contraseña), aislada del ERP. */}
+                    <Route
+                      path="/portal/*"
+                      element={
+                        <Suspense
+                          fallback={
+                            <div className="min-h-screen bg-[#F5F7FB] px-4 py-8 dark:bg-black">
+                              <div className="mx-auto max-w-5xl space-y-4">
+                                <Skeleton className="h-8 w-48 rounded-xl bg-slate-200/70 dark:bg-white/[0.07]" />
+                                <Skeleton className="h-52 w-full rounded-[28px] bg-slate-200/70 dark:bg-white/[0.07]" />
+                              </div>
+                            </div>
+                          }
+                        >
+                          <PortalApp />
+                        </Suspense>
+                      }
+                    />
 
                     <Route element={<ProtectedRoute />}>
                       <Route element={<InternalLayout />}>

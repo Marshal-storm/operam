@@ -209,8 +209,9 @@ export function ExternalServiceConfigModal({
             <div className="flex items-start gap-2">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#10B981]" />
               <p className="text-xs text-slate-600 dark:text-zinc-300">
-                Por seguridad, aquí solo se guarda el nombre de la variable del cofre de secretos
-                (Secret Manager / .env), nunca la contraseña o token en texto plano.
+                {meta.secrets.length > 0
+                  ? 'Por seguridad, aquí solo se guarda el nombre de la variable del cofre de secretos (Secret Manager / .env), nunca la contraseña o token en texto plano.'
+                  : 'Este servicio no tiene secretos globales: sus credenciales se configuran como referencias del cofre en cada Emisor.'}
               </p>
             </div>
             {meta.secrets.map((secret) => {

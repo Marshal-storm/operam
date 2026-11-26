@@ -34,6 +34,7 @@ import { useToast } from '@/context/ToastContext'
 import { useIssuersConfig } from '@/hooks/useConfigCatalog'
 import { usePermissions } from '@/hooks/usePermissions'
 import { cn } from '@/lib/utils'
+import { secretRefNameSchema, speiClabeSchema } from '@/lib/validationSchemas'
 import type { Issuer } from '@/types/catalog'
 
 const issuerFormSchema = z.object({
@@ -55,9 +56,24 @@ const issuerFormSchema = z.object({
   secret_ref: z.string().max(255).optional(),
   integropay_merchant_token_ref: z.string().max(255).optional(),
   integropay_device_token_ref: z.string().max(255).optional(),
+  // Instrucciones SPEI visibles al cliente en el Portal (RF-7.6) + ref del webhook IntegroPAY.
+  spei_bank_name: z.string().trim().max(100).optional(),
+  spei_clabe: speiClabeSchema(),
+  spei_account_holder: z.string().trim().max(160).optional(),
+  spei_reference_hint: z.string().trim().max(160).optional(),
+  integropay_webhook_token_ref: secretRefNameSchema({ optional: true }),
 })
 
 type IssuerFormValues = z.infer<typeof issuerFormSchema>
+
+/** Valores vacíos de la sección SPEI / Webhook del formulario. */
+const EMPTY_SPEI_VALUES = {
+  spei_bank_name: '',
+  spei_clabe: '',
+  spei_account_holder: '',
+  spei_reference_hint: '',
+  integropay_webhook_token_ref: '',
+}
 
 function RefBadge({ label, configured }: { label: string; configured: boolean }) {
   return (
@@ -121,6 +137,7 @@ export function IssuersPage() {
       secret_ref: '',
       integropay_merchant_token_ref: '',
       integropay_device_token_ref: '',
+      ...EMPTY_SPEI_VALUES,
     },
   })
 
@@ -164,6 +181,8 @@ export function IssuersPage() {
               <RefBadge label="Secret" configured={em.has_erp_secret} />
               <RefBadge label="Merchant" configured={em.has_merchant_token} />
               <RefBadge label="Device" configured={em.has_device_token} />
+              <RefBadge label="Webhook" configured={em.has_webhook_token} />
+              <RefBadge label="SPEI" configured={Boolean(em.spei_clabe)} />
             </div>
           )
         },
@@ -228,6 +247,7 @@ export function IssuersPage() {
       secret_ref: '',
       integropay_merchant_token_ref: '',
       integropay_device_token_ref: '',
+      ...EMPTY_SPEI_VALUES,
     })
     setModalOpen(true)
   }
@@ -244,6 +264,11 @@ export function IssuersPage() {
       secret_ref: unmask(issuer.secret_ref),
       integropay_merchant_token_ref: unmask(issuer.integropay_merchant_token_ref),
       integropay_device_token_ref: unmask(issuer.integropay_device_token_ref),
+      spei_bank_name: issuer.spei_bank_name ?? '',
+      spei_clabe: issuer.spei_clabe ?? '',
+      spei_account_holder: issuer.spei_account_holder ?? '',
+      spei_reference_hint: issuer.spei_reference_hint ?? '',
+      integropay_webhook_token_ref: unmask(issuer.integropay_webhook_token_ref),
     })
     setModalOpen(true)
   }
@@ -269,6 +294,11 @@ export function IssuersPage() {
       secret_ref: values.secret_ref?.trim() || null,
       integropay_merchant_token_ref: values.integropay_merchant_token_ref?.trim() || null,
       integropay_device_token_ref: values.integropay_device_token_ref?.trim() || null,
+      integropay_webhook_token_ref: values.integropay_webhook_token_ref?.trim() || null,
+      spei_bank_name: values.spei_bank_name?.trim() || null,
+      spei_clabe: values.spei_clabe?.trim() || null,
+      spei_account_holder: values.spei_account_holder?.trim() || null,
+      spei_reference_hint: values.spei_reference_hint?.trim() || null,
     }
     try {
       if (editing) {
@@ -429,6 +459,8 @@ export function IssuersPage() {
                   <RefBadge label="Secret" configured={em.has_erp_secret} />
                   <RefBadge label="Merchant" configured={em.has_merchant_token} />
                   <RefBadge label="Device" configured={em.has_device_token} />
+                  <RefBadge label="Webhook" configured={em.has_webhook_token} />
+                  <RefBadge label="SPEI" configured={Boolean(em.spei_clabe)} />
                 </div>
                 <p className="mt-2 text-xs text-slate-500">
                   {em.linked_instances_count ?? 0} instancias vinculadas
@@ -572,6 +604,76 @@ export function IssuersPage() {
                   {...form.register('integropay_device_token_ref')}
                 />
               </label>
+            </AppCard>
+
+            <AppCard className="space-y-3 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Instrucciones SPEI y Webhook IntegroPAY
+              </p>
+              <p className="rounded-xl border border-blue-500/20 bg-blue-500/[0.07] px-3 py-2 text-[11px] leading-relaxed text-blue-800 dark:text-blue-300">
+                Estos datos los ve el cliente en su Portal al elegir pago por transferencia. El
+                webhook solo guarda el nombre de la variable del cofre.
+              </p>
+              <label className="block text-sm">
+                Banco
+                <AppInput
+                  withLabelSpacing
+                  placeholder="Nombre del banco receptor"
+                  {...form.register('spei_bank_name')}
+                />
+              </label>
+              <label className="block text-sm">
+                CLABE (18 dígitos)
+                <AppInput
+                  withLabelSpacing
+                  mono
+                  inputMode="numeric"
+                  maxLength={18}
+                  className="tracking-wider"
+                  placeholder="000000000000000000"
+                  error={Boolean(form.formState.errors.spei_clabe)}
+                  {...form.register('spei_clabe', {
+                    onChange: (e) => {
+                      e.target.value = String(e.target.value ?? '').replace(/\D/g, '')
+                    },
+                  })}
+                />
+              </label>
+              {form.formState.errors.spei_clabe && (
+                <p className="text-xs text-red-500">{form.formState.errors.spei_clabe.message}</p>
+              )}
+              <label className="block text-sm">
+                Beneficiario
+                <AppInput
+                  withLabelSpacing
+                  placeholder="Razón social del beneficiario"
+                  {...form.register('spei_account_holder')}
+                />
+              </label>
+              <label className="block text-sm">
+                Referencia sugerida
+                <AppInput
+                  withLabelSpacing
+                  placeholder="Ej. Folio del contrato o de la factura"
+                  {...form.register('spei_reference_hint')}
+                />
+              </label>
+              <label className="block text-sm">
+                Referencia Webhook Token IntegroPAY
+                <AppInput
+                  withLabelSpacing
+                  mono
+                  className="text-xs"
+                  placeholder="INTEGROPAY_WEBHOOK_ACME"
+                  error={Boolean(form.formState.errors.integropay_webhook_token_ref)}
+                  {...form.register('integropay_webhook_token_ref')}
+                />
+              </label>
+              {form.formState.errors.integropay_webhook_token_ref && (
+                <p className="text-xs text-red-500">
+                  {form.formState.errors.integropay_webhook_token_ref.message}
+                </p>
+              )}
             </AppCard>
 
             <AppButton type="submit" className="w-full rounded-xl">

@@ -26,6 +26,8 @@ final class ServicesCatalogModel extends Model
         'allow_package_conversion',
         'package_service_id',
         'package_factor',
+        // Visible en la Tienda del Portal Cliente (RF-7.8).
+        'is_public',
         'is_active',
     ];
 
@@ -36,6 +38,7 @@ final class ServicesCatalogModel extends Model
         'allow_package_conversion' => 'boolean',
         'package_service_id' => 'integer',
         'package_factor' => 'integer',
+        'is_public' => 'boolean',
         'is_active' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',

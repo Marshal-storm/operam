@@ -15,6 +15,7 @@ use System\Support\ContractPricingEngine;
 use System\Support\FinancialCalculator;
 use System\Support\Integrations\OutboxPublisher;
 use System\Support\Jobs\BillingCycleRules;
+use System\Support\PurchaseFulfillment;
 use System\Support\ServiceRequestRules;
 use Throwable;
 
@@ -1364,6 +1365,11 @@ final class CollectionsService extends CustomService
                     'status' => $applied['status'],
                     'updated_at' => $nowUtc,
                 ]);
+
+                // Compra SPEI de la Tienda liquidada: acredita bolsas prepaid (+ regalo de promoción).
+                if ($applied['status'] === 'paid' && isset($invoice->purchase_id) && $invoice->purchase_id !== null) {
+                    PurchaseFulfillment::fulfill((int) $invoice->purchase_id, $this->authContext);
+                }
 
                 // RF-6.3: si el pago liquida el adeudo >90 días, reactiva en esta misma transacción.
                 return $this->recalculateContractCollectionStatus((int) $invoice->contract_id, $paymentId);

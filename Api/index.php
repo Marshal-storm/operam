@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 /**
  * Entrada API del framework operam/servicios.
- * Solo `login` es público; el resto exige JWT enterprise (AppService::before_get).
+ * Solo `login` y `POST portal/auth/{request-link|exchange}` son públicos; el resto exige JWT
+ * (AppService::before_get). Un JWT `client_portal` queda confinado a `/api/portal/*` (403 fuera).
  *
  * RNF-15: jamás devolver HTML de fatales PHP; excepciones → JSON 422/500.
  */
@@ -24,6 +25,7 @@ use System\Services\DashboardMetricsService;
 use System\Services\ExternalServicesService;
 use System\Services\IncomingEventsService;
 use System\Services\InstanceApiService;
+use System\Services\IntegroPayWebhookService;
 use System\Services\InstancesService;
 use System\Services\IssuersService;
 use System\Services\JobsService;
@@ -31,6 +33,8 @@ use System\Services\LoginService;
 use System\Services\MovementsService;
 use System\Services\OutboxService;
 use System\Services\PriceListItemsService;
+use System\Services\PortalAuthService;
+use System\Services\PortalService;
 use System\Services\PriceListsService;
 use System\Services\PromotionsService;
 use System\Services\RbacAuthHelper;
@@ -58,7 +62,7 @@ operam_boot_eloquent();
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
 header('Access-Control-Allow-Origin: ' . $origin);
 header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Allow-Headers: Authorization, Content-Type, Accept, X-Requested-With, X-Instance-Token, X-Job-Secret');
+header('Access-Control-Allow-Headers: Authorization, Content-Type, Accept, X-Requested-With, X-Instance-Token, X-Job-Secret, X-Webhook-Token');
 header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
 header('Content-Type: application/json; charset=utf-8');
 
@@ -81,8 +85,17 @@ function operam_api_json_error(int $httpCode, array $payload): never
 }
 
 try {
-    /** Única URI libre del acceso interno empresarial. */
-    $freeuris = ['login'];
+    /**
+     * URIs libres: `login` (acceso interno) y SOLO los dos POST de autenticación sin contraseña
+     * del Portal Cliente. Cualquier otra ruta `portal/*` exige JWT `client_portal` (RNF-7).
+     * El webhook `webhooks/integropay/{issuerId}` NO va aquí: se despacha antes de la guardia con
+     * su propio token por emisor (agregar `webhooks` liberaría el listado de `incoming-events`).
+     */
+    $freeuris = [
+        'login',
+        'POST portal/auth/request-link',
+        'POST portal/auth/exchange',
+    ];
 
     $loginHooks = [
         'before_create' => [
@@ -105,6 +118,14 @@ try {
     $path = preg_replace('#^/api#', '', $path) ?: '/';
     $uri = trim((string) $path, '/');
 
+    // Blindaje HTTP del Portal del Cliente: cero caché y sin fuga de Referer en todas las respuestas.
+    $normalizedUri = strtolower($uri);
+    $isPortalRoute = $normalizedUri === 'portal' || str_starts_with($normalizedUri, 'portal/');
+    if ($isPortalRoute) {
+        header('Cache-Control: no-store, no-cache, must-revalidate');
+        header('Referrer-Policy: no-referrer');
+    }
+
     $rawBody = file_get_contents('php://input') ?: '';
     $jsonBody = json_decode($rawBody, true);
     $requestPayload = is_array($jsonBody) ? $jsonBody : [];
@@ -119,9 +140,17 @@ try {
 
     $result = null;
 
+    // Parámetros de query disponibles también en POST (p. ej. `?token=` del webhook de IntegroPAY).
+    $context->setData('_query', $_GET);
+
     // API de instancias: autenticación por token propio (no JWT enterprise).
     if (str_starts_with($uri, 'instance-api')) {
         $result = (new InstanceApiService())->handle($context);
+    } elseif (IntegroPayWebhookService::isWebhookRequest($uri)) {
+        // Webhook IntegroPAY: token del emisor (`hash_equals`) + verificación por ID contra la pasarela.
+        // Se despacha ANTES de la guardia JWT sin agregar `webhooks` a `$freeuris`: ese alias expone
+        // el listado interno de `incoming-events`, que debe seguir protegido por JWT + RBAC.
+        $result = (new IntegroPayWebhookService())->handle($context);
     } elseif (JobsService::isSchedulerRequest($context)) {
         // Cloud Scheduler: secreto compartido `X-Job-Secret` resuelto desde el cofre (RNF-8).
         $result = (new JobsService())->handleSchedulerRequest($context);
@@ -221,6 +250,10 @@ try {
                 'outbox' => (new OutboxService())->handle($context),
                 'incoming-events' => (new IncomingEventsService())->handle($context),
                 'jobs' => (new JobsService())->handle($context),
+                // Portal Cliente: autenticación sin contraseña + lectura aislada por client_id.
+                'portal' => str_starts_with($uri, 'portal/auth')
+                    ? (new PortalAuthService())->handle($context)
+                    : (new PortalService())->handle($context),
                 default => Result::ok([
                     'uri' => $uri,
                     'auth' => $context->getData('auth'),

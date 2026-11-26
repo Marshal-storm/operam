@@ -29,6 +29,14 @@ export type Issuer = {
   secret_ref: string | null
   integropay_merchant_token_ref: string | null
   integropay_device_token_ref: string | null
+  /** Referencia del cofre para validar el webhook de IntegroPAY (RF-7.6). */
+  has_webhook_token: boolean
+  integropay_webhook_token_ref: string | null
+  /** Instrucciones SPEI visibles para el cliente en el Portal (RF-7.6). */
+  spei_bank_name: string | null
+  spei_clabe: string | null
+  spei_account_holder: string | null
+  spei_reference_hint: string | null
   is_active: boolean
   /** Conteo informativo de instancias vinculadas (listado paginado). */
   linked_instances_count?: number
@@ -68,6 +76,8 @@ export type CatalogService = {
   package_service_code?: string | null
   package_service_name?: string | null
   package_factor: number
+  /** Visible en la Tienda del Portal Cliente (RF-7.8). */
+  is_public: boolean
   is_active: boolean
 }
 

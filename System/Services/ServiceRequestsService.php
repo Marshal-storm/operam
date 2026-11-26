@@ -12,9 +12,9 @@ use System\Core\DataTypes;
 use System\Core\Result;
 use System\Models\ServiceRequestsModel;
 use System\Support\AuditLogger;
-use System\Support\ContractPricingEngine;
 use System\Support\FinancialCalculator;
 use System\Support\Integrations\OutboxPublisher;
+use System\Support\PriceListResolver;
 use System\Support\ServiceRequestRules;
 use Throwable;
 
@@ -30,7 +30,7 @@ final class ServiceRequestsService extends ModelService
 
     private const STATUSES = ['pending', 'quoted', 'approved', 'rejected', 'cancelled'];
 
-    private const REQUEST_TYPES = ['one_time', 'consumption', 'recurring_expansion'];
+    private const REQUEST_TYPES = ['one_time', 'consumption', 'recurring_expansion', 'plan_change'];
 
     /** @var array<string, mixed> */
     private array $authContext = [];
@@ -294,6 +294,7 @@ final class ServiceRequestsService extends ModelService
             'sr.issuer_id',
             'sr.origin',
             'sr.request_type',
+            'sr.portal_request_type',
             'sr.status',
             'sr.currency',
             'sr.subtotal',
@@ -413,6 +414,9 @@ final class ServiceRequestsService extends ModelService
             'issuer_name' => (string) ($row->issuer_name ?? ''),
             'origin' => (string) $row->origin,
             'request_type' => (string) $row->request_type,
+            'portal_request_type' => isset($row->portal_request_type) && $row->portal_request_type !== null
+                ? (string) $row->portal_request_type
+                : null,
             'status' => (string) $row->status,
             'currency' => (string) $row->currency,
             'subtotal' => FinancialCalculator::normalizeMoney((string) $row->subtotal),
@@ -596,7 +600,7 @@ final class ServiceRequestsService extends ModelService
                 $userName,
                 $nowUtc,
             ): int {
-                $folio = $this->nextFolio();
+                $folio = self::nextFolio();
                 $requestId = (int) Capsule::table('service_requests')->insertGetId([
                     'folio' => $folio,
                     'contract_id' => (int) $contract->id,
@@ -1230,11 +1234,12 @@ final class ServiceRequestsService extends ModelService
 
     /**
      * Valida contrato activo + servicios de la lista; resuelve precios con BCMath.
+     * Público para que el Portal del Cliente cotice con exactamente las mismas reglas (DRY).
      *
      * @param list<array<string, mixed>> $rawItems
      * @return array{contract:object,lines:list<array<string, mixed>>}
      */
-    private function prepareItemsForContract(int $contractId, array $rawItems): array
+    public function prepareItemsForContract(int $contractId, array $rawItems): array
     {
         $contract = Capsule::table('contracts')->where('id', $contractId)->first();
         if ($contract === null) {
@@ -1379,44 +1384,7 @@ final class ServiceRequestsService extends ModelService
         int $quantity,
         string $serviceType = 'recurring',
     ): string {
-        $frequencies = in_array($serviceType, ['single', 'consumption', 'one_time'], true)
-            ? ['single', 'monthly']
-            : [$contractFrequency];
-
-        $tiers = [];
-        foreach ($frequencies as $freq) {
-            $tiers = Capsule::table('price_list_items')
-                ->where('price_list_id', $priceListId)
-                ->where('service_id', $serviceId)
-                ->where('frequency', $freq)
-                ->orderBy('min_quantity')
-                ->get(['min_quantity', 'max_quantity', 'unit_price'])
-                ->map(static fn (object $t): array => [
-                    'min_quantity' => (int) $t->min_quantity,
-                    'max_quantity' => $t->max_quantity !== null ? (int) $t->max_quantity : null,
-                    'unit_price' => (string) $t->unit_price,
-                ])
-                ->all();
-            if ($tiers !== []) {
-                break;
-            }
-        }
-
-        if ($tiers === []) {
-            $tiers = Capsule::table('price_list_items')
-                ->where('price_list_id', $priceListId)
-                ->where('service_id', $serviceId)
-                ->orderBy('min_quantity')
-                ->get(['min_quantity', 'max_quantity', 'unit_price'])
-                ->map(static fn (object $t): array => [
-                    'min_quantity' => (int) $t->min_quantity,
-                    'max_quantity' => $t->max_quantity !== null ? (int) $t->max_quantity : null,
-                    'unit_price' => (string) $t->unit_price,
-                ])
-                ->all();
-        }
-
-        return ContractPricingEngine::resolveTierUnitPrice($tiers, $quantity);
+        return PriceListResolver::resolveUnitPrice($priceListId, $serviceId, $contractFrequency, $quantity, $serviceType);
     }
 
     /**
@@ -1435,7 +1403,8 @@ final class ServiceRequestsService extends ModelService
         ];
     }
 
-    private function nextFolio(): string
+    /** Siguiente folio SOL-XXXX (bloqueo de lectura; invocar dentro de una transacción). */
+    public static function nextFolio(): string
     {
         $max = Capsule::table('service_requests')
             ->where('folio', 'like', 'SOL-%')

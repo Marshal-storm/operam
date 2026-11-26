@@ -143,6 +143,36 @@ export async function patchClientContact(
   return mapContact(raw)
 }
 
+/** Liga mágica generada por el ERP para un contacto autorizado (RF-7.1). */
+export type PortalMagicLink = {
+  url: string
+  expires_at: string
+  expires_in_seconds: number
+  contact: { id: number; name: string; email: string }
+}
+
+/**
+ * Genera una liga mágica de 15 minutos de un solo uso (requiere `canEdit('clients')`).
+ * El backend también encola el correo al contacto; la URL se devuelve al administrador.
+ */
+export async function generateContactPortalLink(id: number): Promise<PortalMagicLink> {
+  const raw = await apiRequest<Record<string, unknown>>(
+    `client-contacts/${id}/generate-portal-link`,
+    { method: 'POST' },
+  )
+  const contact = (raw.contact ?? {}) as Record<string, unknown>
+  return {
+    url: String(raw.url ?? ''),
+    expires_at: String(raw.expires_at ?? ''),
+    expires_in_seconds: Number(raw.expires_in_seconds ?? 900),
+    contact: {
+      id: Number(contact.id ?? id),
+      name: String(contact.name ?? ''),
+      email: String(contact.email ?? ''),
+    },
+  }
+}
+
 export async function deleteClientContact(id: number): Promise<void> {
   await apiRequest<unknown>(`client-contacts/${id}`, {
     method: 'DELETE',
