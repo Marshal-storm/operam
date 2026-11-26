@@ -170,7 +170,35 @@ D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx migrate
 D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx seed:run
 # o solo el seeder RBAC:
 D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx seed:run -s RbacRolesAndPermissionsSeeder
+# Servicios externos (Bloque C, 5 servicios en sandbox) + worker del outbox:
+D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe vendor/bin/phinx seed:run -s ExternalServicesSeeder
+D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe scripts/run_outbox_worker.php --drain
 ```
+
+### Jobs de Google Cloud (Bloque C Paso 2)
+
+Cuatro jobs oficiales con doble entrada; cada corrida queda en `job_runs` (`trigger_source` = `cloud_scheduler` | `cli` | `manual_ui`). La fecha de negocio usa `jobs_outbox.timezone` (default `America/Mexico_City`).
+
+```bash
+# Cloud Run Jobs / cron local (exit 0 = todo completado, 1 = algún fallo o argumento inválido)
+D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe scripts/jobs/run_job.php daily_billing
+D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe scripts/jobs/run_job.php reset_included_balances
+D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe scripts/jobs/run_job.php daily_collections
+D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe scripts/jobs/run_job.php process_outbox
+D:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe scripts/jobs/run_job.php all
+
+# Cloud Scheduler (HTTP): el secreto vive en la variable GCP_JOB_SECRET_REF (.env / Secret Manager)
+curl -X POST https://<host>/api/jobs/run/daily_billing -H "X-Job-Secret: <valor de GCP_JOB_SECRET_REF>"
+```
+
+| Job | Qué hace |
+|-----|----------|
+| `daily_billing` | Contratos activos con `next_cutoff_date` ≤ hoy: factura recurrente idempotente por `(contract_id, period_start)` con IVA 16% BCMath, recálculo de `collection_statuses`, avance del corte (29/30/31 → último día del mes) y prefactura `create_preinvoice` al ERP Emisor (`preinvoice:{contract_id}:{period_start}`). |
+| `reset_included_balances` | Bolsas `included` vencidas: reotorga unidades con las reglas de beneficio vigentes, `consumed_units = 0`, nuevo periodo y movimiento `reset` en `balance_movements`. |
+| `daily_collections` | Recalcula cartera (avisos 0/30/60/90), reactiva automáticamente (RF-6.3) y suspende contratos con licencias a +90 días (respeta `exclude_suspension`): `churn` + `suspend_instance`. |
+| `process_outbox` | `OutboxDispatcher::processPending(50)` con reintentos y backoff. |
+
+Sin secreto configurado el endpoint HTTP responde `503` (falla cerrado); un secreto incorrecto responde `401` (`hash_equals`). Desde la UI (`/configuracion/servicios` → **Jobs programados**) el disparo manual exige JWT con `config_external_services.edit` y alcance "Todos".
 
 ---
 
@@ -192,7 +220,9 @@ Obligatorios para quien continúe el proyecto:
 - **Filtros homologados (`AppFilterBar`):** toda barra de búsqueda/filtros de listados usa `<AppFilterBar />` (§3.2) con etiquetas en mayúsculas; catálogos dinámicos desde MySQL.
 - **RNF-15 — Validación numérica estricta y errores API:** montos/precios/cantidades con Zod (`src/lib/validationSchemas.ts`: `moneySchema`, `exchangeRateSchema`, `positiveIntSchema`, `nonNegativeIntSchema`) + `AppInput.numericMode` antes de cualquier HTTP; `Api/index.php` con `display_errors=0` y `try/catch` global (`InvalidArgumentException` → HTTP 422 JSON; demás → HTTP 500 JSON con `error_id`); cliente `apiClient` / `parseOperamApiResponse` jamás trata HTML o `success≠true` como éxito.
 - **RNF-8 — Cero hardcodeo de servicios externos:** URLs, hosts, API keys y parámetros operativos (SMTP, ERP, Slack, Banxico, PAC, webhooks) viven en Configuración → Servicios externos / MySQL; secretos solo por `secret_ref` hacia `.env` / Secret Manager.
-- **RBAC multinivel (18 `module_key`):** operativos (`main`: `dashboard`…`sales_promotions` + `segment_profitability`) y `config_*` (`configuration`); sin permiso monolítico `configuration`.
+- **RBAC multinivel (19 `module_key`):** operativos (`main`: `dashboard`…`sales_promotions` + `segment_profitability`) y `config_*` (`configuration`, incluye `config_external_services` Ver+Editar); sin permiso monolítico `configuration`.
+- **Outbox transaccional (RNF-2 / RNF-12):** toda llamada saliente (ERP Emisor, ERP Master, IntegroPAY, SMTP, Slack) se encola con `OutboxDispatcher::enqueue()` dentro de la transacción de negocio con llave de idempotencia única; nunca se llama HTTP directo desde un servicio. Webhooks entrantes se registran con `IncomingEventRecorder::record()` (dedupe `origin + external_id`).
+- **Jobs de GCP:** la lógica batch vive en `JobsRunner` (nunca en scripts sueltos); toda corrida se registra en `job_runs` y se audita. Cloud Scheduler se autentica con `X-Job-Secret` resuelto desde el cofre (`GCP_JOB_SECRET_REF`); jamás agregar `jobs/*` a `$freeuris`.
 - **Auditoría automática (`audit_logs`):** toda escritura vía `System/Support/AuditLogger.php`; secretos redactados; módulo Sistema siempre audita; depuración solo con `@allow_audit_purge`.
 
 Detalle completo: archivo `.cursorrules` en la raíz.
@@ -212,6 +242,8 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 - [x] **Bloque A — Utilidad por Segmento, Costos Operativos, Ingresos No Recurrentes y Permiso/Reporte de Excepciones (RF-10, RF-11.4, RF-11.5):** checkpoint oficial cerrado — `/utilidad-segmento` (4 pestañas Kit Atómico), KPIs + unit economics sin scroll, CRUD `segment_costs`, ingresos no recurrentes, reporte de excepciones, `can_authorize_exceptions`, RNF-8 servicios externos, RNF-15 validación numérica + manejador JSON global en `Api/index.php`.
 - [x] **Bloque B Paso 1 — Motor de Saldos / Bolsas / Consumos + API de Instancias (RF-4.1–RF-4.6):** `balances`, `consumptions` (RNF-3), `balance_movements`, `portal_access_tokens`, tokens SHA-256 en `instances`, `/api/balances/*`, `/api/instance-api/*`, UI en detalle de contrato + rotación de token.
 - [x] **Bloque B — Motor de Saldos, Bolsas, Consumos, Reglas de Beneficio, Promociones RF-2.8, Contactos y API para Instancias:** checkpoint oficial cerrado — pulidos visuales de bolsas, `benefit_rules` (RF-2.6) con sync en alta/expansión/contracción, promociones `extra_units` + `promotion_scopes` (RF-2.8), `client_contacts` (RF-1.5), `gifted_units` en utilidad, Kit Atómico (`AppTabs`), PHPUnit + build en verde.
+- [x] **Bloque C Paso 1 — Servicios externos, Outbox, Webhooks y Tipo de cambio (RNF-2 / RNF-8 / RNF-12):** `external_service_configs` (5 servicios sandbox, secretos solo por referencia), `outbox` con backoff + alerta Slack única, `incoming_events` con dedupe, `exchange_rates` (Banxico FIX), enganches en Contratos/Solicitudes/Cobranza, worker CLI, `/configuracion/servicios` con `<AppTabs />` (Servicios / Monitor Outbox / Webhooks), RBAC 6 capas `config_external_services`, PHPUnit + build en verde.
+- [x] **Bloque C — Servicios Externos sin Hardcodeo, Outbox, Jobs de GCP, Reactivación Automática y Ajuste Masivo de Precios:** checkpoint oficial cerrado — 4 jobs (`daily_billing`, `reset_included_balances`, `daily_collections`, `process_outbox`) vía HTTP `X-Job-Secret` / CLI `scripts/jobs/run_job.php` / UI, bitácora `job_runs`, facturación por aniversario idempotente con fin de mes, reactivación automática RF-6.3 al liquidar licencias >90 días (`reactivation` + `reactivate_instance`), Ajuste Masivo RF-3.6 con vista previa UI-9 y lotes `AJ-YYYY-XXX` en `bulk_price_adjustments`, PHPUnit + build en verde.
 - [ ] **Módulo 4 (resto):** Portal Cliente con Magic Links e IntegroPAY (RF-5 a RF-8).
 
 ---
@@ -223,7 +255,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | Archivo | Descripción |
 |---------|-------------|
 | `.cursorrules` | Reglas senior: BD inglés, Kit Atómico §3.1, RBAC §11, filtros con label, cero mockups, Spinner+Toasts, Liquid Glass, TTS. |
-| `.env.example` | Plantilla de variables Vite / MySQL / JWT. |
+| `.env.example` | Plantilla de variables Vite / MySQL / JWT + referencias del cofre RNF-8 (`SMTP_PASSWORD_REF`, `ERP_MASTER_API_KEY_REF`, `SLACK_OUTBOX_WEBHOOK_REF`, `BANXICO_SIE_TOKEN_REF`, `GCP_JOB_SECRET_REF`; alternativa `<NOMBRE>_FILE`). |
 | `.gitignore` | Excluye `node_modules/`, `vendor/`, `dist/`, `.env`, temporales. |
 | `.oxlintrc.json` | Oxlint. |
 | `composer.json` / `composer.lock` | Dependencias PHP 8.3 + `phpunit/phpunit` ^11 en require-dev. |
@@ -242,6 +274,10 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `scripts/reset_contracts_only.php` | TRUNCATE solo tablas de contratos + solicitudes/cobranza + `promotions.current_uses=0`; verifica triggers RNF-3. |
 | `scripts/reset_transactional_history.php` | Reset pre-IVA: TRUNCATE 9 tablas transaccionales (CT/SOL/FAC → 0001), restaura `promotions.current_uses=0`, recrea/verifica triggers RNF-3; catálogos/clientes intactos. |
 | `scripts/run_collections_suspension.php` | CLI nocturno: `runSuspensionCheck` (+90 días, churn append-only). |
+| `scripts/run_outbox_worker.php` | Worker CLI/GCP del outbox: `--limit=25`, `--drain` (vacía la cola); exit 2 si hubo fallos. |
+| `tests/Unit/OutboxAndExternalServicesTest.php` | Bloque C: idempotencia de `enqueue`, sandbox pending→sent, backoff + alerta Slack única, reintento manual, dedupe de webhooks, rechazo de secretos en texto plano, parseo Banxico. |
+| `scripts/jobs/run_job.php` | CLI de Cloud Run Jobs: `daily_billing` / `reset_included_balances` / `daily_collections` / `process_outbox` / `all` (registra en `job_runs`). |
+| `tests/Unit/JobsReactivationAndBulkPriceTest.php` | Bloque C Paso 2: facturación diaria (IVA, fin de mes 31→28 feb→31 mar→30 abr, prefactura en outbox, sin duplicados), reinicio de bolsas (`reset`), reactivación RF-6.3 (`reactivation` + `reactivate_instance`), ajuste masivo +10% exacto al centavo en `movements` / `monthly_mrr`, secreto de Cloud Scheduler. |
 | `index.html` | Entrada Vite + Google Fonts (Ubuntu / DM Sans / DM Mono). |
 | `tailwind.config.js` | Referencia `fontFamily` oficial (Tailwind v4 usa `@theme` en CSS). |
 | `package.json` / `package-lock.json` | Dependencias npm. |
@@ -266,7 +302,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `hooks/useSegments.ts` | Hook central TanStack Query → `GET /api/segments` (mapa id→nombre, opciones de filtro). |
 | `hooks/useSegmentLock.ts` | Filtro de segmento dinámico + bloqueo JWT (sin nombres quemados). |
 | `components/ui/AppFilterBar.tsx` | Estándar homologado de filtros (§3.2): buscador cápsula + selects píldora con labels en mayúsculas + Limpiar filtros. |
-| `components/ui/AppTabs.tsx` | Barras de pestañas cápsula Liquid Glass (§3.1): `items`/`value`/`onChange`/`badge`; única forma de tabs en producto. |
+| `components/ui/AppTabs.tsx` | Barras de pestañas cápsula Liquid Glass (§3.1): `items`/`value`/`onChange`/`badge` + `badgeTone` (`neutral`/`warning`/`danger`); única forma de tabs en producto. |
 | `components/ui/AppFilterField.tsx` | Campo suelto con label (complemento; listados usan `AppFilterBar`). |
 | `components/ui/AppRowActionsMenu.tsx` | Menú `⋮` de acciones de fila (§3.3) + encabezado `ACCIONES`; Liquid Glass Radix Dropdown. |
 | `context/ScreenPreferencesContext.tsx` | pageSize (10/25/50/100) + densidad + `toastPosition` (6 anclas) en `localStorage`. |
@@ -313,7 +349,8 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `hooks/useRequests.ts` | TanStack Query listado/detalle + mutaciones con `useLoadingLock` e invalidación de badge/contratos/dashboard. |
 | `hooks/useCollections.ts` | TanStack Query cobranza + mutaciones con `useLoadingLock`; invalida `collections`/`contracts`/`requests`/`dashboard`. |
 | `types/collection.ts` | Tipos invoices/payments/cartera/aging/suspensión. |
-| `pages/ContractsPage.tsx` | `/contratos` — listado paginado servidor, 4 KPIs, `AppFilterBar`, tabla/tarjetas UI-4 (`contracts`). |
+| `pages/ContractsPage.tsx` | `/contratos` — listado paginado servidor, 4 KPIs, `AppFilterBar`, tabla/tarjetas UI-4 (`contracts`); botón "Ajuste masivo de precios" con `canEdit('contracts')`. |
+| `components/contracts/BulkPriceAdjustmentModal.tsx` | Ajuste Masivo RF-3.6 en 2 pasos (filtros + % + motivo → vista previa UI-9 con KPIs y tabla → aplicar lote `AJ-YYYY-XXX`); invalida `contracts` y `dashboard`. |
 | `pages/NewContractPage.tsx` | `/contratos/nuevo` — formulario 2 columnas + panel sticky MRR (UI-9), RF-2 en vivo, promo y alta atómica. |
 | `pages/ContractDetailPage.tsx` | `/contratos/:id` — detalle, KPIs, líneas, bitácora movements, ciclo de vida y reversión contable RNF-3 (`contracts`). |
 | `components/contracts/LifecycleOperationModal.tsx` | Modales RHF+Zod de operaciones con preview de impacto MRR (UI-9). |
@@ -334,6 +371,10 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `pages/config/CompanySettingsPage.tsx` | `/configuracion/empresa` — parámetros comerciales por segmento (`default_credit_days`, `usd_exchange_rate`) vía `config_company`. |
 | `pages/config/SystemSettingsPage.tsx` | `/configuracion/sistema` — bandera `audit_logs_enabled` y depuración irreversible de la bitácora (`config_system`). |
 | `pages/config/AuditLogsPage.tsx` | `/configuracion/auditoria` — bitácora paginada de solo lectura con diff antes/después (`config_audit_logs`). |
+| `pages/config/ExternalServicesPage.tsx` | `/configuracion/servicios` — `<AppTabs />` Servicios externos (5 tarjetas) / Jobs programados / Monitor Outbox (KPIs + reintentos) / Webhooks; escrituras solo con alcance Todos (`config_external_services`). |
+| `components/external-services/ScheduledJobsTab.tsx` / `jobMeta.ts` | Pestaña Jobs programados: 4 tarjetas (última corrida, estado, procesados, "Ejecutar ahora" con confirmación) + historial `job_runs` paginado con detalle JSON. |
+| `components/external-services/*` | `ExternalServiceCard`, `ExternalServiceConfigModal` (RHF+Zod, nota RNF-8), `OutboxMonitorTab`, `IncomingEventsTab`, `JsonPayloadModal`, `externalServiceMeta.ts` (campos/etiquetas por servicio). |
+| `services/externalServicesService.ts` / `hooks/useExternalServices.ts` / `types/externalServices.ts` | HTTP JWT contra `/api/external-services`, `/api/outbox`, `/api/incoming-events`, `/api/jobs` + TanStack Query con `withScreenLock`. |
 | `pages/config/ScreenPreferencesPage.tsx` | `/configuracion/preferencias` — pageSize, densidad y posición Toast (`config_preferences`). |
 | `pages/config/UsersManagementPage.tsx` | `/configuracion/usuarios` — cuentas, rol y segmento (`config_users`). |
 | `pages/config/RolesPermissionsPage.tsx` | `/configuracion/roles` — matriz multinivel sin preselección (`config_roles`). |
@@ -352,14 +393,30 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `lib/utils.ts` / `lib/mrrCalculator.ts` | Utilidades y motor MRR. |
 | `lib/pricingCalculator.ts` | RF-2 `optimizeUserPackages` (centavos). |
 | `lib/apiClient.ts` | Cliente HTTP RNF-15: `parseOperamApiResponse` (nunca éxito falso con HTML/`success≠true`). |
-| `lib/validationSchemas.ts` | Zod `moneySchema` / `exchangeRateSchema` / `positiveIntSchema` / `nonNegativeIntSchema`. |
+| `lib/validationSchemas.ts` | Zod `moneySchema` / `exchangeRateSchema` / `positiveIntSchema` / `nonNegativeIntSchema` / `secretRefNameSchema` / `optionalHttpUrlSchema` / `timeOfDaySchema` / `adjustmentPercentageSchema` / `bulkPriceAdjustmentSchema`. |
 
 ### `Api/` / `System/` / `database/` / `backend/`
 
 | Área | Descripción |
 |------|-------------|
-| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `clients` + `client-contacts` + `benefit-rules` + `contracts` + `requests` + `collections` + `movements` + `segment-profitability` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs` + `balances`. RNF-15: `display_errors=0` + `try/catch` global JSON (422/500 + `error_id`). |
-| `Api/services.routes.inc` | Índice documentado de rutas (incl. `/api/requests`, `/api/collections` y `/api/segment-profitability`). |
+| `Api/index.php` | Solo `login` libre; resto JWT; CORS; catálogo + `issuers` + `clients` + `client-contacts` + `benefit-rules` + `contracts` + `requests` + `collections` + `movements` + `segment-profitability` + `roles` / `users` / `me` + `segments` + `system-settings` + `audit-logs` + `balances` + `external-services` + `outbox` + `incoming-events`. RNF-15: `display_errors=0` + `try/catch` global JSON (422/500 + `error_id`). |
+| `Api/services.routes.inc` | Índice documentado de rutas (incl. `/api/requests`, `/api/collections`, `/api/segment-profitability`, `/api/external-services`, `/api/outbox` e `/api/incoming-events`). |
+| `System/Support/Integrations/SecretResolver.php` | RNF-8: resuelve nombres de referencia (`$_ENV` → `getenv` → `$_SERVER` → `<REF>_FILE`); la UI solo recibe `isConfigured()`. |
+| `System/Support/Integrations/ExternalServiceRegistry.php` | Esquema y validación por servicio (`smtp`, `erp_master`, `slack`, `banxico`, `jobs_outbox`); `isProduction`, `configValue`, `resolveSecret`. |
+| `System/Support/Integrations/OutboxDispatcher.php` | `enqueue` idempotente + worker `processPending` (SKIP LOCKED, sandbox/producción, backoff `retry_backoff_minutes × intentos`, alerta Slack única) + `retry`. |
+| `System/Support/Integrations/OutboxPublisher.php` | Arma payloads de negocio: ajuste de usuarios, suspensión/reactivación de instancia, prefactura al ERP Emisor. |
+| `System/Support/Integrations/IncomingEventRecorder.php` | Registro deduplicado de webhooks (`origin + external_id`) + `markProcessed`. |
+| `System/Support/Integrations/ExternalServiceTester.php` | "Probar conexión" sandbox/producción; Banxico guarda el FIX en `exchange_rates`. |
+| `System/Support/Integrations/IntegrationTransport.php` / `DefaultIntegrationTransport.php` | Puerto de salida (Guzzle + Symfony Mailer); sustituible en pruebas. |
+| `System/Services/ExternalServicesService.php` / `OutboxService.php` / `IncomingEventsService.php` | REST Bloque C con RBAC `config_external_services`, alcance de segmento y `AuditLogger`. |
+| `System/Models/ExternalServiceConfigsModel.php` / `OutboxModel.php` / `IncomingEventsModel.php` / `ExchangeRatesModel.php` | Eloquent de las tablas Bloque C. |
+| `database/migrations/20261125000004_create_outbox_incoming_events_and_external_services.php` | Tablas `external_service_configs`, `outbox`, `incoming_events`, `exchange_rates` (únicos de idempotencia/dedupe). |
+| `database/migrations/20261125000005_create_job_runs_and_bulk_price_adjustments.php` | Tablas `job_runs` y `bulk_price_adjustments`; `invoices.period_start` / `period_end` + único `(contract_id, period_start)` (idempotencia de facturación). |
+| `System/Services/JobsService.php` | `/api/jobs`: `POST run/{job\|all}` (Cloud Scheduler con `X-Job-Secret` + `hash_equals`, o JWT `config_external_services.edit`) y `GET runs` (historial + última corrida). |
+| `System/Support/Jobs/JobsRunner.php` | Motor de los 4 jobs + bitácora `job_runs` (bloqueo de corridas simultáneas, recuperación de corridas huérfanas, auditoría). |
+| `System/Support/Jobs/BillingCycleRules.php` | Reglas puras de ciclo de facturación: siguiente corte por aniversario con fin de mes, fin de periodo, subtotal del periodo BCMath. |
+| `System/Support/BulkPriceAdjustmentRules.php` / `BulkPriceAdjustmentProcessor.php` | Ajuste Masivo RF-3.6: reglas puras (porcentaje, precio half-up, cupón quemado, folio `AJ-YYYY-XXX`) + consulta/aplicación transaccional (`price_adjustment` por contrato). |
+| `database/seeds/ExternalServicesSeeder.php` | 5 servicios en sandbox (idempotente, sesión UTC, no pisa ajustes del admin). |
 | `System/Services/SegmentProfitabilityService.php` | Summary + CRUD `segment_costs` + no recurrentes + excepciones; RBAC `segment_profitability` + alcance segmento. |
 | `System/Support/SegmentProfitabilityCalculator.php` | Motor puro BCMath: utilidad bruta, margen, unit economics, usuarios concurrentes. |
 | `System/Support/ExceptionAuthorization.php` | RF-11.4: gate `can_authorize_exceptions` + saldo vencido al momento. |
@@ -385,9 +442,9 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `types/balance.ts` / `services/balancesService.ts` / `hooks/useBalances.ts` | Tipos + HTTP JWT + TanStack Query de bolsas. |
 | `services/benefitRulesService.ts` / `services/clientContactsService.ts` / `hooks/useClientContacts.ts` | HTTP + hooks de reglas de beneficio y contactos. |
 | `System/Services/ServiceRequestsService.php` | `/api/requests`: listado+KPIs, pending-count, create, quote, approve (one_time vs expansion + puente factura), reject/cancel; RBAC `requests` + segmento. |
-| `System/Services/CollectionsService.php` | `/api/collections`: invoices, payments, cartera, recalculo `collection_statuses`, suspensión +90d; RBAC `collections`. |
+| `System/Services/CollectionsService.php` | `/api/collections`: invoices, payments, cartera, recalculo `collection_statuses`, suspensión +90d (solo deuda de licencias), reactivación automática RF-6.3 al pagar; ciclo diario del job `daily_collections`; RBAC `collections`. |
 | `System/Support/ServiceRequestRules.php` | Motor puro BCMath: precios, tipo, gate de cartera, payload expansion con `request_id`. |
-| `System/Support/CollectionRules.php` | Motor puro BCMath: pagos, notice_level, aging, elegibilidad suspensión, due_date. |
+| `System/Support/CollectionRules.php` | Motor puro BCMath: pagos, notice_level, aging, elegibilidad suspensión, due_date, días vencidos de licencias, elegibilidad de reactivación, nivel de aviso 0/30/60/90. |
 | `System/Models/ServiceRequestsModel.php` / `ServiceRequestItemsModel.php` | Eloquent `service_requests` / `service_request_items`. |
 | `System/Models/InvoicesModel.php` / `PaymentsModel.php` | Eloquent `invoices` / `payments`. |
 | `database/migrations/20261122000001_create_service_requests_tables.php` | Tablas `service_requests` / `service_request_items` + índice `movements.request_id`. |
@@ -398,7 +455,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `System/Support/FinancialCalculator.php` | Calculadora BCMath pura: `optimizeUserPackages`, `calculateMrrBridge`, `buildReversalPayload`, `accumulateMonthlyMrrAmount`. Categorías en inglés; ignora `transfer`; `movement_type` = `reversal`. |
 | `System/Services/*` | Login, App, RbacAuthHelper, Roles, Users, Segments (RF-1), Issuers (refs enmascaradas), Clients (Módulo 3 Paso 1), Movements (RNF-3 + sync RF-10), SystemSettings, AuditLogs + catálogo. Escrituras llaman `AuditLogger`. |
 | `System/Services/ClientsService.php` | CRUD `/api/clients`: paginación servidor, summary KPI, RBAC `clients`, alcance de segmento, herencia de crédito, anti-borrado con contratos. |
-| `System/Services/ContractsService.php` | `/api/contracts`: listado, detalle enriquecido, POST alta, `POST /{id}/lifecycle` y `POST /{id}/movements/{mid}/reverse` (RNF-3 + audit). |
+| `System/Services/ContractsService.php` | `/api/contracts`: listado, detalle enriquecido, POST alta, `POST /{id}/lifecycle`, `POST /{id}/movements/{mid}/reverse` (RNF-3 + audit) y `bulk-price-adjustment/{options\|preview\|apply}` (RF-3.6, `contracts.edit`). |
 | `System/Services/DashboardMetricsService.php` | `GET /api/dashboard` (alias `/api/dashboard/mrr`): Puente MRR + KPIs + movimientos del mes (`month=YYYY-MM`). |
 | `System/Support/ContractPricingEngine.php` | Motor puro BCMath: escalones, RF-2, promo, `lineMrrMxn`. |
 | `System/Support/ContractLifecycleEngine.php` | Motor puro BCMath de deltas de ciclo de vida (expansion…reactivation, transfer=0.00). |
@@ -421,7 +478,7 @@ Detalle completo: archivo `.cursorrules` en la raíz.
 | `database/scripts/reset_english_schema.php` | DROP tablas legacy (español) + actuales + `phinxlog` para remigrar en limpio. |
 | `scripts/reset_operational_data.php` | TRUNCATE operativo/comercial (contratos, clientes, catálogo, MRR, audit) conservando auth/RBAC/segmentos/settings; verifica triggers RNF-3. |
 | `database/migrations/20260925000009_add_package_link_and_fx_rate.php` | No-op de secuencia. Columnas vivas: `services.package_service_id` + `package_factor`; `segments.usd_exchange_rate`. |
-| `database/seeds/*` | Sep 2026 + EnterpriseUsers + CatalogAndPricing + RbacRolesAndPermissions (18 `module_key` en inglés, `segment_profitability`, matriz aplicable por módulo, + Gestor de Promociones). |
+| `database/seeds/*` | Sep 2026 + EnterpriseUsers + CatalogAndPricing + RbacRolesAndPermissions (19 `module_key` en inglés, `segment_profitability`, `config_external_services`, matriz aplicable por módulo, + Gestor de Promociones). |
 | `backend/src/Models/*` | Movement, Client, Contract, Segment, Issuer, MonthlyMrr, CollectionStatus. |
 | `backend/src/Services/MovementService.php` | Alta inmutable auxiliar (Operam\Services) + Money. |
 | `System/Services/MovementsService.php` | API `operam/servicios`: INSERT + reversión contable (BCMath, `contracts.mrr_mxn`, `monthly_mrr`); bloqueo UPDATE/DELETE. |

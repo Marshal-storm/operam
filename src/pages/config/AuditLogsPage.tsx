@@ -46,6 +46,7 @@ const MODULE_LABELS: Record<string, string> = {
   config_company: 'Empresa',
   config_system: 'Sistema',
   config_audit_logs: 'Bitácora',
+  config_external_services: 'Servicios externos',
   config_preferences: 'Preferencias',
   auth: 'Autenticación',
 }

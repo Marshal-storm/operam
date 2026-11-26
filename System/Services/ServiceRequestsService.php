@@ -14,6 +14,7 @@ use System\Models\ServiceRequestsModel;
 use System\Support\AuditLogger;
 use System\Support\ContractPricingEngine;
 use System\Support\FinancialCalculator;
+use System\Support\Integrations\OutboxPublisher;
 use System\Support\ServiceRequestRules;
 use Throwable;
 
@@ -826,6 +827,14 @@ final class ServiceRequestsService extends ModelService
                         $userId,
                         $nowUtc,
                         $overdueAtException,
+                    );
+
+                    // RF-8.4: el ajuste recurrente se propaga a ERP Master vía outbox transaccional.
+                    OutboxPublisher::contractUsersAdjustment(
+                        (int) $locked->contract_id,
+                        'service_request_approved',
+                        'adjust_users:request:' . (int) $locked->id,
+                        (int) $locked->id,
                     );
                 }
 

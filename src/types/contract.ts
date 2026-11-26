@@ -161,3 +161,56 @@ export type ContractCreateInput = {
   notes?: string
   lines: ContractLineInput[]
 }
+
+/** Filtros + porcentaje del Ajuste Masivo de Precios (RF-3.6). */
+export type BulkPriceAdjustmentInput = {
+  segment_id?: number
+  issuer_id?: number
+  service_id?: number
+  anniversary_from?: string
+  anniversary_to?: string
+  /** Positivo = incremento, negativo = decremento (2 decimales, nunca 0). */
+  percentage: string
+}
+
+export type BulkPriceAdjustmentApplyInput = BulkPriceAdjustmentInput & {
+  reason: string
+}
+
+export type BulkPriceAdjustmentSummary = {
+  percentage: string
+  affected_contracts_count: number
+  affected_lines_count: number
+  current_total_mrr_mxn: string
+  new_total_mrr_mxn: string
+  total_mrr_delta_mxn: string
+}
+
+export type BulkPriceAdjustmentItem = {
+  contract_id: number
+  folio: string
+  client_name: string
+  segment_name: string
+  issuer_name: string
+  next_billing_date: string
+  lines_count: number
+  old_mrr_mxn: string
+  new_mrr_mxn: string
+  mrr_delta_mxn: string
+}
+
+export type BulkPriceAdjustmentPreview = {
+  summary: BulkPriceAdjustmentSummary
+  items: BulkPriceAdjustmentItem[]
+}
+
+export type BulkPriceAdjustmentResult = BulkPriceAdjustmentPreview & {
+  batch_id: number
+  batch_code: string
+}
+
+export type BulkPriceAdjustmentServiceOption = {
+  id: number
+  code: string
+  name: string
+}

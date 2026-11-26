@@ -1,6 +1,11 @@
 import { ApiClientError, parseOperamApiResponse } from '@/lib/apiClient'
 import { notifyUnauthorized } from '@/services/sessionSecurity'
 import type {
+  BulkPriceAdjustmentApplyInput,
+  BulkPriceAdjustmentInput,
+  BulkPriceAdjustmentPreview,
+  BulkPriceAdjustmentResult,
+  BulkPriceAdjustmentServiceOption,
   ContractCreateInput,
   ContractDetail,
   ContractLifecycleInput,
@@ -284,6 +289,34 @@ export async function runContractLifecycle(
       body: JSON.stringify(input),
     }),
   )
+}
+
+/** GET /api/contracts/bulk-price-adjustment/options — servicios recurrentes ajustables. */
+export async function fetchBulkPriceAdjustmentServices(): Promise<BulkPriceAdjustmentServiceOption[]> {
+  const data = await apiRequest<{ services: BulkPriceAdjustmentServiceOption[] }>(
+    'contracts/bulk-price-adjustment/options',
+  )
+  return data.services ?? []
+}
+
+/** POST /api/contracts/bulk-price-adjustment/preview — UI-9 sin escritura. */
+export function previewBulkPriceAdjustment(
+  input: BulkPriceAdjustmentInput,
+): Promise<BulkPriceAdjustmentPreview> {
+  return apiRequest('contracts/bulk-price-adjustment/preview', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+/** POST /api/contracts/bulk-price-adjustment/apply — lote AJ-YYYY-XXX atómico. */
+export function applyBulkPriceAdjustment(
+  input: BulkPriceAdjustmentApplyInput,
+): Promise<BulkPriceAdjustmentResult> {
+  return apiRequest('contracts/bulk-price-adjustment/apply', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
 }
 
 /** POST /api/contracts/{id}/movements/{movementId}/reverse — RNF-3. */

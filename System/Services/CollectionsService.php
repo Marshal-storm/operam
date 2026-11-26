@@ -11,7 +11,10 @@ use System\Core\Result;
 use System\Support\AuditLogger;
 use System\Support\CollectionRules;
 use System\Support\ContractLifecycleEngine;
+use System\Support\ContractPricingEngine;
 use System\Support\FinancialCalculator;
+use System\Support\Integrations\OutboxPublisher;
+use System\Support\Jobs\BillingCycleRules;
 use System\Support\ServiceRequestRules;
 use Throwable;
 
@@ -45,6 +48,18 @@ final class CollectionsService extends CustomService
 
     /** @var array<string, mixed> */
     private array $authContext = [];
+
+    /**
+     * Contexto de auditoría para invocaciones fuera de HTTP (jobs de GCP / CLI).
+     *
+     * @param array<string, mixed> $authContext
+     */
+    public function withAuthContext(array $authContext): self
+    {
+        $this->authContext = $authContext;
+
+        return $this;
+    }
 
     public function handle(Context $context): Result
     {
@@ -166,33 +181,29 @@ final class CollectionsService extends CustomService
 
     /**
      * Recalcula `collection_statuses` del contrato (BCMath + America/Mexico_City).
-     * Público para puente desde solicitudes y CLI.
+     * Público para puente desde solicitudes, jobs y CLI.
+     *
+     * Si el contrato está suspendido y ya no adeuda licencias/recurrentes con 90+ días,
+     * lo reactiva en la misma transacción (RF-6.3). `$paymentId` ancla la llave idempotente
+     * del outbox cuando el recálculo proviene de un pago.
      *
      * @return array{
      *   overdue_balance: string,
      *   days_overdue: int,
      *   notice_level: int,
      *   notice_code: string,
-     *   is_suspended: bool
+     *   warning_level: int,
+     *   license_overdue_days: int,
+     *   is_suspended: bool,
+     *   reactivated: bool
      * }
      */
-    public function recalculateContractCollectionStatus(int $contractId): array
+    public function recalculateContractCollectionStatus(int $contractId, ?int $paymentId = null): array
     {
         $today = $this->todayInMexicoCity();
         $nowUtc = gmdate('Y-m-d H:i:s');
 
-        $invoices = Capsule::table('invoices')
-            ->where('contract_id', $contractId)
-            ->where('status', '!=', 'cancelled')
-            ->get(['id', 'balance', 'due_date', 'status', 'paid_amount'])
-            ->map(static fn (object $row): array => [
-                'id' => (int) $row->id,
-                'balance' => (string) $row->balance,
-                'due_date' => (string) $row->due_date,
-                'status' => (string) $row->status,
-                'paid_amount' => (string) $row->paid_amount,
-            ])
-            ->all();
+        $invoices = $this->contractInvoicesForRules($contractId);
 
         // Marca overdue las pending/partial vencidas.
         $computed = CollectionRules::computeCollectionStatusFromInvoices($invoices, $today);
@@ -247,13 +258,211 @@ final class CollectionsService extends CustomService
             Capsule::table('collection_statuses')->where('contract_id', $contractId)->update($payload);
         }
 
+        $licenseOverdueDays = CollectionRules::licenseOverdueDays($invoices, $today);
+        $reactivated = false;
+        if ($alreadySuspended && CollectionRules::canAutoReactivate($invoices, $today)) {
+            $reactivated = $this->autoReactivateContract($contractId, $paymentId, $today);
+        }
+
         return [
             'overdue_balance' => $computed['overdue_balance'],
             'days_overdue' => $computed['days_overdue'],
             'notice_level' => $computed['notice_level'],
             'notice_code' => $computed['notice_code'],
-            'is_suspended' => $isSuspended,
+            'warning_level' => CollectionRules::warningLevelFromDays($computed['days_overdue']),
+            'license_overdue_days' => $licenseOverdueDays,
+            'is_suspended' => $isSuspended && !$reactivated,
+            'reactivated' => $reactivated,
         ];
+    }
+
+    /**
+     * Job `daily_collections` (RF-6.1 a RF-6.3): recalcula cartera de contratos activos y
+     * suspendidos (avisos 30/60/90 + reactivaciones) y después suspende los elegibles a +90 días.
+     *
+     * @return array<string, mixed>
+     */
+    public function runDailyCollectionsCycle(): array
+    {
+        $contractIds = Capsule::table('contracts')
+            ->whereIn('status', ['active', 'suspended'])
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->all();
+
+        $warningLevels = ['0' => 0, '30' => 0, '60' => 0, '90' => 0];
+        $reactivatedFolios = [];
+        foreach ($contractIds as $contractId) {
+            $status = $this->recalculateContractCollectionStatus($contractId);
+            $warningLevels[(string) $status['warning_level']]++;
+            if ($status['reactivated']) {
+                $reactivatedFolios[] = (string) Capsule::table('contracts')->where('id', $contractId)->value('folio');
+            }
+        }
+
+        $suspension = $this->suspendEligibleContracts(null);
+
+        return [
+            'evaluated_contracts' => count($contractIds),
+            'warning_levels' => $warningLevels,
+            'reactivated_count' => count($reactivatedFolios),
+            'reactivated_folios' => $reactivatedFolios,
+            'suspension_candidates' => $suspension['evaluated_count'],
+            'suspended_count' => $suspension['suspended_count'],
+            'excluded_count' => $suspension['excluded_count'],
+            'suspended_folios' => $suspension['suspended_folios'],
+            'as_of' => $suspension['as_of'],
+        ];
+    }
+
+    /**
+     * Facturas no canceladas del contrato en el formato que consumen CollectionRules.
+     *
+     * @return list<array{id: int, invoice_type: string, balance: string, due_date: string, status: string, paid_amount: string}>
+     */
+    private function contractInvoicesForRules(int $contractId): array
+    {
+        return Capsule::table('invoices')
+            ->where('contract_id', $contractId)
+            ->where('status', '!=', 'cancelled')
+            ->get(['id', 'invoice_type', 'balance', 'due_date', 'status', 'paid_amount'])
+            ->map(static fn (object $row): array => [
+                'id' => (int) $row->id,
+                'invoice_type' => (string) $row->invoice_type,
+                'balance' => (string) $row->balance,
+                'due_date' => (string) $row->due_date,
+                'status' => (string) $row->status,
+                'paid_amount' => (string) $row->paid_amount,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Reactivación automática RF-6.3 (Págs. 6 y 39): restaura las líneas que apagó la suspensión,
+     * inserta el movimiento inmutable `reactivation`, sincroniza `monthly_mrr`, encola
+     * `reactivate_instance` hacia ERP Master y audita. Todo en una transacción (anidable).
+     */
+    private function autoReactivateContract(int $contractId, ?int $paymentId, string $today): bool
+    {
+        $reason = 'Reactivación automática por liquidación de saldo vencido >90 días';
+
+        return Capsule::connection()->transaction(function () use ($contractId, $paymentId, $today, $reason): bool {
+            $nowUtc = gmdate('Y-m-d H:i:s');
+            $contract = Capsule::table('contracts')->where('id', $contractId)->lockForUpdate()->first();
+            if ($contract === null || (string) $contract->status !== 'suspended') {
+                return false;
+            }
+
+            // Solo se encienden las líneas recurrentes que apagó la suspensión (misma marca UTC que
+            // el movimiento churn); las bajas previas por contracción permanecen inactivas.
+            $suspensionMovement = Capsule::table('movements')
+                ->where('contract_id', $contractId)
+                ->where('mrr_category', 'churn')
+                ->orderByDesc('id')
+                ->first(['id', 'created_at']);
+            $linesQuery = Capsule::table('contract_lines')
+                ->where('contract_id', $contractId)
+                ->where('service_type', 'recurring')
+                ->where('active', 0)
+                ->whereRaw('subtotal > 0');
+            if ($suspensionMovement !== null) {
+                $linesQuery->where('updated_at', '>=', (string) $suspensionMovement->created_at);
+            }
+
+            $exchangeRate = (string) $contract->exchange_rate;
+            $contractMrr = '0.00';
+            foreach ($linesQuery->lockForUpdate()->get() as $line) {
+                $lineMrr = ContractPricingEngine::lineMrrMxn(
+                    'recurring',
+                    (string) $line->billing_frequency,
+                    (string) $line->subtotal,
+                    $exchangeRate,
+                );
+                Capsule::table('contract_lines')->where('id', (int) $line->id)->update([
+                    'active' => 1,
+                    'mrr_mxn' => $lineMrr,
+                    'updated_at' => $nowUtc,
+                ]);
+                $contractMrr = bcadd($contractMrr, $lineMrr, 2);
+            }
+
+            // Los periodos en suspensión no se facturan: el siguiente corte salta al próximo aniversario.
+            $nextCutoff = $contract->next_cutoff_date !== null ? (string) $contract->next_cutoff_date : null;
+            $frequency = (string) $contract->frequency;
+            if ($nextCutoff !== null && $nextCutoff < $today && BillingCycleRules::isRecurringFrequency($frequency)) {
+                $nextCutoff = BillingCycleRules::rollForwardTo(
+                    $nextCutoff,
+                    $today,
+                    $frequency,
+                    BillingCycleRules::anniversaryDay((string) $contract->anniversary_date),
+                );
+            }
+
+            Capsule::table('contracts')->where('id', $contractId)->update([
+                'status' => 'active',
+                'termination_reason' => null,
+                'mrr_mxn' => $contractMrr,
+                'next_cutoff_date' => $nextCutoff,
+                'updated_at' => $nowUtc,
+            ]);
+            Capsule::table('collection_statuses')->where('contract_id', $contractId)->update([
+                'is_suspended' => 0,
+                'updated_at' => $nowUtc,
+            ]);
+
+            $impact = ContractLifecycleEngine::reactivationImpact($contractMrr);
+            $userId = (int) ($this->authContext['user_id'] ?? 0);
+            (new MovementsService())->recordWithinTransaction([
+                'contract_id' => $contractId,
+                'contract_line_id' => null,
+                'service_id' => null,
+                'movement_type' => 'reactivation',
+                'mrr_category' => 'reactivation',
+                'effective_date' => $today,
+                'quantity_before' => '0.00',
+                'quantity_after' => '1.00',
+                'mrr_before' => '0.00',
+                'mrr_after' => $impact['mrr_after'],
+                'mrr_delta_mxn' => $impact['mrr_delta_mxn'],
+                'exchange_rate' => $this->normalizeExchangeRate($exchangeRate),
+                'user_id' => $userId > 0 ? $userId : null,
+                'request_id' => null,
+                'reason' => $reason,
+                'has_exception' => 0,
+                'excepted_policy' => null,
+                'reversed_movement_id' => null,
+                'created_at' => $nowUtc,
+            ]);
+
+            OutboxPublisher::instanceStatusChange(
+                $contractId,
+                'reactivate_instance',
+                $reason,
+                $paymentId !== null
+                    ? sprintf('reactivate:%d:%d', $contractId, $paymentId)
+                    : sprintf('reactivate:%d:movement:%d', $contractId, OutboxPublisher::latestMovementId($contractId)),
+            );
+
+            AuditLogger::log(
+                $this->authContext,
+                self::MODULE_KEY,
+                'contracts',
+                (string) $contractId,
+                'status_change',
+                $reason . ' — ' . (string) $contract->folio,
+                ['status' => 'suspended', 'mrr_mxn' => FinancialCalculator::normalizeMoney((string) $contract->mrr_mxn)],
+                [
+                    'status' => 'active',
+                    'mrr_mxn' => $contractMrr,
+                    'payment_id' => $paymentId,
+                    'next_cutoff_date' => $nextCutoff,
+                ],
+            );
+
+            return true;
+        });
     }
 
     /**
@@ -342,6 +551,9 @@ final class CollectionsService extends CustomService
             'created_at' => $nowUtc,
             'updated_at' => $nowUtc,
         ]);
+
+        // Prefactura al ERP del Emisor (outbox en la misma transacción de aprobación).
+        OutboxPublisher::invoicePreinvoice($id);
 
         $this->recalculateContractCollectionStatus((int) $request->contract_id);
 
@@ -540,8 +752,6 @@ final class CollectionsService extends CustomService
     public function runSuspensionCheck(array $query = []): Result
     {
         $segmentId = $this->resolveSegmentFilter($query);
-        $today = $this->todayInMexicoCity();
-        $nowUtc = gmdate('Y-m-d H:i:s');
 
         // Primero recalcula estados de contratos activos con facturas.
         $contractIdsQuery = Capsule::table('contracts as c')
@@ -553,6 +763,20 @@ final class CollectionsService extends CustomService
         foreach ($activeIds as $cid) {
             $this->recalculateContractCollectionStatus((int) $cid);
         }
+
+        return Result::ok($this->suspendEligibleContracts($segmentId), 'Evaluación de suspensiones completada');
+    }
+
+    /**
+     * Suspende contratos activos con licencias/recurrentes a 90+ días (cartera ya recalculada).
+     * Las compras sueltas vencidas no suspenden (mismo criterio que la reactivación RF-6.3).
+     *
+     * @return array{evaluated_count: int, suspended_count: int, excluded_count: int, suspended_folios: list<string>, as_of: string}
+     */
+    private function suspendEligibleContracts(?int $segmentId): array
+    {
+        $today = $this->todayInMexicoCity();
+        $nowUtc = gmdate('Y-m-d H:i:s');
 
         $builder = Capsule::table('collection_statuses as cs')
             ->join('contracts as c', 'c.id', '=', 'cs.contract_id')
@@ -588,7 +812,11 @@ final class CollectionsService extends CustomService
                 (string) $row->overdue_balance,
                 $exclude,
             );
-            if (!$eligible) {
+            $licenseDays = CollectionRules::licenseOverdueDays(
+                $this->contractInvoicesForRules((int) $row->contract_id),
+                $today,
+            );
+            if (!$eligible || $licenseDays < CollectionRules::SUSPENSION_DAYS) {
                 $excluded++;
                 continue;
             }
@@ -653,6 +881,14 @@ final class CollectionsService extends CustomService
                         'created_at' => $nowUtc,
                     ]);
 
+                    // ERP Master suspende la instancia del cliente (outbox transaccional).
+                    OutboxPublisher::instanceStatusChange(
+                        $contractId,
+                        'suspend_instance',
+                        'Suspensión automática por morosidad (+90 días vencidos)',
+                        sprintf('suspend_instance:contract:%d:movement:%d', $contractId, OutboxPublisher::latestMovementId($contractId)),
+                    );
+
                     AuditLogger::log(
                         $this->authContext,
                         self::MODULE_KEY,
@@ -681,13 +917,13 @@ final class CollectionsService extends CustomService
             }
         }
 
-        return Result::ok([
+        return [
             'evaluated_count' => $evaluated,
             'suspended_count' => $suspended,
             'excluded_count' => $excluded,
             'suspended_folios' => $suspendedFolios,
             'as_of' => $today,
-        ], 'Evaluación de suspensiones completada');
+        ];
     }
 
     /**
@@ -999,6 +1235,9 @@ final class CollectionsService extends CustomService
                     'updated_at' => $nowUtc,
                 ]);
 
+                // Prefactura al ERP del Emisor; timbra al emitir si el contrato tiene stamp_on_issue.
+                OutboxPublisher::invoicePreinvoice($id);
+
                 $this->recalculateContractCollectionStatus((int) $contract->id);
 
                 return ['id' => $id, 'folio' => $folio];
@@ -1087,7 +1326,7 @@ final class CollectionsService extends CustomService
         $notes = isset($payload['notes']) ? trim((string) $payload['notes']) : null;
 
         try {
-            Capsule::connection()->transaction(function () use (
+            $collectionStatus = Capsule::connection()->transaction(function () use (
                 $invoice,
                 $invoiceId,
                 $applied,
@@ -1098,8 +1337,8 @@ final class CollectionsService extends CustomService
                 $notes,
                 $userId,
                 $nowUtc,
-            ): void {
-                Capsule::table('payments')->insert([
+            ): array {
+                $paymentId = (int) Capsule::table('payments')->insertGetId([
                     'invoice_id' => $invoiceId,
                     'contract_id' => (int) $invoice->contract_id,
                     'client_id' => (int) $invoice->client_id,
@@ -1126,13 +1365,17 @@ final class CollectionsService extends CustomService
                     'updated_at' => $nowUtc,
                 ]);
 
-                $this->recalculateContractCollectionStatus((int) $invoice->contract_id);
+                // RF-6.3: si el pago liquida el adeudo >90 días, reactiva en esta misma transacción.
+                return $this->recalculateContractCollectionStatus((int) $invoice->contract_id, $paymentId);
             });
         } catch (Throwable $e) {
             return Result::fail($e->getMessage(), 422);
         }
 
         $detail = $this->findInvoiceDetail($invoiceId);
+        if (is_array($detail)) {
+            $detail['contract_reactivated'] = $collectionStatus['reactivated'];
+        }
         AuditLogger::log(
             $this->authContext,
             self::MODULE_KEY,
@@ -1154,7 +1397,13 @@ final class CollectionsService extends CustomService
             ],
         );
 
-        return Result::ok($detail, 'Pago registrado', 201);
+        return Result::ok(
+            $detail,
+            $collectionStatus['reactivated']
+                ? 'Pago registrado · contrato reactivado automáticamente'
+                : 'Pago registrado',
+            201,
+        );
     }
 
     /**
@@ -1491,7 +1740,8 @@ final class CollectionsService extends CustomService
         return FinancialCalculator::normalizeMoney((string) ($sum ?? '0'));
     }
 
-    private function nextInvoiceFolio(): string
+    /** Siguiente folio FAC-XXXX (invocar dentro de una transacción; bloquea la lectura del máximo). */
+    public function nextInvoiceFolio(): string
     {
         $max = Capsule::table('invoices')
             ->where('folio', 'like', 'FAC-%')

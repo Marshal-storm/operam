@@ -67,6 +67,8 @@ export type PaymentRecord = {
 
 export type InvoiceDetail = InvoiceListItem & {
   payments: PaymentRecord[]
+  /** RF-6.3: el pago liquidó la deuda de licencias >90 días y el contrato se reactivó. */
+  contract_reactivated?: boolean
 }
 
 export type CollectionKpis = {

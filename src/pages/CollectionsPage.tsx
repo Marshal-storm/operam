@@ -979,7 +979,12 @@ export function CollectionsPage() {
           if (!payTarget) return
           try {
             const updated = await recordPayment(payTarget.id, data)
-            toast.success(`Pago registrado en ${updated.folio}`)
+            toast.success(
+              `Pago registrado en ${updated.folio}`,
+              updated.contract_reactivated
+                ? 'El contrato se reactivó automáticamente y se solicitó reactivar su instancia en ERP Master.'
+                : undefined,
+            )
             setPayOpen(false)
             setPayTarget(null)
           } catch (error) {

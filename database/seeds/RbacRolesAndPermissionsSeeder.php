@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Phinx\Seed\AbstractSeed;
 
 /**
- * Catálogo canónico de 18 module_key + roles iniciales con matriz CRUD (idempotente).
+ * Catálogo canónico de 19 module_key + roles iniciales con matriz CRUD (idempotente).
  * group_key en inglés: main | configuration. Nombres visibles en español.
  */
 final class RbacRolesAndPermissionsSeeder extends AbstractSeed
@@ -17,10 +17,14 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
         'config_audit_logs',
     ];
 
-    /** Ver + Editar. */
+    /**
+     * Ver + Editar. `config_external_services`: editar configura conexiones,
+     * prueba conexiones y opera la cola outbox (reintentar / procesar ahora).
+     */
     private const VIEW_EDIT = [
         'config_company',
         'config_preferences',
+        'config_external_services',
     ];
 
     /** Ver + Editar + Eliminar (sin Crear). */
@@ -64,6 +68,7 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
             ['module_key' => 'config_roles', 'name' => 'Roles y permisos', 'group_key' => 'configuration', 'sort_order' => 160],
             ['module_key' => 'config_company', 'name' => 'Empresa', 'group_key' => 'configuration', 'sort_order' => 165],
             ['module_key' => 'config_system', 'name' => 'Sistema', 'group_key' => 'configuration', 'sort_order' => 168],
+            ['module_key' => 'config_external_services', 'name' => 'Servicios externos y Outbox', 'group_key' => 'configuration', 'sort_order' => 167],
             ['module_key' => 'config_audit_logs', 'name' => 'Bitácora de auditoría', 'group_key' => 'configuration', 'sort_order' => 169],
             ['module_key' => 'config_preferences', 'name' => 'Preferencias de pantalla', 'group_key' => 'configuration', 'sort_order' => 170],
         ];
@@ -120,7 +125,7 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
             [
                 'code' => 'admin_general',
                 'name' => 'Administrador General',
-                'description' => 'Acceso total en los 18 módulos (según acciones aplicables). Alcance: Todos.',
+                'description' => 'Acceso total en los 19 módulos (según acciones aplicables). Alcance: Todos.',
                 'is_system' => 1,
             ],
             [
@@ -212,6 +217,7 @@ final class RbacRolesAndPermissionsSeeder extends AbstractSeed
             'config_company',
             'config_system',
             'config_audit_logs',
+            'config_external_services',
             'config_preferences',
         ];
         $allModules = array_merge($main, $config);

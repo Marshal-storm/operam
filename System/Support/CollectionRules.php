@@ -232,6 +232,68 @@ final class CollectionRules
         return bccomp(FinancialCalculator::normalizeMoney($overdueBalance), '0.00', self::SCALE) > 0;
     }
 
+    /** Umbral oficial de suspensión / reactivación automática (RF-6.3). */
+    public const SUSPENSION_DAYS = 90;
+
+    /**
+     * Facturas de licencias/recurrentes: las únicas que suspenden o bloquean la reactivación.
+     * Compras sueltas (`one_time`) y consumos no bloquean (Págs. 6 y 39 del PDF).
+     */
+    public const LICENSE_INVOICE_TYPES = ['recurring', 'mixed'];
+
+    /**
+     * Máximo de días de atraso entre facturas abiertas de licencias/recurrentes.
+     *
+     * @param list<array{invoice_type?: string, balance: string, due_date: string, status: string}> $invoices
+     */
+    public static function licenseOverdueDays(array $invoices, string $todayYmd): int
+    {
+        $maxDays = 0;
+        foreach ($invoices as $invoice) {
+            if (!in_array((string) ($invoice['invoice_type'] ?? ''), self::LICENSE_INVOICE_TYPES, true)) {
+                continue;
+            }
+            if (in_array((string) ($invoice['status'] ?? ''), ['paid', 'cancelled'], true)) {
+                continue;
+            }
+            if (bccomp(FinancialCalculator::normalizeMoney((string) ($invoice['balance'] ?? '0')), '0.00', self::SCALE) <= 0) {
+                continue;
+            }
+            $dueDate = (string) ($invoice['due_date'] ?? '');
+            if ($dueDate === '' || $dueDate >= $todayYmd) {
+                continue;
+            }
+            $maxDays = max($maxDays, self::daysBetween($dueDate, $todayYmd));
+        }
+
+        return $maxDays;
+    }
+
+    /**
+     * RF-6.3: un contrato suspendido se reactiva cuando ya no tiene saldo de licencias/recurrentes
+     * con 90+ días de atraso. Es el mismo criterio que dispara la suspensión, evitando que el job
+     * diario alterne suspensión ↔ reactivación sobre el mismo adeudo.
+     *
+     * @param list<array{invoice_type?: string, balance: string, due_date: string, status: string}> $invoices
+     */
+    public static function canAutoReactivate(array $invoices, string $todayYmd): bool
+    {
+        return self::licenseOverdueDays($invoices, $todayYmd) < self::SUSPENSION_DAYS;
+    }
+
+    /** Nivel de aviso de cartera en días (0 / 30 / 60 / 90) para avisos RF-6.1 / RF-6.2. */
+    public static function warningLevelFromDays(int $daysOverdue): int
+    {
+        $days = max(0, $daysOverdue);
+
+        return match (true) {
+            $days >= self::SUSPENSION_DAYS => 90,
+            $days >= 60 => 60,
+            $days >= 30 => 30,
+            default => 0,
+        };
+    }
+
     /**
      * Revierte un pago (sin DELETE): resta el monto del paid_amount y reabre balance/status.
      *

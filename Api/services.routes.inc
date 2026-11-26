@@ -50,6 +50,32 @@
  *   POST   /api/instance-api/consumption
  *   GET    /api/instance-api/collection-status
  *   GET    /api/instance-api/portal-link
+ *
+ * Bloque C Paso 1 — Servicios externos, Outbox y Webhooks (RNF-2 / RNF-8 / RNF-12):
+ *   GET    /api/external-services                — 5 servicios globales + estado de referencias (can_view)
+ *   PUT    /api/external-services/{serviceKey}   — config + nombres de referencia del cofre (can_edit, alcance Todos)
+ *   POST   /api/external-services/{serviceKey}/test — prueba sandbox/producción (can_edit, alcance Todos)
+ *   GET    /api/outbox                           — cola paginada + KPIs (can_view, filtrada por segmento)
+ *   GET    /api/outbox/{id}                      — detalle con payload/respuesta (can_view)
+ *   POST   /api/outbox/{id}/retry                — reintento manual (can_edit, alcance Todos)
+ *   POST   /api/outbox/process-now               — procesar cola ahora (can_edit, alcance Todos)
+ *   GET    /api/incoming-events                  — webhooks recibidos, solo lectura (can_view, alcance Todos)
+ *
+ * Alias: /api/servicios-externos → external-services · /api/webhooks → incoming-events
+ * RBAC: config_external_services (Ver + Editar)
+ * Worker CLI: php scripts/run_outbox_worker.php [--limit=25] [--drain]
+ *
+ * Bloque C Paso 2 — Jobs de GCP, reactivación automática y ajuste masivo (RF-3.6 / RF-5 / RF-6.3):
+ *   POST   /api/jobs/run/{jobName|all}           — Cloud Scheduler con header X-Job-Secret (hash_equals contra
+ *                                                  SecretResolver::get(GCP_JOB_SECRET_REF)) o JWT
+ *                                                  config_external_services.edit + alcance Todos
+ *   GET    /api/jobs/runs                        — historial paginado + última corrida por job (can_view)
+ *   GET    /api/contracts/bulk-price-adjustment/options — servicios recurrentes ajustables (contracts.edit)
+ *   POST   /api/contracts/bulk-price-adjustment/preview — vista previa UI-9 sin escritura (contracts.edit)
+ *   POST   /api/contracts/bulk-price-adjustment/apply   — aplica lote AJ-YYYY-XXX (contracts.edit, motivo ≥5)
+ *
+ * Jobs: daily_billing · reset_included_balances · daily_collections · process_outbox
+ * CLI (Cloud Run Jobs): php scripts/jobs/run_job.php <jobName|all>
  */
 
 declare(strict_types=1);

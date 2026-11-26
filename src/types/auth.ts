@@ -1,4 +1,4 @@
-/** Claves multinivel del catálogo RBAC (18 módulos, inglés, alineadas al API). */
+/** Claves multinivel del catálogo RBAC (19 módulos, inglés, alineadas al API). */
 export type ModuleKey =
   | 'dashboard'
   | 'contracts'
@@ -17,6 +17,7 @@ export type ModuleKey =
   | 'config_company'
   | 'config_system'
   | 'config_audit_logs'
+  | 'config_external_services'
   | 'config_preferences'
 
 export type ModulePermission = {
@@ -82,6 +83,7 @@ export const CONFIG_MODULE_KEYS: ModuleKey[] = [
   'config_company',
   'config_system',
   'config_audit_logs',
+  'config_external_services',
   'config_preferences',
 ]
 
@@ -97,10 +99,14 @@ export const READ_ONLY_MODULE_KEYS: ReadonlySet<ModuleKey> = new Set([
   'config_audit_logs',
 ])
 
-/** Solo Ver + Editar. */
+/**
+ * Solo Ver + Editar. `config_external_services`: editar = configurar, probar conexión
+ * y operar la cola outbox (reintentar / procesar ahora).
+ */
 export const VIEW_EDIT_MODULE_KEYS: ReadonlySet<ModuleKey> = new Set([
   'config_company',
   'config_preferences',
+  'config_external_services',
 ])
 
 /** Ver + Editar + Eliminar (sin Crear). */

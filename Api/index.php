@@ -21,11 +21,15 @@ use System\Services\ClientsService;
 use System\Services\CollectionsService;
 use System\Services\ContractsService;
 use System\Services\DashboardMetricsService;
+use System\Services\ExternalServicesService;
+use System\Services\IncomingEventsService;
 use System\Services\InstanceApiService;
 use System\Services\InstancesService;
 use System\Services\IssuersService;
+use System\Services\JobsService;
 use System\Services\LoginService;
 use System\Services\MovementsService;
+use System\Services\OutboxService;
 use System\Services\PriceListItemsService;
 use System\Services\PriceListsService;
 use System\Services\PromotionsService;
@@ -54,7 +58,7 @@ operam_boot_eloquent();
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
 header('Access-Control-Allow-Origin: ' . $origin);
 header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Allow-Headers: Authorization, Content-Type, Accept, X-Requested-With, X-Instance-Token');
+header('Access-Control-Allow-Headers: Authorization, Content-Type, Accept, X-Requested-With, X-Instance-Token, X-Job-Secret');
 header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
 header('Content-Type: application/json; charset=utf-8');
 
@@ -118,6 +122,9 @@ try {
     // API de instancias: autenticación por token propio (no JWT enterprise).
     if (str_starts_with($uri, 'instance-api')) {
         $result = (new InstanceApiService())->handle($context);
+    } elseif (JobsService::isSchedulerRequest($context)) {
+        // Cloud Scheduler: secreto compartido `X-Job-Secret` resuelto desde el cofre (RNF-8).
+        $result = (new JobsService())->handleSchedulerRequest($context);
     } elseif ($uri === 'login' && $method === 'POST') {
         $loginService = new LoginService($loginHooks);
         $result = $loginService->handle($context);
@@ -154,6 +161,8 @@ try {
                 'roles-permissions', 'rbac/roles' => 'roles',
                 'users-management', 'usuarios' => 'users',
                 'session', 'profile' => 'me',
+                'external_services', 'servicios-externos' => 'external-services',
+                'incoming_events', 'webhooks' => 'incoming-events',
                 default => $resource,
             };
 
@@ -208,6 +217,10 @@ try {
                 'segments' => (new SegmentsService())->handle($context),
                 'system-settings' => (new SystemSettingsService())->handle($context),
                 'audit-logs' => (new AuditLogsService())->handle($context),
+                'external-services' => (new ExternalServicesService())->handle($context),
+                'outbox' => (new OutboxService())->handle($context),
+                'incoming-events' => (new IncomingEventsService())->handle($context),
+                'jobs' => (new JobsService())->handle($context),
                 default => Result::ok([
                     'uri' => $uri,
                     'auth' => $context->getData('auth'),

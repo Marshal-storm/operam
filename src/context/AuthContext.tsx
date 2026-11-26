@@ -25,6 +25,7 @@ import { configureCollectionsAuth } from '@/services/collectionsService'
 import { configureContractsAuth } from '@/services/contractsService'
 import { configureRequestsAuth } from '@/services/requestsService'
 import { configureDashboardAuth } from '@/services/dashboardService'
+import { configureExternalServicesAuth } from '@/services/externalServicesService'
 import { configureProfitabilityAuth } from '@/services/profitabilityService'
 import { configureRbacAuth } from '@/services/rbacService'
 import { configureSystemAuth } from '@/services/systemService'
@@ -87,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     configureBalancesAuth(getToken)
     configureRbacAuth(getToken)
     configureSystemAuth(getToken)
+    configureExternalServicesAuth(getToken)
   }, [getToken, logout])
 
   // Soft-refresh de permisos desde MySQL (config_issuers, etc.) sin cerrar sesión.

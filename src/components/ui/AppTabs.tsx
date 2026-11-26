@@ -6,6 +6,8 @@ export type AppTabItem = {
   label: string
   /** Contador o etiqueta corta (p. ej. costos del mes). */
   badge?: number | string
+  /** Semáforo del contador (p. ej. fallidos del outbox); `neutral` por defecto. */
+  badgeTone?: 'neutral' | 'warning' | 'danger'
   icon?: React.ReactNode
   disabled?: boolean
 }
@@ -90,9 +92,13 @@ export function AppTabs({
               <span
                 className={cn(
                   'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums',
-                  selected
-                    ? 'bg-white/20 text-white'
-                    : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-zinc-300',
+                  item.badgeTone === 'danger'
+                    ? 'bg-[#EF4444] text-white'
+                    : item.badgeTone === 'warning'
+                      ? 'bg-[#F59E0B] text-white'
+                      : selected
+                        ? 'bg-white/20 text-white'
+                        : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-zinc-300',
                 )}
               >
                 {item.badge}

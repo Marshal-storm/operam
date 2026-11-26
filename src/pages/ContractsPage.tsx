@@ -3,9 +3,10 @@ import {
   useTable,
   type ColumnDef,
 } from '@tanstack/react-table'
-import { Eye, FileText, Plus, User } from 'lucide-react'
+import { Eye, FileText, Percent, Plus, User } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { BulkPriceAdjustmentModal } from '@/components/contracts/BulkPriceAdjustmentModal'
 import { AppBadge } from '@/components/ui/AppBadge'
 import { AppButton } from '@/components/ui/AppButton'
 import { AppCard } from '@/components/ui/AppCard'
@@ -45,7 +46,8 @@ const STATUS_LABEL: Record<ContractStatus, string> = {
  */
 export function ContractsPage() {
   const navigate = useNavigate()
-  const { canCreate } = usePermissions()
+  const { canCreate, canEdit } = usePermissions()
+  const [bulkOpen, setBulkOpen] = useState(false)
   const { pageSize: preferredSize, rowPaddingClass, setPageSize } = useScreenPreferences()
   const {
     segments,
@@ -279,12 +281,31 @@ export function ContractsPage() {
             Suscripciones activas, MRR congelado y próximos cortes
           </p>
         </div>
-        {canCreate('contracts') ? (
-          <AppButton className="rounded-xl" onClick={() => navigate('/contratos/nuevo')}>
-            <Plus className="mr-1 h-4 w-4" /> Nuevo contrato
-          </AppButton>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {canEdit('contracts') ? (
+            <AppButton variant="secondary" className="rounded-xl" onClick={() => setBulkOpen(true)}>
+              <Percent className="mr-1 h-4 w-4" /> Ajuste masivo de precios
+            </AppButton>
+          ) : null}
+          {canCreate('contracts') ? (
+            <AppButton className="rounded-xl" onClick={() => navigate('/contratos/nuevo')}>
+              <Plus className="mr-1 h-4 w-4" /> Nuevo contrato
+            </AppButton>
+          ) : null}
+        </div>
       </header>
+
+      {canEdit('contracts') ? (
+        <BulkPriceAdjustmentModal
+          open={bulkOpen}
+          onOpenChange={setBulkOpen}
+          segmentOptions={segments
+            .filter((s) => !isSegmentLocked || s.id === lockedSegmentId)
+            .map((s) => ({ value: String(s.id), label: s.name }))}
+          lockedSegmentId={isSegmentLocked && lockedSegmentId ? lockedSegmentId : null}
+          issuerOptions={issuers.map((i) => ({ value: String(i.id), label: i.name }))}
+        />
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {kpiCards.map((kpi) => (

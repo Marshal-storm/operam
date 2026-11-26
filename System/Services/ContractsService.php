@@ -11,9 +11,12 @@ use System\Core\DataTypes;
 use System\Core\Result;
 use System\Models\ContractsModel;
 use System\Support\AuditLogger;
+use System\Support\BulkPriceAdjustmentProcessor;
+use System\Support\BulkPriceAdjustmentRules;
 use System\Support\ContractLifecycleEngine;
 use System\Support\ContractPricingEngine;
 use System\Support\FinancialCalculator;
+use System\Support\Integrations\OutboxPublisher;
 use Throwable;
 
 /**
@@ -72,6 +75,15 @@ final class ContractsService extends ModelService
         $parts = $uri === '' ? [] : explode('/', $uri);
         // Soporta alias `contratos/{id}/lifecycle` y `contratos/{id}/movements/{mid}/reverse`.
         $action = isset($parts[2]) ? strtolower((string) $parts[2]) : null;
+
+        // /api/contracts/bulk-price-adjustment/{options|preview|apply} — Ajuste masivo RF-3.6 / UI-9.
+        if (($parts[1] ?? '') === 'bulk-price-adjustment') {
+            if (!RbacAuthHelper::can($this->authContext, self::MODULE_KEY, 'edit')) {
+                return Result::fail('Sin permiso para ejecutar ajustes masivos de precios.', 403);
+            }
+
+            return $this->handleBulkPriceAdjustment($method, (string) ($action ?? ''), $request);
+        }
 
         // POST /api/contracts/{id}/movements/{movementId}/reverse — Reversión contable RNF-3.
         if (
@@ -706,6 +718,13 @@ final class ContractsService extends ModelService
                     'created_at' => $nowUtc,
                 ]);
 
+                // Outbox transaccional: ERP Master ajusta usuarios de la instancia asignada.
+                OutboxPublisher::contractUsersAdjustment(
+                    $contractId,
+                    'contract_created',
+                    'adjust_users:contract:' . $contractId . ':created',
+                );
+
                 return $contractId;
             });
         } catch (Throwable $exception) {
@@ -1232,6 +1251,81 @@ final class ContractsService extends ModelService
         return 'recurring';
     }
 
+    /**
+     * Ajuste Masivo de Precios (RF-3.6): `options` (GET), `preview` (POST, sin escritura) y
+     * `apply` (POST, transacción atómica + auditoría). El segmento fijo del JWT ya viene forzado.
+     *
+     * @param array<string, mixed> $request
+     */
+    private function handleBulkPriceAdjustment(string $method, string $step, array $request): Result
+    {
+        $lockedSegmentId = $this->positiveIntOrNull($this->authContext['segment_id'] ?? null);
+
+        if ($method === 'GET' && $step === 'options') {
+            return Result::ok(
+                ['services' => BulkPriceAdjustmentProcessor::recurringServiceOptions($lockedSegmentId)],
+                'Servicios recurrentes ajustables',
+            );
+        }
+        if ($method !== 'POST' || !in_array($step, ['preview', 'apply'], true)) {
+            return Result::fail('Ruta de ajuste masivo no soportada.', 404);
+        }
+
+        try {
+            $filters = BulkPriceAdjustmentProcessor::normalizeFilters($request);
+            if ($lockedSegmentId !== null) {
+                $filters['segment_id'] = $lockedSegmentId;
+            }
+            $percentage = BulkPriceAdjustmentRules::normalizePercentage($request['percentage'] ?? null);
+            $processor = new BulkPriceAdjustmentProcessor();
+
+            if ($step === 'preview') {
+                return Result::ok($processor->preview($filters, $percentage), 'Vista previa del ajuste masivo');
+            }
+
+            $reason = BulkPriceAdjustmentRules::normalizeReason($request['reason'] ?? null);
+            $userId = (int) ($this->authContext['user_id'] ?? $this->authContext['sub'] ?? 0);
+            $outcome = Capsule::connection()->transaction(
+                static fn (): array => $processor->apply($filters, $percentage, $reason, $userId),
+            );
+        } catch (\InvalidArgumentException $e) {
+            return Result::fail($e->getMessage(), 422);
+        } catch (Throwable $e) {
+            return Result::fail('No se pudo aplicar el ajuste masivo: ' . $e->getMessage(), 500);
+        }
+
+        $summary = $outcome['summary'];
+        AuditLogger::log(
+            $this->authContext,
+            self::MODULE_KEY,
+            'bulk_price_adjustments',
+            (string) $outcome['batch_id'],
+            'update',
+            sprintf(
+                'Ajuste masivo %s (%s%%) · %d contrato(s) · Δ MRR %s · %s',
+                $outcome['batch_code'],
+                $percentage,
+                $summary['affected_contracts_count'],
+                $summary['total_mrr_delta_mxn'],
+                $reason,
+            ),
+            ['total_mrr_mxn' => $summary['current_total_mrr_mxn']],
+            [
+                'batch_code' => $outcome['batch_code'],
+                'percentage' => $percentage,
+                'filters' => $filters,
+                'total_mrr_mxn' => $summary['new_total_mrr_mxn'],
+                'contract_ids' => array_column($outcome['items'], 'contract_id'),
+            ],
+        );
+
+        return Result::ok($outcome, sprintf(
+            'Ajuste %s aplicado a %d contrato(s)',
+            $outcome['batch_code'],
+            $summary['affected_contracts_count'],
+        ));
+    }
+
     private function normalizeExchangeRateForMovement(string $rate): string
     {
         return bcadd($rate, '0', 6);
@@ -1360,6 +1454,8 @@ final class ContractsService extends ModelService
                         (int) ($this->authContext['user_id'] ?? 0) ?: null,
                     );
                 }
+
+                $this->enqueueLifecycleIntegration($operation, $contractId, $reason);
             });
         } catch (Throwable $exception) {
             $this->lifecycleExceptionFlags = null;
@@ -1391,6 +1487,37 @@ final class ContractsService extends ModelService
         );
 
         return Result::ok($enriched, 'Operación de ciclo de vida aplicada');
+    }
+
+    /**
+     * Encola en outbox (misma transacción) el efecto de la operación en ERP Master:
+     * expansión/contracción ajustan usuarios; baja/reactivación cambian el estado de la instancia.
+     * La llave se ancla al movimiento recién insertado para que cada operación sea única (RNF-2).
+     */
+    private function enqueueLifecycleIntegration(string $operation, int $contractId, string $reason): void
+    {
+        $movementId = OutboxPublisher::latestMovementId($contractId);
+
+        match ($operation) {
+            'expansion', 'contraction' => OutboxPublisher::contractUsersAdjustment(
+                $contractId,
+                $operation,
+                sprintf('adjust_users:contract:%d:movement:%d', $contractId, $movementId),
+            ),
+            'churn' => OutboxPublisher::instanceStatusChange(
+                $contractId,
+                'suspend_instance',
+                $reason,
+                sprintf('suspend_instance:contract:%d:movement:%d', $contractId, $movementId),
+            ),
+            'reactivation' => OutboxPublisher::instanceStatusChange(
+                $contractId,
+                'reactivate_instance',
+                $reason,
+                sprintf('reactivate_instance:contract:%d:movement:%d', $contractId, $movementId),
+            ),
+            default => null,
+        };
     }
 
     private function assertLifecycleStatus(string $operation, string $status): ?Result

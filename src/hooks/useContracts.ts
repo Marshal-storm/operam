@@ -1,15 +1,61 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLoadingLock } from '@/context/LoadingLockContext'
 import {
+  applyBulkPriceAdjustment,
   ContractsApiError,
   createContract,
+  fetchBulkPriceAdjustmentServices,
   fetchContractsPaginated,
+  previewBulkPriceAdjustment,
   type ContractsQueryParams,
 } from '@/services/contractsService'
 import { fetchEmitters } from '@/services/catalogService'
-import type { ContractCreateInput } from '@/types/contract'
+import type {
+  BulkPriceAdjustmentApplyInput,
+  BulkPriceAdjustmentInput,
+  ContractCreateInput,
+} from '@/types/contract'
 
 export const CONTRACTS_QUERY_KEY = ['contracts'] as const
+
+/**
+ * Ajuste Masivo de Precios (RF-3.6): catálogo de servicios, vista previa y aplicación.
+ * Al aplicar se invalidan contratos y Dashboard (el Puente de MRR cambia).
+ */
+export function useBulkPriceAdjustment(enabled: boolean) {
+  const queryClient = useQueryClient()
+  const { withScreenLock } = useLoadingLock()
+
+  const services = useQuery({
+    queryKey: [...CONTRACTS_QUERY_KEY, 'bulk-price-adjustment', 'services'],
+    queryFn: fetchBulkPriceAdjustmentServices,
+    staleTime: 60_000,
+    enabled,
+  })
+
+  const preview = useMutation({
+    mutationFn: (input: BulkPriceAdjustmentInput) =>
+      withScreenLock(() => previewBulkPriceAdjustment(input)),
+  })
+
+  const apply = useMutation({
+    mutationFn: (input: BulkPriceAdjustmentApplyInput) =>
+      withScreenLock(() => applyBulkPriceAdjustment(input)),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [...CONTRACTS_QUERY_KEY] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+      ])
+    },
+  })
+
+  return {
+    services: services.data ?? [],
+    isLoadingServices: services.isLoading,
+    preview,
+    apply,
+  }
+}
 
 /**
  * Hook del listado de contratos: paginación servidor + mutación de alta con candado.

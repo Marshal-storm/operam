@@ -26,6 +26,7 @@ import {
   Cpu,
   History,
   Mail,
+  Plug,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type ComponentType } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -76,6 +77,12 @@ const CONFIG_SUBITEMS: ConfigSubItem[] = [
   { label: 'Roles y permisos', to: '/configuracion/roles', icon: Shield, module: 'config_roles' },
   { label: 'Empresa', to: '/configuracion/empresa', icon: Building2, module: 'config_company' },
   { label: 'Sistema', to: '/configuracion/sistema', icon: Cpu, module: 'config_system' },
+  {
+    label: 'Servicios externos',
+    to: '/configuracion/servicios',
+    icon: Plug,
+    module: 'config_external_services',
+  },
   {
     label: 'Bitácora de auditoría',
     to: '/configuracion/auditoria',

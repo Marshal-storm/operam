@@ -12,6 +12,7 @@ import { ToastProvider } from '@/context/ToastContext'
 import { usePermissions } from '@/hooks/usePermissions'
 import { AuditLogsPage } from '@/pages/config/AuditLogsPage'
 import { CatalogServicesPage } from '@/pages/config/CatalogServicesPage'
+import { ExternalServicesPage } from '@/pages/config/ExternalServicesPage'
 import { InstancesPage } from '@/pages/config/InstancesPage'
 import { IssuersPage } from '@/pages/config/IssuersPage'
 import { PriceListsPage } from '@/pages/config/PriceListsPage'
@@ -51,6 +52,7 @@ const CONFIG_HOME_ROUTES: Array<{ module: ModuleKey; to: string }> = [
   { module: 'config_roles', to: '/configuracion/roles' },
   { module: 'config_company', to: '/configuracion/empresa' },
   { module: 'config_system', to: '/configuracion/sistema' },
+  { module: 'config_external_services', to: '/configuracion/servicios' },
   { module: 'config_audit_logs', to: '/configuracion/auditoria' },
   { module: 'config_preferences', to: '/configuracion/preferencias' },
 ]
@@ -254,6 +256,14 @@ function App() {
                           element={
                             <ModulePage module="config_system">
                               <SystemSettingsPage />
+                            </ModulePage>
+                          }
+                        />
+                        <Route
+                          path="configuracion/servicios"
+                          element={
+                            <ModulePage module="config_external_services">
+                              <ExternalServicesPage />
                             </ModulePage>
                           }
                         />
